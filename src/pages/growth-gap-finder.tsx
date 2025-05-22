@@ -1,14 +1,11 @@
-import React, { useState, useEffect } from "react";
+
+import React, { useState } from "react";
 import { MainLayout } from "@/layouts";
 import { ChatInterface } from "@/components/GrowthGapFinder/ChatInterface";
 import { FileUploadSection } from "@/components/GrowthGapFinder/FileUploadSection";
 import { InsightModules } from "@/components/GrowthGapFinder/InsightModules";
 import { ResultsDisplay } from "@/components/GrowthGapFinder/ResultsDisplay";
-import { AppStoreScraper, AppDetails } from "@/components/GrowthGapFinder/AppStoreScraper";
-import { AppDetailsView } from "@/components/GrowthGapFinder/AppDetailsView";
 import { Card } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { AppProvider } from "@/context/AppContext";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -20,48 +17,15 @@ import {
   analyzeMetadataSuggestions,
   analyzeGrowthOpportunity,
   analyzeQuickWins,
-  analyzeMissedImpressions,
-  analyzeRankingOpportunities,
-  analyzeKeywordRelevancy,
-  KeywordData,
-  AppContext as AppKeywordContext
+  analyzeMissedImpressions
 } from "@/utils/keywordAnalysis";
 
 const GrowthGapFinderPage = () => {
-  const [activeTab, setActiveTab] = useState<string>("app-search");
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
   const [selectedInsight, setSelectedInsight] = useState<string | null>(null);
   const [results, setResults] = useState<any | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
   const [keywordData, setKeywordData] = useState<string | null>(null);
-  const [parsedKeywords, setParsedKeywords] = useState<KeywordData[]>([]);
-  const [selectedApp, setSelectedApp] = useState<AppDetails | null>(null);
-  
-  // Parse keyword data whenever it changes
-  useEffect(() => {
-    if (keywordData) {
-      try {
-        const parsed = parseKeywordData(keywordData);
-        setParsedKeywords(parsed);
-        console.log(`Parsed ${parsed.length} keywords for analysis`);
-        
-        // Show a toast notification when keywords are successfully parsed
-        if (parsed.length > 0) {
-          toast({
-            title: "Keywords Ready",
-            description: `${parsed.length} keywords parsed and ready for analysis.`,
-          });
-        }
-      } catch (error) {
-        console.error("Error parsing keyword data:", error);
-        toast({
-          title: "Parsing Error",
-          description: "There was an error processing your keyword data.",
-          variant: "destructive"
-        });
-      }
-    }
-  }, [keywordData]);
   
   const handleFileUpload = (files: File[]) => {
     console.log("Files uploaded:", files);
@@ -79,11 +43,6 @@ const GrowthGapFinderPage = () => {
               title: "Data Ready",
               description: `${files.length} file(s) uploaded successfully. You can now analyze your keyword data.`,
             });
-            
-            // If an app is selected, move to insights tab
-            if (selectedApp) {
-              setActiveTab("insights");
-            }
           }
         };
         reader.readAsText(file);
@@ -97,87 +56,54 @@ const GrowthGapFinderPage = () => {
     }
   };
   
-  const handleSelectApp = (app: AppDetails) => {
-    setSelectedApp(app);
-    // Move to the upload tab if an app is selected
-    setActiveTab("upload");
-    toast({
-      title: "App Selected",
-      description: `"${app.trackName}" selected for analysis. Please upload keyword data next.`,
-    });
-  };
-  
   const handleInsightSelect = async (insightType: string) => {
     console.log("Insight selected:", insightType);
     setSelectedInsight(insightType);
     setIsAnalyzing(true);
     
     // If we have real keyword data, use it for analysis
-    if (parsedKeywords.length > 0) {
+    if (keywordData) {
       try {
-        console.log(`Analyzing ${parsedKeywords.length} keywords for ${insightType}`);
-        
-        // Create app context if available
-        const appContext = selectedApp ? {
-          name: selectedApp.trackName,
-          developer: selectedApp.sellerName,
-          category: selectedApp.primaryGenreName || 'Unknown',
-          rating: selectedApp.averageUserRating || 0,
-          ratingCount: selectedApp.userRatingCount || 0,
-        } : undefined;
+        const parsedKeywords = parseKeywordData(keywordData);
+        console.log(`Parsed ${parsedKeywords.length} keywords for analysis`);
         
         let resultData;
         
-        // Try to do local analysis first, now with app context if available
+        // Try to do local analysis first
         if (parsedKeywords.length > 0) {
           switch(insightType) {
             case "BrandVsGeneric":
-              resultData = analyzeBrandVsGeneric(parsedKeywords, appContext);
+              resultData = analyzeBrandVsGeneric(parsedKeywords);
               break;
               
             case "CompetitorComparison":
-              resultData = analyzeCompetitorComparison(parsedKeywords, appContext);
+              resultData = analyzeCompetitorComparison(parsedKeywords);
               break;
               
             case "MetadataSuggestions":
-              resultData = analyzeMetadataSuggestions(parsedKeywords, appContext);
+              resultData = analyzeMetadataSuggestions(parsedKeywords);
               break;
               
             case "GrowthOpportunity":
-              resultData = analyzeGrowthOpportunity(parsedKeywords, appContext);
+              resultData = analyzeGrowthOpportunity(parsedKeywords);
               break;
               
             case "QuickWins":
-              resultData = analyzeQuickWins(parsedKeywords, appContext);
+              resultData = analyzeQuickWins(parsedKeywords);
               break;
               
             case "MissedImpressions":
-              resultData = analyzeMissedImpressions(parsedKeywords, appContext);
-              break;
-              
-            case "RankingOpportunities":
-              resultData = analyzeRankingOpportunities(parsedKeywords, appContext);
-              break;
-              
-            case "RelevancyAnalysis":
-              resultData = analyzeKeywordRelevancy(parsedKeywords, appContext);
+              resultData = analyzeMissedImpressions(parsedKeywords);
               break;
           }
         }
         
-        // If local analysis isn't available or fails, try the edge function with app context
+        // If local analysis isn't available or fails, try the edge function
         if (!resultData) {
           const { data, error } = await supabase.functions.invoke('aso-chat', {
             body: {
               insightType,
               keywordData,
-              appDetails: selectedApp ? {
-                name: selectedApp.trackName,
-                developer: selectedApp.sellerName,
-                category: selectedApp.primaryGenreName || 'Unknown',
-                rating: selectedApp.averageUserRating || 0,
-                bundleId: selectedApp.bundleId || 'Unknown',
-              } : null,
               messages: []
             }
           });
@@ -193,20 +119,13 @@ const GrowthGapFinderPage = () => {
         
         setResults({
           type: insightType,
-          data: resultData,
-          appInfo: selectedApp ? {
-            name: selectedApp.trackName,
-            icon: selectedApp.artworkUrl100,
-          } : null
+          data: resultData
         });
         
         toast({
           title: "Analysis Complete",
           description: `${formatInsightName(insightType)} analysis completed successfully.`,
         });
-        
-        // Switch to results tab after analysis is complete
-        setActiveTab("results");
       } catch (error) {
         console.error('Error analyzing data:', error);
         // Fall back to simulated analysis
@@ -223,25 +142,24 @@ const GrowthGapFinderPage = () => {
     // Simulated analysis duration
     const analysisDuration = 2000 + Math.random() * 1500; // Between 2-3.5 seconds
     
-    // Simulate results for each insight type, now with app context if available
+    // Simulate results for each insight type
     setTimeout(() => {
       let resultData;
-      const appName = selectedApp?.trackName || "Your App";
       
       switch(insightType) {
         case "MissedImpressions":
           resultData = {
             title: "Missed Impressions Analysis",
-            summary: `We identified potential missed impressions for ${appName} based on your current keyword rankings.`,
+            summary: "We identified potential missed impressions based on your current keyword rankings.",
             metrics: [
               { label: "Estimated Missed Impressions", value: "~140,000" },
               { label: "Potential Visibility Uplift", value: "+22%" },
               { label: "Optimization Priority", value: "High" }
             ],
             recommendations: [
-              `Target 'fitness tracker' keywords that rank on page 2`,
-              `Optimize for 'activity monitor' terms showing growth`,
-              `Add 'health analytics' to your app metadata`
+              "Target 'fitness tracker' keywords that rank on page 2",
+              "Optimize for 'activity monitor' terms showing growth",
+              "Add 'health analytics' to your app metadata"
             ],
             chartData: [
               { name: "Missing High Volume", value: 82000, fill: "#F97316" },
@@ -360,50 +278,6 @@ const GrowthGapFinderPage = () => {
           };
           break;
           
-        case "RankingOpportunities":
-          resultData = {
-            title: "Ranking Improvement Opportunities",
-            summary: `We identified keywords where ${appName} can improve rankings for significant impact.`,
-            metrics: [
-              { label: "Keywords Just Outside Top 10", value: "24" },
-              { label: "Potential Traffic Increase", value: "+28%" },
-              { label: "Conversion Impact", value: "Medium" }
-            ],
-            recommendations: [
-              `Focus on 'health monitoring' keywords ranked 11-15`,
-              `Improve relevance signals for 'activity tracking' terms`,
-              `Address negative reviews mentioning tracking accuracy`
-            ],
-            chartData: [
-              { name: "Ranks 11-20", value: 24, fill: "#F97316" },
-              { name: "Ranks 21-50", value: 18, fill: "#3B82F6" },
-              { name: "Ranks 51+", value: 12, fill: "#10B981" }
-            ]
-          };
-          break;
-          
-        case "RelevancyAnalysis":
-          resultData = {
-            title: "Keyword Relevancy Analysis",
-            summary: `Analysis of how relevant current keywords are to ${appName} and its features.`,
-            metrics: [
-              { label: "High Relevance", value: "45%" },
-              { label: "Medium Relevance", value: "30%" },
-              { label: "Low Relevance", value: "25%" }
-            ],
-            recommendations: [
-              `Focus ASO efforts on high-relevance terms first`,
-              `Remove low-relevance keywords from metadata`,
-              `Develop features to improve relevance for medium-relevance terms`
-            ],
-            chartData: [
-              { name: "High Relevance", value: 45, fill: "#10B981" },
-              { name: "Medium Relevance", value: 30, fill: "#3B82F6" },
-              { name: "Low Relevance", value: 25, fill: "#F97316" }
-            ]
-          };
-          break;
-          
         default:
           resultData = {
             title: "ASO Analysis",
@@ -427,22 +301,14 @@ const GrowthGapFinderPage = () => {
       
       setResults({
         type: insightType,
-        data: resultData,
-        appInfo: selectedApp ? {
-          name: selectedApp.trackName,
-          icon: selectedApp.artworkUrl100,
-        } : null
+        data: resultData
       });
-      
       setIsAnalyzing(false);
       
       toast({
         title: "Analysis Complete",
         description: `${formatInsightName(insightType)} analysis completed successfully.`,
       });
-      
-      // Switch to results tab after analysis is complete
-      setActiveTab("results");
     }, analysisDuration);
   };
   
@@ -455,119 +321,58 @@ const GrowthGapFinderPage = () => {
       case "MetadataSuggestions": return "Metadata Suggestions";
       case "GrowthOpportunity": return "Growth Opportunity";
       case "QuickWins": return "Quick Wins";
-      case "RankingOpportunities": return "Ranking Opportunities";
-      case "RelevancyAnalysis": return "Keyword Relevancy";
       default: return insightType;
     }
   };
   
   return (
-    <AppProvider>
-      <MainLayout>
-        <div className="flex flex-col space-y-6">
-          <div className="flex items-center">
-            <h1 className="text-2xl font-bold text-white">
-              <span className="text-yodel-orange mr-2">•</span>
-              Growth Gap Finder
-            </h1>
+    <MainLayout>
+      <div className="flex flex-col space-y-6">
+        <div className="flex items-center">
+          <h1 className="text-2xl font-bold text-white">
+            <span className="text-yodel-orange mr-2">•</span>
+            Growth Gap Finder
+          </h1>
+        </div>
+        
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-12rem)]">
+          {/* Left Column - Chat & File Upload */}
+          <div className="lg:col-span-1 flex flex-col space-y-6">
+            <Card className="flex-1 bg-zinc-900/70 border-zinc-800 shadow-lg">
+              <ChatInterface 
+                onInsightSelect={handleInsightSelect} 
+                uploadedFiles={uploadedFiles}
+              />
+            </Card>
+            
+            <Card className="bg-zinc-900/70 border-zinc-800 shadow-lg">
+              <FileUploadSection onFilesUploaded={handleFileUpload} />
+            </Card>
           </div>
           
-          {/* Main Tabs for the workflow */}
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-            <TabsList className="bg-zinc-800 border border-zinc-700">
-              <TabsTrigger value="app-search" className="data-[state=active]:bg-zinc-700">
-                1. App Search
-              </TabsTrigger>
-              <TabsTrigger value="upload" className="data-[state=active]:bg-zinc-700" disabled={!selectedApp}>
-                2. Keyword Upload
-              </TabsTrigger>
-              <TabsTrigger value="insights" className="data-[state=active]:bg-zinc-700" disabled={!keywordData}>
-                3. Insights
-              </TabsTrigger>
-              <TabsTrigger value="results" className="data-[state=active]:bg-zinc-700" disabled={!results}>
-                4. Results
-              </TabsTrigger>
-            </TabsList>
-            
-            {/* App Search Tab Content */}
-            <TabsContent value="app-search" className="pt-2 w-full">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-[calc(100vh-16rem)]">
-                <Card className="bg-zinc-900/70 border-zinc-800 shadow-lg overflow-hidden">
-                  <AppStoreScraper onSelectApp={handleSelectApp} selectedAppId={selectedApp?.trackId} />
-                </Card>
-                <Card className="bg-zinc-900/70 border-zinc-800 shadow-lg overflow-hidden">
-                  <AppDetailsView appDetails={selectedApp} />
-                </Card>
-              </div>
-            </TabsContent>
-            
-            {/* Upload Tab Content */}
-            <TabsContent value="upload" className="pt-2 w-full">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-[calc(100vh-16rem)]">
-                <Card className="bg-zinc-900/70 border-zinc-800 shadow-lg">
-                  <ChatInterface 
-                    onInsightSelect={handleInsightSelect} 
-                    uploadedFiles={uploadedFiles}
-                    selectedApp={selectedApp}
-                  />
-                </Card>
-                <Card className="bg-zinc-900/70 border-zinc-800 shadow-lg">
-                  <FileUploadSection 
-                    onFilesUploaded={handleFileUpload}
-                    selectedApp={selectedApp}
-                  />
-                </Card>
-              </div>
-            </TabsContent>
-            
-            {/* Insights Tab Content */}
-            <TabsContent value="insights" className="pt-2 w-full">
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-16rem)]">
-                <div className="lg:col-span-1">
-                  <Card className="h-full bg-zinc-900/70 border-zinc-800 shadow-lg">
-                    <InsightModules 
-                      onInsightSelect={handleInsightSelect}
-                      selectedInsight={selectedInsight}
-                      isAnalyzing={isAnalyzing}
-                      selectedApp={selectedApp}
-                      keywordData={parsedKeywords}
-                      keywordsCount={parsedKeywords.length}
-                    />
-                  </Card>
-                </div>
-                <div className="lg:col-span-2">
-                  <Card className="h-full bg-zinc-900/70 border-zinc-800 shadow-lg overflow-auto">
-                    <ResultsDisplay 
-                      results={results} 
-                      isLoading={isAnalyzing}
-                      selectedApp={selectedApp}
-                      keywordData={parsedKeywords}
-                      keywordsCount={parsedKeywords.length}
-                    />
-                  </Card>
-                </div>
-              </div>
-            </TabsContent>
-            
-            {/* Results Tab Content */}
-            <TabsContent value="results" className="pt-2 w-full">
-              <div className="h-[calc(100vh-16rem)]">
-                <Card className="h-full bg-zinc-900/70 border-zinc-800 shadow-lg overflow-auto">
-                  <ResultsDisplay 
-                    results={results} 
-                    isLoading={isAnalyzing}
-                    selectedApp={selectedApp}
-                    showFullResults={true}
-                    keywordData={parsedKeywords}
-                    keywordsCount={parsedKeywords.length}
-                  />
-                </Card>
-              </div>
-            </TabsContent>
-          </Tabs>
+          {/* Middle Column - Insight Modules */}
+          <div className="lg:col-span-1">
+            <Card className="h-full bg-zinc-900/70 border-zinc-800 shadow-lg">
+              <InsightModules 
+                onInsightSelect={handleInsightSelect}
+                selectedInsight={selectedInsight}
+                isAnalyzing={isAnalyzing}
+              />
+            </Card>
+          </div>
+          
+          {/* Right Column - Results Display */}
+          <div className="lg:col-span-1">
+            <Card className="h-full bg-zinc-900/70 border-zinc-800 shadow-lg overflow-auto">
+              <ResultsDisplay 
+                results={results} 
+                isLoading={isAnalyzing} 
+              />
+            </Card>
+          </div>
         </div>
-      </MainLayout>
-    </AppProvider>
+      </div>
+    </MainLayout>
   );
 };
 

@@ -7,7 +7,6 @@ import { Send, Upload, BarChart, TrendingUp, Loader2, AlertCircle } from "lucide
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { AppDetails } from "./AppStoreScraper";
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -19,53 +18,38 @@ interface ChatMessage {
 interface ChatInterfaceProps {
   onInsightSelect: (insightType: string) => void;
   uploadedFiles?: File[];
-  selectedApp?: AppDetails | null;
 }
 
 export const ChatInterface: React.FC<ChatInterfaceProps> = ({ 
   onInsightSelect, 
-  uploadedFiles = [],
-  selectedApp = null
+  uploadedFiles = [] 
 }) => {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([
+    {
+      role: "assistant",
+      content: "👋 Hi there! I'm your ASO Growth Gap Finder. Upload your keyword data or ask me about missed visibility opportunities.",
+      timestamp: new Date(),
+    },
+  ]);
   const [inputValue, setInputValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [apiErrorCount, setApiErrorCount] = useState(0);
   const [keywordData, setKeywordData] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Update welcome message when component mounts or when app changes
-  useEffect(() => {
-    const welcomeMessage = selectedApp 
-      ? `👋 Hi there! I'm your ASO Growth Gap Finder. I'll help analyze growth opportunities for "${selectedApp.trackName}". Please upload your keyword data.`
-      : "👋 Hi there! I'm your ASO Growth Gap Finder. Upload your keyword data or ask me about missed visibility opportunities.";
-    
-    setMessages([{
-      role: "assistant",
-      content: welcomeMessage,
-      timestamp: new Date(),
-    }]);
-  }, [selectedApp]);
-
   const examplePrompts = [
     {
-      text: selectedApp 
-        ? `Upload keyword data for ${selectedApp.trackName}`
-        : "Upload your keyword export to analyze missed visibility",
+      text: "Upload your keyword export to analyze missed visibility",
       icon: <Upload className="h-4 w-4" />,
       insight: "MissedImpressions"
     },
     {
-      text: selectedApp
-        ? `Find brand keyword gaps for ${selectedApp.trackName}`
-        : "Find gaps in our branded keyword coverage",
+      text: "Find gaps in our branded keyword coverage",
       icon: <BarChart className="h-4 w-4" />,
       insight: "BrandVsGeneric"
     },
     {
-      text: selectedApp
-        ? `Compare ${selectedApp.trackName} with competitors`
-        : "Compare our rankings with top 3 competitors",
+      text: "Compare our rankings with top 3 competitors",
       icon: <TrendingUp className="h-4 w-4" />,
       insight: "CompetitorComparison"
     },
@@ -143,22 +127,12 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
           content: msg.content
         }));
 
-      // Add app details if available
-      const appDetails = selectedApp ? {
-        name: selectedApp.trackName,
-        developer: selectedApp.sellerName,
-        category: selectedApp.primaryGenreName || 'Unknown',
-        rating: selectedApp.averageUserRating || 0,
-        bundleId: selectedApp.bundleId || 'Unknown',
-      } : null;
-
       // Call our edge function
       const { data, error } = await supabase.functions.invoke('aso-chat', {
         body: {
           messages: conversationHistory,
           uploadedFiles: fileInfos,
-          keywordData: keywordData, // Send parsed keyword data
-          appDetails // Send app details if available
+          keywordData: keywordData // Send parsed keyword data
         }
       });
 
@@ -333,26 +307,15 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   };
 
   return (
-    <div className="flex flex-col h-full bg-zinc-900/80 rounded-md overflow-hidden">
-      <CardHeader className="p-4 flex justify-between items-center bg-zinc-900 border-b border-zinc-800">
+    <Card className="border-none shadow-none bg-transparent flex flex-col h-full">
+      <CardHeader className="p-4">
         <CardTitle className="text-lg text-white">
           Opportunity Strategist
         </CardTitle>
-        {selectedApp && (
-          <div className="flex items-center space-x-2">
-            <img 
-              src={selectedApp.artworkUrl100} 
-              alt={selectedApp.trackName} 
-              className="w-6 h-6 rounded-md" 
-            />
-            <span className="text-sm text-zinc-300">{selectedApp.trackName}</span>
-          </div>
-        )}
       </CardHeader>
       
-      {/* Main chat area */}
-      <div className="flex-grow overflow-hidden p-4 pt-0">
-        <ScrollArea className="h-[calc(100%-60px)] pr-4 py-4">
+      <CardContent className="flex-1 p-4 pt-0 overflow-hidden">
+        <ScrollArea className="h-[400px] pr-4">
           <div className="flex flex-col space-y-4">
             {messages.map((message, index) => (
               <div
@@ -394,9 +357,8 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
           </div>
         </ScrollArea>
         
-        {/* Example prompts section */}
         {messages.length === 1 && (
-          <div className="my-4 space-y-2">
+          <div className="mt-6 space-y-2">
             <p className="text-sm text-zinc-400 mb-2">Try asking about:</p>
             <div className="flex flex-col space-y-2">
               {examplePrompts.map((prompt, index) => (
@@ -415,7 +377,6 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
           </div>
         )}
 
-        {/* Error notification */}
         {apiErrorCount > 1 && (
           <div className="mt-4 p-3 bg-red-900/20 border border-red-800 rounded-md">
             <div className="flex items-start">
@@ -430,9 +391,8 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
           </div>
         )}
 
-        {/* Data ready notification */}
         {uploadedFiles && uploadedFiles.length > 0 && keywordData && (
-          <div className="my-4 p-3 bg-green-900/20 border border-green-800 rounded-md">
+          <div className="mt-4 p-3 bg-green-900/20 border border-green-800 rounded-md">
             <div className="flex items-start">
               <TrendingUp className="h-5 w-5 text-green-400 mr-2 mt-0.5" />
               <div>
@@ -444,11 +404,10 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
             </div>
           </div>
         )}
-      </div>
+      </CardContent>
       
-      {/* Input area - fixed at bottom */}
-      <div className="p-4 mt-auto border-t border-zinc-800 bg-zinc-900/80">
-        <div className="flex items-center space-x-2">
+      <CardFooter className="p-4 pt-0">
+        <div className="flex w-full items-center space-x-2">
           <Input
             type="text"
             placeholder="Ask about missed opportunities..."
@@ -473,7 +432,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
             )}
           </Button>
         </div>
-      </div>
-    </div>
+      </CardFooter>
+    </Card>
   );
 };
