@@ -13,6 +13,15 @@ export interface ScrapedMetadata {
   description?: string;
   applicationCategory?: string;
   locale: string; // Derived on the client-side from the URL
+
+  // -- New fields for enhanced preview --
+  icon?: string; // URL for the app icon
+  developer?: string;
+  rating?: number;
+  reviews?: number;
+  price?: string; // e.g., "Free", "$0.99"
+  // -- End new fields --
+
   [key: string]: any; // Allow for other potential properties from the scraper
 }
 

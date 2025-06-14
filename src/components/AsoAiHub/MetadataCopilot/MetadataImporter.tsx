@@ -57,11 +57,19 @@ export const MetadataImporter: React.FC<MetadataImporterProps> = ({ onImportSucc
       const urlParts = new URL(responseData.url).pathname.split('/');
       const locale = urlParts[1] || 'us';
 
+      // The scraper will be enhanced later to provide this data.
+      // For now, we pass on what's available; the panel component will use defaults.
       onImportSuccess({
         ...responseData,
-        title: responseData.title, // Directly from scraper
-        subtitle: responseData.subtitle || '', // Directly from scraper, with a fallback
+        title: responseData.title,
+        subtitle: responseData.subtitle || '',
         locale: locale,
+        // -- Pass on new preview fields if they exist --
+        icon: responseData.icon,
+        developer: responseData.developer,
+        rating: responseData.rating,
+        reviews: responseData.reviews,
+        price: responseData.price || 'Free',
       });
 
     } catch (e: any) {
