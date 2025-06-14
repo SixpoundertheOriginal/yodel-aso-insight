@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,17 +16,64 @@ interface MetadataImporterProps {
 export const MetadataImporter: React.FC<MetadataImporterProps> = ({ onImportSuccess }) => {
   const [importerUrl, setImporterUrl] = useState('');
   const [isImporting, setIsImporting] = useState(false);
+  const [organizationId, setOrganizationId] = useState<string | null>(null);
   const { toast } = useToast();
+
+  useEffect(() => {
+    const fetchOrgId = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { data: profile, error } = await supabase
+            .from('profiles')
+            .select('organization_id')
+            .eq('id', user.id)
+            .single();
+
+          if (error) throw error;
+          
+          if (profile?.organization_id) {
+            setOrganizationId(profile.organization_id);
+          } else {
+            console.warn('User is authenticated but has no organization_id.');
+            toast({
+              title: 'Organization Not Found',
+              description: 'Your user account is not associated with an organization. Please contact support.',
+              variant: 'destructive',
+            });
+          }
+        } else {
+            toast({
+              title: 'Authentication Error',
+              description: 'You must be logged in to import app data.',
+              variant: 'destructive',
+            });
+        }
+      } catch (err: any) {
+        console.error("Error fetching user profile/organization:", err);
+        toast({ title: 'Could not load your user profile. Please try again.', variant: 'destructive' });
+      }
+    };
+    fetchOrgId();
+  }, [toast]);
 
   const handleImport = async () => {
     if (!importerUrl) {
       toast({ title: 'App Store URL or App Name is required.', variant: 'destructive' });
       return;
     }
+    if (!organizationId) {
+      toast({
+        title: 'Organization context is missing.',
+        description: 'Could not perform the import without an active organization. Please refresh the page.',
+        variant: 'destructive'
+      });
+      return;
+    }
     setIsImporting(true);
     try {
       const { data: responseData, error: invokeError } = await supabase.functions.invoke('app-store-scraper', {
-        body: { appStoreUrl: importerUrl },
+        body: { appStoreUrl: importerUrl, organizationId },
       });
 
       // Handle invocation errors (e.g., function crashed, network issue, 5xx)
@@ -99,7 +146,7 @@ export const MetadataImporter: React.FC<MetadataImporterProps> = ({ onImportSucc
             className="bg-zinc-800 border-zinc-700 text-white"
           />
         </div>
-        <Button onClick={handleImport} disabled={isImporting || !importerUrl} className="w-full">
+        <Button onClick={handleImport} disabled={isImporting || !importerUrl || !organizationId} className="w-full">
           {isImporting ? 'Importing...' : 'Import App Data'}
           <Sparkles className="w-4 h-4 ml-2" />
         </Button>
