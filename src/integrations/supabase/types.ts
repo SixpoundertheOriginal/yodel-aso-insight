@@ -345,6 +345,7 @@ export type Database = {
           error: string | null
           expires_at: string
           id: string
+          organization_id: string | null
           scraped_at: string
           status: string
           url: string
@@ -354,6 +355,7 @@ export type Database = {
           error?: string | null
           expires_at: string
           id?: string
+          organization_id?: string | null
           scraped_at?: string
           status: string
           url: string
@@ -363,11 +365,20 @@ export type Database = {
           error?: string | null
           expires_at?: string
           id?: string
+          organization_id?: string | null
           scraped_at?: string
           status?: string
           url?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "scrape_cache_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       traffic_sources: {
         Row: {

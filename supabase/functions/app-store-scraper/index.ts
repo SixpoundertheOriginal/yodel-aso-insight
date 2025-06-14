@@ -134,10 +134,10 @@ serve(async (req: Request) => {
   // Ensure we only process POST requests for scraping
   if (req.method === 'POST') {
     try {
-      const { appStoreUrl } = await req.json()
+      const { appStoreUrl, organizationId } = await req.json()
 
-      if (!appStoreUrl) {
-        return new Response(JSON.stringify({ error: 'App Store URL or App Name is required' }), {
+      if (!appStoreUrl || !organizationId) {
+        return new Response(JSON.stringify({ error: 'App Store URL/Name and Organization ID are required' }), {
           status: 400,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         })
@@ -206,11 +206,12 @@ serve(async (req: Request) => {
       const html = await scraperResponse.text()
       
       // --- Enterprise Architecture: Caching Layer ---
-      console.log(`Checking cache for URL: ${finalUrlToScrape}`)
+      console.log(`Checking cache for URL: ${finalUrlToScrape} in org: ${organizationId}`)
       const { data: cachedResult, error: cacheError } = await supabaseAdmin
         .from('scrape_cache')
         .select('status, data, error')
         .eq('url', finalUrlToScrape)
+        .eq('organization_id', organizationId)
         .maybeSingle()
 
       if (cacheError) {
@@ -254,12 +255,18 @@ serve(async (req: Request) => {
         const errorMsg =
           'Could not automatically extract app data. The App Store page might be structured in a non-standard way. Please try again or check the URL.'
         console.error('Scraper could not find essential metadata (name, url). Caching as FAILED.')
-        await supabaseAdmin.from('scrape_cache').upsert({
-          url: finalUrlToScrape,
-          status: 'FAILED',
-          error: errorMsg,
-          expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(), // Cache failure for 1 hour
-        })
+        await supabaseAdmin
+          .from('scrape_cache')
+          .upsert(
+            {
+              url: finalUrlToScrape,
+              organization_id: organizationId,
+              status: 'FAILED',
+              error: errorMsg,
+              expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(), // Cache failure for 1 hour
+            },
+            { onConflict: 'url,organization_id' }
+          )
 
         return new Response(JSON.stringify({ error: errorMsg }), {
           status: 422,
@@ -287,12 +294,18 @@ serve(async (req: Request) => {
       console.log(`Successfully scraped and processed metadata for: ${metadata.name}`)
 
       // Cache the successful result.
-      await supabaseAdmin.from('scrape_cache').upsert({
-        url: finalUrlToScrape,
-        status: 'SUCCESS',
-        data: metadata,
-        expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // Cache success for 24 hours
-      })
+      await supabaseAdmin
+        .from('scrape_cache')
+        .upsert(
+          {
+            url: finalUrlToScrape,
+            organization_id: organizationId,
+            status: 'SUCCESS',
+            data: metadata,
+            expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // Cache success for 24 hours
+          },
+          { onConflict: 'url,organization_id' }
+        )
 
       return new Response(JSON.stringify(metadata), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
