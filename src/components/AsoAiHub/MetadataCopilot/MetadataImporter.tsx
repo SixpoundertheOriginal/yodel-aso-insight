@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -20,7 +19,7 @@ export const MetadataImporter: React.FC<MetadataImporterProps> = ({ onImportSucc
 
   const handleImport = async () => {
     if (!importerUrl) {
-      toast({ title: "App Store URL is required.", variant: "destructive" });
+      toast({ title: "App Store URL or App Name is required.", variant: "destructive" });
       return;
     }
     setIsImporting(true);
@@ -38,7 +37,7 @@ export const MetadataImporter: React.FC<MetadataImporterProps> = ({ onImportSucc
         description: `Now generating metadata for ${scrapedData.name}.`,
       });
 
-      const urlParts = new URL(importerUrl).pathname.split('/');
+      const urlParts = new URL(scrapedData.url).pathname.split('/');
       const locale = urlParts[1] || 'us';
       
       const [title, ...subtitleParts] = scrapedData.name.split(/ - | \| /);
@@ -69,10 +68,10 @@ export const MetadataImporter: React.FC<MetadataImporterProps> = ({ onImportSucc
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="space-y-2">
-          <Label htmlFor="app-store-url" className="text-zinc-300">App Store URL</Label>
+          <Label htmlFor="app-store-url" className="text-zinc-300">App Store URL or App Name</Label>
           <Input
             id="app-store-url"
-            placeholder="https://apps.apple.com/us/app/tiktok/id835599320"
+            placeholder="e.g., 'TikTok' or https://apps.apple.com/..."
             value={importerUrl}
             onChange={(e) => setImporterUrl(e.target.value)}
             className="bg-zinc-800 border-zinc-700 text-white"
