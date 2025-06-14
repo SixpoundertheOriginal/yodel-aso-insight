@@ -1,3 +1,4 @@
+
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
@@ -46,6 +47,42 @@ const isAppStoreUrl = (str: string): boolean => {
   } catch (_) {
     return false
   }
+}
+
+// NEW: Function to extract App ID from an App Store URL
+const extractAppIdFromUrl = (url: string): string | null => {
+  const match = url.match(/\/id(\d+)/)
+  return match ? match[1] : null
+}
+
+// NEW: Function to map iTunes API data to our frontend contract
+const mapItunesDataToMetadata = (itunesData: any): ScrapedMetadata => {
+  const metadata: ScrapedMetadata = {}
+  metadata.name = itunesData.trackName
+  if (metadata.name) {
+    const [title, ...subtitleParts] = itunesData.trackName.split(/ - | \| /)
+    metadata.title = title.trim()
+    metadata.subtitle = subtitleParts.join(' - ').trim()
+  }
+  metadata.url = itunesData.trackViewUrl
+  metadata.description = itunesData.description
+  metadata.applicationCategory = itunesData.primaryGenreName
+  metadata.operatingSystem = itunesData.supportedDevices?.join(', ') || 'iOS'
+  metadata.icon = itunesData.artworkUrl512 || itunesData.artworkUrl100
+
+  // Transformed fields for frontend consumption
+  metadata.developer = itunesData.artistName
+  metadata.rating = itunesData.averageUserRating
+  metadata.reviews = itunesData.userRatingCount
+  metadata.price = itunesData.formattedPrice || 'Free'
+
+  // Raw fields for reference (optional)
+  metadata.author = itunesData.artistName
+  metadata.ratingValue = itunesData.averageUserRating
+  metadata.reviewCount = itunesData.userRatingCount
+  metadata.screenshot = itunesData.screenshotUrls
+
+  return metadata
 }
 
 // --- Enterprise Architecture: Resilient Extraction Helpers ---
@@ -175,118 +212,172 @@ serve(async (req: Request) => {
         })
       }
 
-      let finalUrlToScrape = ''
+      let canonicalUrl = ''
+      let metadata: ScrapedMetadata | null = null
 
-      if (isAppStoreUrl(appStoreUrl)) {
-        console.log(`Input is a valid App Store URL: ${appStoreUrl}`)
-        finalUrlToScrape = appStoreUrl
-      } else {
+      // --- Enterprise Architecture: API-First Data Acquisition ---
+      // The goal is to get structured JSON data from Apple's APIs first.
+
+      const isUrl = isAppStoreUrl(appStoreUrl)
+      const appId = isUrl ? extractAppIdFromUrl(appStoreUrl) : null
+
+      // Strategy 1: Use iTunes Lookup API if we have an App ID from a URL
+      if (isUrl && appId) {
+        canonicalUrl = appStoreUrl // Use original URL for now, will be updated by API response
+        console.log(`Extracted App ID: ${appId}. Querying iTunes Lookup API.`)
+        const lookupUrl = `https://itunes.apple.com/lookup?id=${appId}`
+        const apiResponse = await fetch(lookupUrl)
+        if (apiResponse.ok) {
+          const apiResult = await apiResponse.json()
+          if (apiResult.resultCount > 0) {
+            console.log('Successfully fetched data from iTunes Lookup API.')
+            metadata = mapItunesDataToMetadata(apiResult.results[0])
+            canonicalUrl = metadata.url! // Use the canonical URL from the API response
+          } else {
+            console.warn(`Lookup API found no results for app ID: ${appId}`)
+          }
+        } else {
+          console.warn(`iTunes Lookup API failed with status: ${apiResponse.status}`)
+        }
+      }
+      // Strategy 2: Use iTunes Search API if the input is not a URL
+      else if (!isUrl) {
         console.log(`Input is not a URL, treating as search term: "${appStoreUrl}"`)
         const searchUrl = `https://itunes.apple.com/search?term=${encodeURIComponent(
           appStoreUrl
         )}&entity=software&limit=1`
-        
+
         console.log(`Searching iTunes API: ${searchUrl}`)
         const searchResponse = await fetch(searchUrl)
 
-        if (!searchResponse.ok) {
+        if (searchResponse.ok) {
+          const searchResult = await searchResponse.json()
+          if (searchResult.resultCount > 0) {
+            console.log('Found app via search. Using data from iTunes Search API.')
+            metadata = mapItunesDataToMetadata(searchResult.results[0])
+            canonicalUrl = metadata.url! // Use the canonical URL from the API response
+          } else {
+            console.log(`No app found for search term: "${appStoreUrl}"`)
+            return new Response(
+              JSON.stringify({
+                error: `No app found for "${appStoreUrl}". Try being more specific or using the full App Store URL.`,
+              }),
+              {
+                status: 404,
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+              }
+            )
+          }
+        } else {
           console.error(`iTunes Search API failed with status: ${searchResponse.status}`)
           return new Response(JSON.stringify({ error: 'Failed to search for the app. Please try again later.' }), {
             status: 502, // Bad Gateway
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           })
         }
+      }
+      // If input was a URL but we failed to get data from API, set canonicalUrl to scrape
+      else if (isUrl && !metadata) {
+        canonicalUrl = appStoreUrl
+      }
 
-        const searchResult = await searchResponse.json()
+      // --- Enterprise Architecture: Caching Layer ---
+      // Now that we have a canonical URL, check cache.
+      if (canonicalUrl) {
+        console.log(`Checking cache for URL: ${canonicalUrl} in org: ${organizationId}`)
+        const { data: cachedResult, error: cacheError } = await supabaseAdmin
+          .from('scrape_cache')
+          .select('status, data, error')
+          .eq('url', canonicalUrl)
+          .eq('organization_id', organizationId)
+          .maybeSingle()
 
-        if (searchResult.resultCount === 0) {
-          console.log(`No app found for search term: "${appStoreUrl}"`)
+        if (cacheError) {
+          console.error('Error reading from cache (non-fatal):', cacheError.message)
+        }
+
+        if (cachedResult) {
+          console.log(`Cache hit with status: ${cachedResult.status}`)
+          if (cachedResult.status === 'SUCCESS') {
+            return new Response(JSON.stringify(cachedResult.data), {
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+              status: 200,
+            })
+          }
+          if (cachedResult.status === 'FAILED') {
+            return new Response(JSON.stringify({ error: cachedResult.error }), {
+              status: 422, // Unprocessable Entity
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            })
+          }
+        }
+        console.log('Cache miss. Proceeding to fetch data.')
+      }
+
+      // Fallback to HTML scraping if API-first approach did not yield data
+      if (!metadata && canonicalUrl) {
+        console.warn('API-first approach did not yield data. Falling back to HTML scraping.')
+
+        console.log(`Scraping URL: ${canonicalUrl}`)
+        const scraperResponse = await fetch(canonicalUrl, {
+          headers: {
+            'User-Agent':
+              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+          },
+        })
+
+        if (!scraperResponse.ok) {
+          console.error(`Scraper fetch failed with status: ${scraperResponse.status}`)
           return new Response(
-            JSON.stringify({
-              error: `No app found for "${appStoreUrl}". Try being more specific or using the full App Store URL.`,
-            }),
+            JSON.stringify({ error: `Failed to fetch App Store page. Status: ${scraperResponse.status}` }),
             {
-              status: 404,
+              status: scraperResponse.status,
               headers: { ...corsHeaders, 'Content-Type': 'application/json' },
             }
           )
         }
 
-        finalUrlToScrape = searchResult.results[0].trackViewUrl
-        console.log(`Found app via search. Scraping URL: ${finalUrlToScrape}`)
-      }
-      
-      console.log(`Scraping URL: ${finalUrlToScrape}`)
-      const scraperResponse = await fetch(finalUrlToScrape, {
-        headers: {
-          'User-Agent':
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-        },
-      })
+        const html = await scraperResponse.text()
 
-      if (!scraperResponse.ok) {
-        console.error(`Scraper fetch failed with status: ${scraperResponse.status}`)
-        return new Response(
-          JSON.stringify({ error: `Failed to fetch App Store page. Status: ${scraperResponse.status}` }),
-          {
-            status: scraperResponse.status,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          }
+        // --- Multi-Source Extraction Pipeline ---
+        console.log('--- Starting multi-source extraction pipeline ---')
+        const scrapedMetadata: ScrapedMetadata = {} // Use a temporary object for scraping
+
+        extractFromJsonLd(html, scrapedMetadata)
+        extractFromAppleTags(html, scrapedMetadata)
+        extractFromOpenGraph(html, scrapedMetadata)
+        extractFromStandardMeta(html, scrapedMetadata)
+
+        console.log('--- Extraction pipeline finished ---')
+
+        // --- Data Transformation & Validation for SCRAPED data ---
+        if (scrapedMetadata.name) {
+          const [title, ...subtitleParts] = scrapedMetadata.name.split(/ - | \| /)
+          scrapedMetadata.title = title.trim()
+          scrapedMetadata.subtitle = subtitleParts.join(' - ').trim()
+        }
+
+        console.log('Transforming raw scraped data to frontend contract...')
+        scrapedMetadata.developer = scrapedMetadata.author
+        scrapedMetadata.rating = scrapedMetadata.ratingValue
+        scrapedMetadata.reviews = scrapedMetadata.reviewCount
+        scrapedMetadata.price = 'Free' // Scraper can't get price reliably
+        console.log(
+          `Transformed fields: developer=${scrapedMetadata.developer}, rating=${scrapedMetadata.rating}, reviews=${scrapedMetadata.reviews}, icon=${!!scrapedMetadata.icon}`
         )
-      }
 
-      const html = await scraperResponse.text()
-      
-      // --- Enterprise Architecture: Caching Layer ---
-      console.log(`Checking cache for URL: ${finalUrlToScrape} in org: ${organizationId}`)
-      const { data: cachedResult, error: cacheError } = await supabaseAdmin
-        .from('scrape_cache')
-        .select('status, data, error')
-        .eq('url', finalUrlToScrape)
-        .eq('organization_id', organizationId)
-        .maybeSingle()
-
-      if (cacheError) {
-        console.error('Error reading from cache (non-fatal):', cacheError.message)
-      }
-
-      if (cachedResult) {
-        console.log(`Cache hit with status: ${cachedResult.status}`)
-        if (cachedResult.status === 'SUCCESS') {
-          return new Response(JSON.stringify(cachedResult.data), {
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            status: 200,
-          })
+        try {
+          scrapedMetadata.url = new URL(scrapedMetadata.url, canonicalUrl).href
+        } catch (e) {
+          scrapedMetadata.url = canonicalUrl
         }
-        if (cachedResult.status === 'FAILED') {
-          return new Response(JSON.stringify({ error: cachedResult.error }), {
-            status: 422, // Unprocessable Entity
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          })
-        }
+
+        // Assign the processed scraped data to the main metadata object
+        metadata = scrapedMetadata
       }
-      console.log('Cache miss. Proceeding to scrape.')
 
-      // --- Enterprise Architecture: Multi-Source Extraction Pipeline ---
-      console.log('--- Starting multi-source extraction pipeline ---')
-      const metadata: ScrapedMetadata = {}
-
-      // 1. Primary Source: JSON-LD (most structured)
-      extractFromJsonLd(html, metadata)
-
-      // 2. Secondary Source: Apple-specific tags (high-quality icon)
-      extractFromAppleTags(html, metadata)
-
-      // 3. Tertiary Source: Open Graph tags (common fallback)
-      extractFromOpenGraph(html, metadata)
-
-      // 4. Quaternary Source: Standard meta tags
-      extractFromStandardMeta(html, metadata)
-      
-      console.log('--- Extraction pipeline finished ---')
-
-      // --- Enterprise Architecture: Data Transformation & Validation ---
-      if (!metadata.name || !metadata.url) {
+      // --- Enterprise Architecture: Final Validation, Caching & Response ---
+      if (!metadata || !metadata.name || !metadata.url) {
         const errorMsg =
           'Could not automatically extract app data. The App Store page might be structured in a non-standard way. Please try again or check the URL.'
         console.error('Scraper could not find essential metadata (name, url). Caching as FAILED.')
@@ -294,7 +385,7 @@ serve(async (req: Request) => {
           .from('scrape_cache')
           .upsert(
             {
-              url: finalUrlToScrape,
+              url: canonicalUrl || appStoreUrl, // Use what we have
               organization_id: organizationId,
               status: 'FAILED',
               error: errorMsg,
@@ -309,41 +400,14 @@ serve(async (req: Request) => {
         })
       }
 
-      // CRITICAL FIX: Parse name into title and subtitle on the backend.
-      if (metadata.name) {
-        const [title, ...subtitleParts] = metadata.name.split(/ - | \| /)
-        metadata.title = title.trim()
-        metadata.subtitle = subtitleParts.join(' - ').trim()
-      }
+      console.log(`Successfully processed metadata for: ${metadata.name}`)
 
-      // NEW: Transform and map raw fields to the frontend data contract.
-      // This ensures consistency regardless of the extraction source.
-      console.log('Transforming raw data to frontend contract...')
-      metadata.developer = metadata.author
-      metadata.rating = metadata.ratingValue
-      metadata.reviews = metadata.reviewCount
-      // Price isn't usually available in metadata, so we default it for now.
-      metadata.price = 'Free'
-      console.log(`Transformed fields: developer=${metadata.developer}, rating=${metadata.rating}, reviews=${metadata.reviews}, icon=${!!metadata.icon}`)
-
-      // Ensure URL is absolute, falling back to the scraped URL if needed
-      try {
-        metadata.url = new URL(metadata.url, finalUrlToScrape).href
-      } catch (e) {
-        console.warn(
-          `Invalid URL extracted ('${metadata.url}'), falling back to ${finalUrlToScrape}. Error: ${e.message}`
-        )
-        metadata.url = finalUrlToScrape
-      }
-
-      console.log(`Successfully scraped and processed metadata for: ${metadata.name}`)
-
-      // Cache the successful result.
+      // Cache the successful result. Use canonicalUrl
       await supabaseAdmin
         .from('scrape_cache')
         .upsert(
           {
-            url: finalUrlToScrape,
+            url: canonicalUrl,
             organization_id: organizationId,
             status: 'SUCCESS',
             data: metadata,
