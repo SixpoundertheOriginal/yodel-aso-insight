@@ -4,37 +4,48 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Upload, FileText } from 'lucide-react';
-import { parseKeywordData } from '@/utils/keywordAnalysis';
 
 interface MetadataGenerationFormProps {
   onGenerate: (data: {
-    locale: string;
-    category: string;
-    appName: string;
     keywordData: string;
     targetAudience?: string;
   }) => void;
   isLoading?: boolean;
+  appName: string;
+  category: string;
+  locale: string;
 }
+
+const localesList = [
+    { value: 'en-US', label: 'English (US)' },
+    { value: 'en-GB', label: 'English (UK)' },
+    { value: 'de-DE', label: 'German' },
+    { value: 'fr-FR', label: 'French' },
+    { value: 'es-ES', label: 'Spanish' },
+    { value: 'it-IT', label: 'Italian' },
+    { value: 'ja-JP', label: 'Japanese' },
+    { value: 'ko-KR', label: 'Korean' }
+];
+
+const findLocaleLabel = (value: string) => localesList.find(l => l.value === value)?.label || value;
 
 export const MetadataGenerationForm: React.FC<MetadataGenerationFormProps> = ({
   onGenerate,
-  isLoading = false
+  isLoading = false,
+  appName,
+  category,
+  locale
 }) => {
   const [formData, setFormData] = useState({
-    locale: 'en-US',
-    category: 'Education',
-    appName: '',
     keywordData: '',
     targetAudience: ''
   });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (formData.appName && formData.keywordData) {
+    if (formData.keywordData) {
       onGenerate(formData);
     }
   };
@@ -51,22 +62,6 @@ export const MetadataGenerationForm: React.FC<MetadataGenerationFormProps> = ({
     }
   };
 
-  const categories = [
-    'Education', 'Games', 'Entertainment', 'Lifestyle', 'Productivity',
-    'Health & Fitness', 'Finance', 'Travel', 'Shopping', 'Social Networking'
-  ];
-
-  const locales = [
-    { value: 'en-US', label: 'English (US)' },
-    { value: 'en-GB', label: 'English (UK)' },
-    { value: 'de-DE', label: 'German' },
-    { value: 'fr-FR', label: 'French' },
-    { value: 'es-ES', label: 'Spanish' },
-    { value: 'it-IT', label: 'Italian' },
-    { value: 'ja-JP', label: 'Japanese' },
-    { value: 'ko-KR', label: 'Korean' }
-  ];
-
   return (
     <Card className="bg-zinc-900/50 border-zinc-800">
       <CardHeader>
@@ -80,38 +75,22 @@ export const MetadataGenerationForm: React.FC<MetadataGenerationFormProps> = ({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="locale" className="text-zinc-300">Target Locale</Label>
-              <Select value={formData.locale} onValueChange={(value) => 
-                setFormData(prev => ({ ...prev, locale: value }))
-              }>
-                <SelectTrigger className="bg-zinc-800 border-zinc-700 text-white">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="bg-zinc-800 border-zinc-700">
-                  {locales.map(locale => (
-                    <SelectItem key={locale.value} value={locale.value} className="text-white">
-                      {locale.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Input
+                id="locale"
+                value={findLocaleLabel(locale)}
+                readOnly
+                className="bg-zinc-800 border-zinc-700 text-white"
+              />
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="category" className="text-zinc-300">App Category</Label>
-              <Select value={formData.category} onValueChange={(value) => 
-                setFormData(prev => ({ ...prev, category: value }))
-              }>
-                <SelectTrigger className="bg-zinc-800 border-zinc-700 text-white">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="bg-zinc-800 border-zinc-700">
-                  {categories.map(category => (
-                    <SelectItem key={category} value={category} className="text-white">
-                      {category}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Input
+                id="category"
+                value={category}
+                readOnly
+                className="bg-zinc-800 border-zinc-700 text-white"
+              />
             </div>
           </div>
 
@@ -119,11 +98,9 @@ export const MetadataGenerationForm: React.FC<MetadataGenerationFormProps> = ({
             <Label htmlFor="appName" className="text-zinc-300">App Name</Label>
             <Input
               id="appName"
-              value={formData.appName}
-              onChange={(e) => setFormData(prev => ({ ...prev, appName: e.target.value }))}
-              placeholder="Enter your app name"
-              className="bg-zinc-800 border-zinc-700 text-white placeholder-zinc-400"
-              required
+              value={appName}
+              readOnly
+              className="bg-zinc-800 border-zinc-700 text-white"
             />
           </div>
 
@@ -177,7 +154,7 @@ export const MetadataGenerationForm: React.FC<MetadataGenerationFormProps> = ({
           <Button
             type="submit"
             className="w-full bg-yodel-orange hover:bg-yodel-orange/90 text-white"
-            disabled={isLoading || !formData.appName || !formData.keywordData}
+            disabled={isLoading || !formData.keywordData}
           >
             {isLoading ? 'Generating Metadata...' : 'Generate Optimized Metadata'}
           </Button>

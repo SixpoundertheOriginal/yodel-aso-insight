@@ -140,7 +140,7 @@ KEYWORDS: [keyword1,keyword2,keyword3]`;
       <Card className="bg-zinc-900/50 border-zinc-800">
         <CardContent className="p-6">
             <MetadataGenerationForm 
-              onGenerate={(data) => handleGenerate({ keywordData: data.keywordData, targetAudience: data.targetAudience })}
+              onGenerate={handleGenerate}
               isLoading={isGenerating || isLoading}
               appName={initialData.name}
               category={initialData.applicationCategory}
