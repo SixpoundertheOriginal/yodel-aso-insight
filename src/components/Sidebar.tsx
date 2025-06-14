@@ -1,7 +1,7 @@
 
 import React from "react";
 import { Link, useLocation } from "react-router-dom";
-import { BarChart, TrendingUp, ArrowDown, LayoutDashboard, Lightbulb } from "lucide-react";
+import { BarChart, TrendingUp, ArrowDown, LayoutDashboard, Lightbulb, Bot } from "lucide-react";
 
 const Sidebar: React.FC = React.memo(() => {
   const location = useLocation();
@@ -48,6 +48,12 @@ const Sidebar: React.FC = React.memo(() => {
             icon={<Lightbulb className="w-5 h-5" />} 
             label="Growth Gap Finder" 
             isActive={location.pathname === '/growth-gap-finder'}
+          />
+          <SidebarItem 
+            href="/aso-ai-hub" 
+            icon={<Bot className="w-5 h-5" />} 
+            label="ASO AI Hub" 
+            isActive={location.pathname === '/aso-ai-hub'}
           />
         </nav>
       </div>
