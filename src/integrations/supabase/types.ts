@@ -339,6 +339,36 @@ export type Database = {
           },
         ]
       }
+      scrape_cache: {
+        Row: {
+          data: Json | null
+          error: string | null
+          expires_at: string
+          id: string
+          scraped_at: string
+          status: string
+          url: string
+        }
+        Insert: {
+          data?: Json | null
+          error?: string | null
+          expires_at: string
+          id?: string
+          scraped_at?: string
+          status: string
+          url: string
+        }
+        Update: {
+          data?: Json | null
+          error?: string | null
+          expires_at?: string
+          id?: string
+          scraped_at?: string
+          status?: string
+          url?: string
+        }
+        Relationships: []
+      }
       traffic_sources: {
         Row: {
           created_at: string

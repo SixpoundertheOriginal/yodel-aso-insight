@@ -41,8 +41,8 @@ export const MetadataImporter: React.FC<MetadataImporterProps> = ({ onImportSucc
         throw new Error(responseData.error);
       }
       
-      // Validate that we received the data we need
-      if (!responseData || !responseData.name || !responseData.url) {
+      // Validate that we received the core data we need from the enhanced scraper
+      if (!responseData || !responseData.name || !responseData.url || !responseData.title) {
         console.error('Incomplete data received from scraper:', responseData);
         throw new Error('Received incomplete data from the import service. The App Store page might have a non-standard format.');
       }
@@ -52,16 +52,15 @@ export const MetadataImporter: React.FC<MetadataImporterProps> = ({ onImportSucc
         description: `Now generating metadata for ${responseData.name}.`,
       });
 
+      // The backend scraper now does the heavy lifting of parsing title/subtitle.
+      // The frontend just consumes the clean data contract.
       const urlParts = new URL(responseData.url).pathname.split('/');
       const locale = urlParts[1] || 'us';
 
-      const [title, ...subtitleParts] = responseData.name.split(/ - | \| /);
-      const subtitle = subtitleParts.join(' - ');
-
       onImportSuccess({
         ...responseData,
-        title: title.trim(),
-        subtitle: subtitle.trim() || '',
+        title: responseData.title, // Directly from scraper
+        subtitle: responseData.subtitle || '', // Directly from scraper, with a fallback
         locale: locale,
       });
 

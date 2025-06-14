@@ -1,16 +1,25 @@
-
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+
+// Enterprise-grade: Initialize Supabase client with Service Role Key for admin operations.
+// This allows us to interact with the cache table, bypassing RLS.
+const supabaseAdmin = createClient(
+  Deno.env.get('SUPABASE_URL') ?? '',
+  Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+)
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-const VERSION = '3.0.0-enterprise-scraper' // Versioning for monitoring deployment consistency
+const VERSION = '3.1.0-enterprise-scraper-cached' // Versioning for monitoring deployment consistency
 
 // --- Enterprise Architecture: Standardized Data Contracts ---
 interface ScrapedMetadata {
   name?: string
+  title?: string // The main app title (e.g., "TikTok")
+  subtitle?: string // The app subtitle (e.g., "Videos, Music & Live")
   description?: string
   applicationCategory?: string
   operatingSystem?: string
@@ -99,7 +108,6 @@ const extractFromStandardMeta = (html: string, data: ScrapedMetadata) => {
   data.name = data.name ?? extractMetaContent(html, 'name', 'application-name')
   if (data.description || data.name) console.log('Extracted some data from standard meta tags.')
 }
-
 
 serve(async (req: Request) => {
   // Handle CORS preflight requests
@@ -197,6 +205,35 @@ serve(async (req: Request) => {
 
       const html = await scraperResponse.text()
       
+      // --- Enterprise Architecture: Caching Layer ---
+      console.log(`Checking cache for URL: ${finalUrlToScrape}`)
+      const { data: cachedResult, error: cacheError } = await supabaseAdmin
+        .from('scrape_cache')
+        .select('status, data, error')
+        .eq('url', finalUrlToScrape)
+        .maybeSingle()
+
+      if (cacheError) {
+        console.error('Error reading from cache (non-fatal):', cacheError.message)
+      }
+
+      if (cachedResult) {
+        console.log(`Cache hit with status: ${cachedResult.status}`)
+        if (cachedResult.status === 'SUCCESS') {
+          return new Response(JSON.stringify(cachedResult.data), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 200,
+          })
+        }
+        if (cachedResult.status === 'FAILED') {
+          return new Response(JSON.stringify({ error: cachedResult.error }), {
+            status: 422, // Unprocessable Entity
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          })
+        }
+      }
+      console.log('Cache miss. Proceeding to scrape.')
+
       // --- Enterprise Architecture: Multi-Source Extraction Pipeline ---
       console.log('--- Starting multi-source extraction pipeline ---')
       const metadata: ScrapedMetadata = {}
@@ -212,30 +249,50 @@ serve(async (req: Request) => {
       
       console.log('--- Extraction pipeline finished ---')
 
-      // --- Enterprise Architecture: Final Validation and Response ---
+      // --- Enterprise Architecture: Data Transformation & Validation ---
       if (!metadata.name || !metadata.url) {
-        console.error('Scraper could not find essential metadata (name, url) after trying all sources.')
-        console.log('Final extracted data:', JSON.stringify(metadata, null, 2))
-        return new Response(
-          JSON.stringify({
-            error: 'Could not automatically extract app data. The App Store page might be structured in a non-standard way. Please try again or check the URL.',
-          }),
-          {
-            status: 422, // Unprocessable Entity
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          }
-        )
+        const errorMsg =
+          'Could not automatically extract app data. The App Store page might be structured in a non-standard way. Please try again or check the URL.'
+        console.error('Scraper could not find essential metadata (name, url). Caching as FAILED.')
+        await supabaseAdmin.from('scrape_cache').upsert({
+          url: finalUrlToScrape,
+          status: 'FAILED',
+          error: errorMsg,
+          expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(), // Cache failure for 1 hour
+        })
+
+        return new Response(JSON.stringify({ error: errorMsg }), {
+          status: 422,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
       }
-      
+
+      // CRITICAL FIX: Parse name into title and subtitle on the backend.
+      if (metadata.name) {
+        const [title, ...subtitleParts] = metadata.name.split(/ - | \| /)
+        metadata.title = title.trim()
+        metadata.subtitle = subtitleParts.join(' - ').trim()
+      }
+
       // Ensure URL is absolute, falling back to the scraped URL if needed
       try {
         metadata.url = new URL(metadata.url, finalUrlToScrape).href
       } catch (e) {
-         console.warn(`Invalid URL extracted ('${metadata.url}'), falling back to ${finalUrlToScrape}. Error: ${e.message}`)
-         metadata.url = finalUrlToScrape
+        console.warn(
+          `Invalid URL extracted ('${metadata.url}'), falling back to ${finalUrlToScrape}. Error: ${e.message}`
+        )
+        metadata.url = finalUrlToScrape
       }
 
-      console.log(`Successfully scraped metadata for: ${metadata.name}`)
+      console.log(`Successfully scraped and processed metadata for: ${metadata.name}`)
+
+      // Cache the successful result.
+      await supabaseAdmin.from('scrape_cache').upsert({
+        url: finalUrlToScrape,
+        status: 'SUCCESS',
+        data: metadata,
+        expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // Cache success for 24 hours
+      })
 
       return new Response(JSON.stringify(metadata), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
