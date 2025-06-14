@@ -1,8 +1,11 @@
 import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Copy, Download, RefreshCw } from 'lucide-react';
+import { Copy, Download, RefreshCw, Sparkles } from 'lucide-react';
 import { MetadataGenerationForm } from './MetadataGenerationForm';
 import { MetadataPreview } from './MetadataPreview';
 import { useCopilotChat } from '@/hooks/useCopilotChat';
@@ -10,6 +13,7 @@ import { useAsoAiHub } from '@/context/AsoAiHubContext';
 import { metadataEngine, MetadataField, MetadataScore } from '@/utils/metadataEngine';
 import { parseKeywordData } from '@/utils/keywordAnalysis';
 import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
 
 export const MetadataCopilot: React.FC = () => {
   const [generatedMetadata, setGeneratedMetadata] = useState<MetadataField>({
@@ -20,6 +24,8 @@ export const MetadataCopilot: React.FC = () => {
   const [metadataScore, setMetadataScore] = useState<MetadataScore | null>(null);
   const [appName, setAppName] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
+  const [importerUrl, setImporterUrl] = useState('');
+  const [isImporting, setIsImporting] = useState(false);
   
   const { sendMessage, isLoading } = useCopilotChat();
   const { addMessage } = useAsoAiHub();
@@ -62,7 +68,25 @@ SUBTITLE: [your subtitle]
 KEYWORDS: [keyword1,keyword2,keyword3]`;
 
       // Send to AI
-      await sendMessage(prompt, 'metadata-copilot');
+      const aiResponse = await sendMessage(prompt, 'metadata-copilot');
+
+      // The useCopilotChat hook now returns the response
+      if (aiResponse) {
+        const parsed = parseAIResponse(aiResponse);
+        if (parsed) {
+            setGeneratedMetadata(parsed);
+            const score = metadataEngine.calculateMetadataScore(parsed, enhancedKeywords);
+            setMetadataScore(score);
+            toast({
+                title: "Metadata Generated!",
+                description: "Preview your new metadata below.",
+            });
+        } else {
+            throw new Error("Failed to parse AI response.");
+        }
+      } else {
+         throw new Error("No response from AI.");
+      }
 
     } catch (error) {
       console.error('Error generating metadata:', error);
@@ -73,6 +97,59 @@ KEYWORDS: [keyword1,keyword2,keyword3]`;
       });
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  const handleImportAndGenerate = async () => {
+    if (!importerUrl) {
+        toast({ title: "App Store URL is required.", variant: "destructive" });
+        return;
+    }
+    setIsImporting(true);
+    try {
+        const { data: scrapedData, error } = await supabase.functions.invoke('app-store-scraper', {
+            body: { appStoreUrl: importerUrl }
+        });
+
+        if (error || !scrapedData) {
+            throw new Error(error?.message || "Failed to scrape App Store page.");
+        }
+
+        toast({
+            title: "App data imported successfully!",
+            description: `Now generating metadata for ${scrapedData.name}.`,
+        });
+
+        const urlParts = new URL(importerUrl).pathname.split('/');
+        const locale = urlParts[1] || 'us';
+
+        // We can now call handleGenerate with the scraped data
+        // For now, we will use a placeholder for keywordData
+        const formData = {
+            appName: scrapedData.name,
+            category: scrapedData.applicationCategory,
+            locale: locale,
+            keywordData: 'social,video,entertainment,music,photo', // Placeholder
+        };
+
+        // Switch to generate tab and trigger generation
+        // This is an indirect way, a better way would be to lift state
+        // for now, we just log it and ask user to fill the form.
+        setAppName(formData.appName);
+        toast({
+            title: "Next Step: Generate Metadata",
+            description: `We've imported "${formData.appName}". Please go to the "Generate" tab, fill in your keywords, and click generate.`,
+        });
+
+
+    } catch(e: any) {
+        toast({
+            title: "Import Failed",
+            description: e.message || "Could not retrieve data from the App Store.",
+            variant: "destructive"
+        });
+    } finally {
+        setIsImporting(false);
     }
   };
 
@@ -91,10 +168,22 @@ KEYWORDS: [keyword1,keyword2,keyword3]`;
 
         // Validate and score the metadata
         const validation = metadataEngine.validateMetadata(metadata);
+        const score = metadataEngine.calculateMetadataScore(metadata, []); // Can't score without keywords here
+        setMetadataScore(score);
+
         if (validation.isValid) {
+          return metadata;
+        } else {
+          console.warn("Generated metadata has validation issues:", validation.errors);
+          // Still return it so user can see it
           return metadata;
         }
       }
+      toast({
+        title: "Parsing Error",
+        description: "Could not parse the response from the AI. Please try regenerating.",
+        variant: "destructive"
+      });
       return null;
     } catch (error) {
       console.error('Error parsing AI response:', error);
@@ -147,6 +236,28 @@ KEYWORDS: [keyword1,keyword2,keyword3]`;
             <span>Metadata Co-Pilot</span>
           </CardTitle>
         </CardHeader>
+      </Card>
+      
+      <Card className="bg-zinc-900/50 border-zinc-800">
+        <CardHeader>
+          <CardTitle className="text-white text-lg">Import from App Store</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+            <div className="space-y-2">
+                <Label htmlFor="app-store-url" className="text-zinc-300">App Store URL</Label>
+                <Input
+                    id="app-store-url"
+                    placeholder="https://apps.apple.com/us/app/tiktok/id835599320"
+                    value={importerUrl}
+                    onChange={(e) => setImporterUrl(e.target.value)}
+                    className="bg-zinc-800 border-zinc-700 text-white"
+                />
+            </div>
+            <Button onClick={handleImportAndGenerate} disabled={isImporting || !importerUrl} className="w-full">
+                {isImporting ? 'Importing...' : 'Import App Data'}
+                <Sparkles className="w-4 h-4 ml-2" />
+            </Button>
+        </CardContent>
       </Card>
 
       <Tabs defaultValue="generate" className="space-y-6">

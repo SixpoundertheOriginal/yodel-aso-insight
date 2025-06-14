@@ -419,6 +419,10 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: undefined
       }
+      create_organization_and_assign_admin: {
+        Args: { org_name: string; org_slug: string }
+        Returns: string
+      }
       get_current_user_organization_id: {
         Args: Record<PropertyKey, never>
         Returns: string
