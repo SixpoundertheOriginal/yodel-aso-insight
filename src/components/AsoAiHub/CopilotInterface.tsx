@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { X, Send, RotateCcw } from 'lucide-react';
 import { useAsoAiHub } from '@/context/AsoAiHubContext';
 import { CopilotChatMessage } from './CopilotChatMessage';
+import { MetadataCopilot } from './MetadataCopilot/MetadataCopilot';
 import { useCopilotChat } from '@/hooks/useCopilotChat';
 
 export const CopilotInterface: React.FC = () => {
@@ -26,6 +27,43 @@ export const CopilotInterface: React.FC = () => {
     return null;
   }
 
+  // Show specialized interface for Metadata Copilot
+  if (activeCopilot === 'metadata-copilot') {
+    return (
+      <Card className="bg-zinc-900/70 backdrop-blur-sm border-zinc-800 fixed inset-x-4 bottom-4 top-20 z-50 flex flex-col">
+        <CardHeader className="pb-3 border-b border-zinc-800">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <div className="text-2xl">{activeCopilotData.icon}</div>
+              <div>
+                <CardTitle className="text-lg text-white">
+                  {activeCopilotData.name}
+                </CardTitle>
+                <p className="text-sm text-zinc-400">
+                  {activeCopilotData.description}
+                </p>
+              </div>
+            </div>
+            
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setActiveCopilot(null)}
+              className="text-zinc-400 hover:text-white"
+            >
+              <X className="w-4 h-4" />
+            </Button>
+          </div>
+        </CardHeader>
+        
+        <CardContent className="flex-1 overflow-y-auto p-4">
+          <MetadataCopilot />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // Default chat interface for other copilots
   const handleSendMessage = async () => {
     if (!message.trim() || isLoading) return;
     

@@ -18,7 +18,7 @@ serve(async (req) => {
     
     console.log(`Processing ${context || 'general'} request for copilot: ${copilotType}`);
     
-    const openAIApiKey = Deno.env.get('OPER_AI_API_KEY');
+    const openAIApiKey = Deno.env.get('OPENAI_API_KEY');
     if (!openAIApiKey) {
       throw new Error('OpenAI API key not configured');
     }
@@ -83,15 +83,34 @@ function getCopilotSystemPrompt(copilotType: string, context: string): string {
     case 'metadata-copilot':
       return `${basePrompt}
 
-As the Metadata Copilot, you specialize in creating keyword-optimized metadata for apps. Your expertise includes:
-- App title optimization with primary keywords
-- Subtitle/short description optimization  
-- Keyword field optimization for maximum coverage
-- Description optimization for conversion and ASO
-- Localization strategies for different markets
-- A/B testing recommendations for metadata elements
+As the Metadata Copilot, you specialize in creating keyword-optimized metadata for apps with strict adherence to App Store character limits and dependency rules. Your expertise includes:
 
-Always provide actionable, specific recommendations with keyword density analysis and competitive positioning advice. Format your responses clearly with bullet points and prioritized suggestions.`;
+**CRITICAL REQUIREMENTS:**
+- Title: MAXIMUM 30 characters, include 1-2 primary high-volume keywords
+- Subtitle: MAXIMUM 30 characters, complementary keywords, NO overlap with title words
+- Keywords: MAXIMUM 100 characters, comma-separated with NO SPACES, no repetition from title/subtitle
+
+**METADATA DEPENDENCY RULES:**
+- Never repeat any word from Title in Subtitle or Keywords
+- Never repeat any word from Subtitle in Keywords  
+- Prioritize: Title > Subtitle > Keywords for keyword allocation
+- Use natural, readable language in Title and Subtitle
+- Keywords field should be comma-separated list with no spaces
+
+**GENERATION PROCESS:**
+1. Identify 1-2 highest-volume, most relevant keywords for Title
+2. Select complementary keywords for Subtitle that support but don't duplicate Title
+3. Fill Keywords field with remaining high-value terms
+4. Ensure all character limits are respected
+5. Verify no word duplication across fields
+
+**OUTPUT FORMAT:**
+Always format your response exactly as:
+TITLE: [your title here]
+SUBTITLE: [your subtitle here]
+KEYWORDS: [keyword1,keyword2,keyword3,etc]
+
+Provide actionable, character-limit compliant metadata with keyword density analysis and no duplication between fields.`;
 
     case 'cpp-strategy-builder':
       return `${basePrompt}
