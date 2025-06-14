@@ -13,9 +13,10 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-const VERSION = '3.1.0-enterprise-scraper-cached' // Versioning for monitoring deployment consistency
+const VERSION = '3.2.0-enterprise-fix-mapping' // Versioning for monitoring deployment consistency
 
 // --- Enterprise Architecture: Standardized Data Contracts ---
+// This interface now reflects the desired OUTPUT contract for the frontend
 interface ScrapedMetadata {
   name?: string
   title?: string // The main app title (e.g., "TikTok")
@@ -25,9 +26,16 @@ interface ScrapedMetadata {
   operatingSystem?: string
   screenshot?: string[]
   url?: string
-  author?: string
-  ratingValue?: number
-  reviewCount?: number
+  author?: string // Keep original for reference
+  ratingValue?: number // Keep original for reference
+  reviewCount?: number // Keep original for reference
+  icon?: string // URL for the app icon
+
+  // Transformed fields for frontend consumption
+  developer?: string
+  rating?: number
+  reviews?: number
+  price?: string // Defaulted if not found
 }
 
 // Function to validate if the string is a plausible Apple App Store URL
@@ -56,6 +64,18 @@ const extractMetaContent = (html: string, propertyType: 'name' | 'property', val
 }
 
 /**
+ * NEW: Extracts href from a link tag, which is needed for Apple's touch icon.
+ * @param html The full HTML content of the page.
+ * @param relValue The value of the rel attribute to look for (e.g., 'apple-touch-icon').
+ * @returns The extracted href string or null if not found.
+ */
+const extractLinkHref = (html: string, relValue: string): string | null => {
+  const regex = new RegExp(`<link\\s+[^>]*rel="\\s*${relValue}\\s*"[^>]*href="([^"]+)"`, 'i')
+  const match = html.match(regex)
+  return match ? match[1].trim() : null
+}
+
+/**
  * [Primary Strategy] Extracts metadata from the JSON-LD script tag.
  * This is the most structured and reliable source.
  */
@@ -75,6 +95,7 @@ const extractFromJsonLd = (html: string, data: ScrapedMetadata) => {
       data.author = data.author ?? jsonData.author?.name
       data.ratingValue = data.ratingValue ?? jsonData.aggregateRating?.ratingValue
       data.reviewCount = data.reviewCount ?? jsonData.aggregateRating?.reviewCount
+      data.icon = data.icon ?? jsonData.image // Extract icon from JSON-LD
       console.log('Successfully extracted data from JSON-LD.')
     } catch (e) {
       console.warn('Could not parse JSON-LD data.', e.message)
@@ -93,7 +114,18 @@ const extractFromOpenGraph = (html: string, data: ScrapedMetadata) => {
   data.name = data.name ?? extractMetaContent(html, 'property', 'og:title')
   data.description = data.description ?? extractMetaContent(html, 'property', 'og:description')
   data.url = data.url ?? extractMetaContent(html, 'property', 'og:url')
-  if (data.name) console.log('Extracted some data from Open Graph tags.')
+  data.icon = data.icon ?? extractMetaContent(html, 'property', 'og:image') // Extract icon from OG tags
+  if (data.name || data.icon) console.log('Extracted some data from Open Graph tags.')
+}
+
+/**
+ * [NEW Secondary Strategy] Extracts app icon from Apple-specific tags.
+ * This often provides a high-quality source for the icon.
+ */
+const extractFromAppleTags = (html: string, data: ScrapedMetadata) => {
+  console.log('Attempting extraction from Apple-specific tags...')
+  data.icon = data.icon ?? extractLinkHref(html, 'apple-touch-icon')
+  if (data.icon) console.log('Extracted icon from apple-touch-icon tag.')
 }
 
 /**
@@ -242,10 +274,13 @@ serve(async (req: Request) => {
       // 1. Primary Source: JSON-LD (most structured)
       extractFromJsonLd(html, metadata)
 
-      // 2. Secondary Source: Open Graph tags (common fallback)
+      // 2. Secondary Source: Apple-specific tags (high-quality icon)
+      extractFromAppleTags(html, metadata)
+
+      // 3. Tertiary Source: Open Graph tags (common fallback)
       extractFromOpenGraph(html, metadata)
 
-      // 3. Tertiary Source: Standard meta tags
+      // 4. Quaternary Source: Standard meta tags
       extractFromStandardMeta(html, metadata)
       
       console.log('--- Extraction pipeline finished ---')
@@ -280,6 +315,16 @@ serve(async (req: Request) => {
         metadata.title = title.trim()
         metadata.subtitle = subtitleParts.join(' - ').trim()
       }
+
+      // NEW: Transform and map raw fields to the frontend data contract.
+      // This ensures consistency regardless of the extraction source.
+      console.log('Transforming raw data to frontend contract...')
+      metadata.developer = metadata.author
+      metadata.rating = metadata.ratingValue
+      metadata.reviews = metadata.reviewCount
+      // Price isn't usually available in metadata, so we default it for now.
+      metadata.price = 'Free'
+      console.log(`Transformed fields: developer=${metadata.developer}, rating=${metadata.rating}, reviews=${metadata.reviews}, icon=${!!metadata.icon}`)
 
       // Ensure URL is absolute, falling back to the scraped URL if needed
       try {
