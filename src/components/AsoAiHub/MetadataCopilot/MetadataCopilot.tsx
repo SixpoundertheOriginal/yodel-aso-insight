@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -103,7 +102,7 @@ KEYWORDS: [keyword1,keyword2,keyword3]`;
     }
   };
 
-  const handle Regenerate = () => {
+  const handleRegenerate = () => {
     if (appName) {
       // Regenerate with slight variation
       const prompt = `Regenerate App Store metadata for "${appName}" with different keyword combinations but same quality standards. Provide alternative variations.`;
