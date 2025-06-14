@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -19,32 +20,46 @@ export const MetadataImporter: React.FC<MetadataImporterProps> = ({ onImportSucc
 
   const handleImport = async () => {
     if (!importerUrl) {
-      toast({ title: "App Store URL or App Name is required.", variant: "destructive" });
+      toast({ title: 'App Store URL or App Name is required.', variant: 'destructive' });
       return;
     }
     setIsImporting(true);
     try {
-      const { data: scrapedData, error } = await supabase.functions.invoke('app-store-scraper', {
-        body: { appStoreUrl: importerUrl }
+      const { data: responseData, error: invokeError } = await supabase.functions.invoke('app-store-scraper', {
+        body: { appStoreUrl: importerUrl },
       });
 
-      if (error || !scrapedData) {
-        throw new Error(error?.message || "Failed to scrape App Store page.");
+      // Handle invocation errors (e.g., function crashed, network issue, 5xx)
+      if (invokeError) {
+        console.error('Supabase function invocation error:', invokeError);
+        throw new Error(`The import service is currently unavailable. Please try again later. (Details: ${invokeError.message})`);
+      }
+
+      // Handle application-level errors returned by the function (e.g., 404, 422)
+      if (responseData.error) {
+        console.error('App Store scraper application error:', responseData.error);
+        throw new Error(responseData.error);
+      }
+      
+      // Validate that we received the data we need
+      if (!responseData || !responseData.name || !responseData.url) {
+        console.error('Incomplete data received from scraper:', responseData);
+        throw new Error('Received incomplete data from the import service. The App Store page might have a non-standard format.');
       }
 
       toast({
-        title: "App data imported successfully!",
-        description: `Now generating metadata for ${scrapedData.name}.`,
+        title: 'App data imported successfully!',
+        description: `Now generating metadata for ${responseData.name}.`,
       });
 
-      const urlParts = new URL(scrapedData.url).pathname.split('/');
+      const urlParts = new URL(responseData.url).pathname.split('/');
       const locale = urlParts[1] || 'us';
-      
-      const [title, ...subtitleParts] = scrapedData.name.split(/ - | \| /);
+
+      const [title, ...subtitleParts] = responseData.name.split(/ - | \| /);
       const subtitle = subtitleParts.join(' - ');
 
       onImportSuccess({
-        ...scrapedData,
+        ...responseData,
         title: title.trim(),
         subtitle: subtitle.trim() || '',
         locale: locale,
@@ -52,9 +67,9 @@ export const MetadataImporter: React.FC<MetadataImporterProps> = ({ onImportSucc
 
     } catch (e: any) {
       toast({
-        title: "Import Failed",
-        description: e.message || "Could not retrieve data from the App Store.",
-        variant: "destructive"
+        title: 'Import Failed',
+        description: e.message || 'An unknown error occurred while importing from the App Store.',
+        variant: 'destructive',
       });
     } finally {
       setIsImporting(false);
