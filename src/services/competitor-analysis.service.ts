@@ -1,39 +1,16 @@
-
 import { CompetitorData, CompetitorKeywordAnalysis } from '@/types/aso';
 
 class CompetitorAnalysisService {
   /**
-   * Extract competitor data from description (temporary workaround)
+   * @deprecated This method is obsolete. Competitor data is now fetched directly via the API and attached to the main metadata object.
    */
   extractCompetitorData(description: string): { competitors: CompetitorData[]; cleanDescription: string } {
-    console.log("🔍 [COMPETITOR] Parsing competitor data from description...");
+    console.warn("`extractCompetitorData` is deprecated and should no longer be used.");
     const regex = /<!--COMPETITORS_START-->((.|\n)*)<!--COMPETITORS_END-->/;
-    const match = description.match(regex);
-    
-    if (match && match[1]) {
-      try {
-        const competitorData = JSON.parse(match[1]);
-        console.log(`✅ [COMPETITOR] Extracted ${competitorData.length} competitors.`);
-        
-        const cleanDescription = description.replace(regex, '').trim();
-        
-        return {
-          competitors: competitorData,
-          cleanDescription
-        };
-      } catch (e) {
-        console.error("❌ [COMPETITOR] Failed to parse competitor data:", e);
-        return {
-          competitors: [],
-          cleanDescription: description
-        };
-      }
-    }
-    
-    console.log("ℹ️ [COMPETITOR] No competitor data found in description.");
+    const cleanDescription = description.replace(regex, '').trim();
     return {
       competitors: [],
-      cleanDescription: description
+      cleanDescription
     };
   }
 

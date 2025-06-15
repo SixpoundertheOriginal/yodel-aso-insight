@@ -108,9 +108,9 @@ export const CppImporter: React.FC<CppImporterProps> = ({ onStrategySuccess }) =
   return (
     <div className="max-w-2xl mx-auto">
       <DataImporter
-        title="Analyze App for CPP Strategy"
-        description="Enter an App Store URL or app name to analyze screenshots and generate Custom Product Page themes"
-        placeholder="e.g., 'Notion' or https://apps.apple.com/..."
+        title="Analyze Market for CPP Strategy"
+        description="Enter a keyword and country (e.g., 'photo editor in US') or a specific App Store URL to generate Custom Product Page themes and competitive insights."
+        placeholder="e.g., 'language learning app in US' or https://apps.apple.com/..."
         onImport={handleAnalyze}
         isLoading={isAnalyzing || !organizationId || !securityContext}
         icon={<Target className="w-4 h-4 ml-2" />}

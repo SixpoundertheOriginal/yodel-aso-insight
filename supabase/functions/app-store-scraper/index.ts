@@ -19,24 +19,30 @@ const VERSION = '3.4.0-enterprise-root-fix' // Versioning for monitoring deploym
 // This interface now reflects the desired OUTPUT contract for the frontend
 interface ScrapedMetadata {
   name?: string
-  title?: string // The main app title (e.g., "TikTok")
-  subtitle?: string // The app subtitle (e.g., "Videos, Music & Live")
+  title?: string
+  subtitle?: string
   description?: string
   applicationCategory?: string
   operatingSystem?: string
   screenshot?: string[]
   url?: string
-  author?: string // Keep original for reference
-  ratingValue?: number // Keep original for reference
-  reviewCount?: number // Keep original for reference
-  icon?: string // URL for the app icon
-
-  // Transformed fields for frontend consumption
+  author?: string
+  ratingValue?: number
+  reviewCount?: number
+  icon?: string
   developer?: string
   rating?: number
   reviews?: number
-  price?: string // Defaulted if not found
+  price?: string
   locale?: string
+  competitorScreenshots?: CompetitorScreenshot[]
+}
+
+// NEW: Interface for competitor analysis results
+interface CompetitorScreenshot {
+  appName: string;
+  url: string;
+  analysis: string;
 }
 
 // Function to validate if the string is a plausible Apple App Store URL
@@ -237,6 +243,50 @@ const sanitizeMetadata = (metadata: ScrapedMetadata): ScrapedMetadata => {
   }
 }
 
+// --- NEW: AI-Powered Screenshot Analysis Helper ---
+async function analyzeScreenshotWithAI(screenshotUrl: string): Promise<string> {
+  const openAIApiKey = Deno.env.get('OPENAI_API_KEY');
+  if (!openAIApiKey) {
+    console.warn('OPENAI_API_KEY not set. Skipping AI analysis.');
+    return 'AI analysis skipped: API key not configured.';
+  }
+
+  try {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${openAIApiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: "Analyze this app screenshot for its key features, user flow, primary value proposition, and overall visual theme (e.g., minimalist, bold, playful). Provide a concise summary of your findings." },
+              { type: 'image_url', image_url: { url: screenshotUrl } }
+            ]
+          }
+        ],
+        max_tokens: 250
+      }),
+    });
+
+    if (!response.ok) {
+        const errorBody = await response.text();
+        console.error(`OpenAI API Error: ${errorBody}`);
+        throw new Error(`OpenAI API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    return data.choices[0].message.content;
+  } catch (error) {
+    console.error('Error analyzing screenshot with AI:', error);
+    return `AI analysis failed: ${error.message}`;
+  }
+}
+
 serve(async (req: Request) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -262,10 +312,10 @@ serve(async (req: Request) => {
   // Ensure we only process POST requests for scraping
   if (req.method === 'POST') {
     try {
-      const { appStoreUrl, organizationId } = await req.json()
+      const { searchTerm, organizationId, includeCompetitorAnalysis } = await req.json()
 
-      if (!appStoreUrl || !organizationId) {
-        return new Response(JSON.stringify({ error: 'App Store URL/Name and Organization ID are required' }), {
+      if (!searchTerm || !organizationId) {
+        return new Response(JSON.stringify({ error: 'Search term/URL and Organization ID are required' }), {
           status: 400,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         })
@@ -274,76 +324,68 @@ serve(async (req: Request) => {
       let canonicalUrl = ''
       let metadata: ScrapedMetadata = {}
       let apiDataUsed = false
-
-      // --- Enterprise Architecture: API-First Data Acquisition ---
-      const isUrl = isAppStoreUrl(appStoreUrl)
-      const appId = isUrl ? extractAppIdFromUrl(appStoreUrl) : null
-
-      // Strategy 1: Use iTunes Lookup API if we have an App ID from a URL
-      if (isUrl && appId) {
-        canonicalUrl = appStoreUrl // Use original URL for now, will be updated by API response
-        console.log(`Extracted App ID: ${appId}. Querying iTunes Lookup API.`)
-        const lookupUrl = `https://itunes.apple.com/lookup?id=${appId}`
-        const apiResponse = await fetch(lookupUrl)
-        if (apiResponse.ok) {
-          const apiResult = await apiResponse.json()
-          if (apiResult.resultCount > 0) {
-            console.log('Successfully fetched base data from iTunes Lookup API.')
-            metadata = mapItunesDataToMetadata(apiResult.results[0])
-            canonicalUrl = metadata.url! // Use the canonical URL from the API response
-            apiDataUsed = true
-          } else {
-            console.warn(`Lookup API found no results for app ID: ${appId}`)
-          }
-        } else {
-          console.warn(`iTunes Lookup API failed with status: ${apiResponse.status}`)
-        }
-      }
-      // Strategy 2: Use iTunes Search API if the input is not a URL
-      else if (!isUrl) {
-        console.log(`Input is not a URL, treating as search term: "${appStoreUrl}"`)
-        const searchUrl = `https://itunes.apple.com/search?term=${encodeURIComponent(
-          appStoreUrl
-        )}&entity=software&limit=1`
-
-        console.log(`Searching iTunes API: ${searchUrl}`)
-        const searchResponse = await fetch(searchUrl)
-
-        if (searchResponse.ok) {
-          const searchResult = await searchResponse.json()
-          if (searchResult.resultCount > 0) {
-            console.log('Found app via search. Using base data from iTunes Search API.')
-            metadata = mapItunesDataToMetadata(searchResult.results[0])
-            canonicalUrl = metadata.url! // Use the canonical URL from the API response
-            apiDataUsed = true
-          } else {
-            console.log(`No app found for search term: "${appStoreUrl}"`)
-            return new Response(
-              JSON.stringify({
-                error: `No app found for "${appStoreUrl}". Try being more specific or using the full App Store URL.`,
-              }),
-              {
-                status: 404,
-                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-              }
-            )
-          }
-        } else {
-          console.error(`iTunes Search API failed with status: ${searchResponse.status}`)
-          return new Response(JSON.stringify({ error: 'Failed to search for the app. Please try again later.' }), {
-            status: 502, // Bad Gateway
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          })
-        }
-      }
-      // If input was a URL but we failed to get data from API, set canonicalUrl to scrape
-      else if (isUrl && !apiDataUsed) {
-        canonicalUrl = appStoreUrl
-      }
+      let targetApp: any;
+      let competitorApps: any[] = [];
       
-      // --- Enterprise Architecture: Data Enrichment via HTML Scraping ---
-      // We always attempt to scrape the HTML to enrich the API data, as some fields like
-      // the true subtitle or a higher-quality icon might be found there.
+      const isUrl = isAppStoreUrl(searchTerm)
+
+      // --- Phase 1: Market & Competitor Discovery ---
+      if (isUrl) {
+        const appId = extractAppIdFromUrl(searchTerm);
+        if (appId) {
+          console.log(`[URL Mode] Extracted App ID: ${appId}. Querying iTunes Lookup API.`);
+          const lookupUrl = `https://itunes.apple.com/lookup?id=${appId}`;
+          const apiResponse = await fetch(lookupUrl);
+          if (apiResponse.ok) {
+            const apiResult = await apiResponse.json();
+            if (apiResult.resultCount > 0) {
+              targetApp = apiResult.results[0];
+              metadata = mapItunesDataToMetadata(targetApp);
+              canonicalUrl = metadata.url!;
+              apiDataUsed = true;
+              
+              // Find competitors based on category
+              const categoryTerm = encodeURIComponent(targetApp.primaryGenreName);
+              const country = new URL(canonicalUrl).pathname.split('/')[1] || 'us';
+              const competitorSearchUrl = `https://itunes.apple.com/search?term=${categoryTerm}&country=${country}&entity=software&limit=10`;
+              const competitorResponse = await fetch(competitorSearchUrl);
+              if (competitorResponse.ok) {
+                const competitorResult = await competitorResponse.json();
+                competitorApps = competitorResult.results?.filter((c: any) => c.trackId !== targetApp.trackId).slice(0, 5) || [];
+                console.log(`[URL Mode] Found ${competitorApps.length} competitors in category "${targetApp.primaryGenreName}".`);
+              }
+            }
+          }
+        }
+      } else {
+        console.log(`[Search Mode] Using search term: "${searchTerm}"`);
+        const countryMatch = searchTerm.match(/in\s+([a-zA-Z]{2})$/);
+        const country = countryMatch ? countryMatch[1].toLowerCase() : 'us';
+        const parsedSearchTerm = encodeURIComponent(searchTerm.replace(/in\s+([a-zA-Z]{2})$/, '').trim());
+        
+        const searchUrl = `https://itunes.apple.com/search?term=${parsedSearchTerm}&country=${country}&entity=software&limit=6`;
+        const searchResponse = await fetch(searchUrl);
+        
+        if (searchResponse.ok) {
+          const searchResult = await searchResponse.json();
+          if (searchResult.resultCount > 0) {
+            [targetApp, ...competitorApps] = searchResult.results;
+            metadata = mapItunesDataToMetadata(targetApp);
+            canonicalUrl = metadata.url!;
+            apiDataUsed = true;
+            console.log(`[Search Mode] Found target app "${targetApp.trackName}" and ${competitorApps.length} competitors.`);
+          } else {
+            return new Response(JSON.stringify({ error: `No app found for "${searchTerm}".` }), { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+          }
+        }
+      }
+
+      if (!targetApp) {
+        return new Response(JSON.stringify({ error: 'Could not find a target app based on your input.' }), { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' }});
+      }
+
+      // --- Phase 2: Data Enrichment & Analysis ---
+      // 2.1 Enrich Target App Metadata
       let html = '';
       if (canonicalUrl) {
           console.log(`Scraping for enrichment: ${canonicalUrl}`)
@@ -360,8 +402,6 @@ serve(async (req: Request) => {
               console.warn(`HTML scrape for enrichment failed with status: ${scraperResponse.status}`)
           }
       }
-
-      // --- Multi-Source Extraction & Intelligent Merging ---
       if (html) {
           const scrapedData: ScrapedMetadata = {};
           console.log('--- Starting multi-source enrichment pipeline ---')
@@ -383,65 +423,23 @@ serve(async (req: Request) => {
           metadata.ratingValue = metadata.ratingValue ?? scrapedData.ratingValue;
           metadata.reviewCount = metadata.reviewCount ?? scrapedData.reviewCount;
       }
-
-      // --- Data Transformation & Validation for SCRAPED data ---
-      if (!apiDataUsed && metadata.name && !metadata.title) {
-        const parts = metadata.name.split(' - ')
-        if (parts.length > 1) {
-          metadata.title = parts[0].trim()
-          metadata.subtitle = parts.slice(1).join(' - ').trim()
-        } else {
-          metadata.title = metadata.name.trim()
-        }
-      }
-
-      // Final mapping to frontend contract fields
-      metadata.developer = metadata.developer ?? metadata.author;
-      metadata.rating = metadata.rating ?? metadata.ratingValue;
-      metadata.reviews = metadata.reviews ?? metadata.reviewCount;
-      metadata.price = metadata.price ?? 'Free';
       
-      // --- NEW: Enterprise Architecture: Competitor Analysis ---
-      let competitors: ScrapedMetadata[] = []
-      if (metadata.applicationCategory && canonicalUrl) {
-        console.log(`Analyzing competitors for category: ${metadata.applicationCategory}`)
-        try {
-          const url = new URL(canonicalUrl)
-          const country = url.pathname.split('/')[1] || 'us'
-
-          const searchTerm = encodeURIComponent(metadata.applicationCategory)
-          // Search for top 10 competitors in the same category and country
-          const competitorSearchUrl = `https://itunes.apple.com/search?term=${searchTerm}&country=${country}&entity=software&limit=10`
-          
-          console.log(`Fetching competitors from: ${competitorSearchUrl}`)
-          const competitorResponse = await fetch(competitorSearchUrl)
-
-          if (competitorResponse.ok) {
-            const competitorResult = await competitorResponse.json()
-            if (competitorResult.resultCount > 0) {
-              const appIdNum = appId ? parseInt(appId, 10) : -1
-              // Filter out the original app and map data for competitors
-              competitors = competitorResult.results
-                .filter((comp: any) => comp.trackId !== appIdNum)
-                .map((comp: any) => sanitizeMetadata(mapItunesDataToMetadata(comp)))
-              console.log(`Found ${competitors.length} competitors.`)
-            }
-          } else {
-            console.warn(`Competitor search failed with status: ${competitorResponse.status}`)
-          }
-        } catch (e) {
-          console.error('Error during competitor analysis:', e.message)
-        }
+      // 2.2 Analyze Competitors
+      if (includeCompetitorAnalysis && competitorApps.length > 0) {
+        console.log(`Analyzing first 3 screenshots for ${competitorApps.length} competitors...`);
+        
+        const analysisPromises = competitorApps.flatMap(app => 
+            (app.screenshotUrls || []).slice(0, 3).map(async (screenshotUrl: string): Promise<CompetitorScreenshot> => {
+                const analysis = await analyzeScreenshotWithAI(screenshotUrl);
+                return { appName: app.trackName, url: screenshotUrl, analysis };
+            })
+        );
+        metadata.competitorScreenshots = await Promise.all(analysisPromises);
+        console.log(`Completed competitor screenshot analysis.`);
       }
 
-      // Sanitize the main app metadata.
+      // Final sanitization and mapping
       const finalMetadata = sanitizeMetadata(metadata)
-
-      // WORKAROUND: Embed competitor data into the description field as a JSON string.
-      // This is necessary to pass data through read-only parent components that we cannot modify.
-      if (competitors.length > 0) {
-        finalMetadata.description += `\n<!--COMPETITORS_START-->${JSON.stringify(competitors)}<!--COMPETITORS_END-->`;
-      }
 
       // --- Enterprise Architecture: Final Validation, Caching & Response ---
       if (!finalMetadata || !finalMetadata.name || !finalMetadata.url) {
@@ -451,7 +449,7 @@ serve(async (req: Request) => {
           .from('scrape_cache')
           .upsert(
             {
-              url: canonicalUrl || appStoreUrl,
+              url: canonicalUrl || searchTerm,
               organization_id: organizationId,
               status: 'FAILED',
               error: errorMsg,

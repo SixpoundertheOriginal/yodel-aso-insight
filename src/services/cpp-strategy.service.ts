@@ -1,3 +1,4 @@
+
 import { supabase } from '@/integrations/supabase/client';
 import { ScrapedMetadata, CppConfig, CppStrategyData, CppTheme } from '@/types/aso';
 import { securityService } from './security.service';
@@ -8,16 +9,22 @@ class CppStrategyService {
   private readonly CACHE_TTL = 10 * 60 * 1000; // 10 minutes
 
   /**
-   * Generate CPP strategy from App Store URL with enterprise security
+   * Generate CPP strategy from App Store URL or search term with enterprise security
    */
-  async generateCppStrategy(appStoreUrl: string, config: CppConfig, securityContext: SecurityContext): Promise<CppStrategyData> {
+  async generateCppStrategy(searchTerm: string, config: CppConfig, securityContext: SecurityContext): Promise<CppStrategyData> {
     // Security validation
-    const urlValidation = securityService.validateAppStoreUrl(appStoreUrl);
-    if (!urlValidation.success) {
-      throw new Error(`URL validation failed: ${urlValidation.errors?.[0]?.message}`);
-    }
+    const isUrl = searchTerm.startsWith('http');
+    let sanitizedSearchTerm = searchTerm;
 
-    const sanitizedUrl = urlValidation.data!;
+    if (isUrl) {
+        const urlValidation = securityService.validateAppStoreUrl(searchTerm);
+        if (!urlValidation.success) {
+            throw new Error(`URL validation failed: ${urlValidation.errors?.[0]?.message}`);
+        }
+        sanitizedSearchTerm = urlValidation.data!;
+    } else {
+        sanitizedSearchTerm = securityService.sanitizeInput(searchTerm);
+    }
     
     // Rate limiting check
     const rateLimitCheck = await securityService.checkRateLimit(config.organizationId, 'cpp-analysis');
@@ -38,7 +45,7 @@ class CppStrategyService {
       action: 'cpp-analysis-started',
       resourceType: 'cpp-analysis',
       details: {
-        appStoreUrl: sanitizedUrl,
+        searchTerm: sanitizedSearchTerm,
         config: {
           includeScreenshotAnalysis: config.includeScreenshotAnalysis,
           generateThemes: config.generateThemes,
@@ -49,22 +56,22 @@ class CppStrategyService {
       userAgent: securityContext.userAgent
     });
 
-    const cacheKey = `${config.organizationId}-${sanitizedUrl}-cpp`;
+    const cacheKey = `${config.organizationId}-${sanitizedSearchTerm}-cpp`;
     
     // Check cache first
     const cached = this.cache.get(cacheKey);
     if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
-      console.log('📦 [CPP-CACHE] Using cached strategy for:', sanitizedUrl);
+      console.log('📦 [CPP-CACHE] Using cached strategy for:', sanitizedSearchTerm);
       return cached.data;
     }
 
-    console.log('🚀 [CPP-STRATEGY] Starting secure CPP analysis for:', sanitizedUrl);
+    console.log('🚀 [CPP-STRATEGY] Starting secure CPP analysis for:', sanitizedSearchTerm);
 
     try {
       // Call enhanced app-store-scraper with CPP analysis
       const { data: responseData, error: invokeError } = await supabase.functions.invoke('app-store-scraper', {
         body: { 
-          appStoreUrl: sanitizedUrl, 
+          searchTerm: sanitizedSearchTerm, 
           organizationId: config.organizationId,
           analyzeCpp: true,
           includeScreenshotAnalysis: config.includeScreenshotAnalysis !== false,
@@ -100,7 +107,7 @@ class CppStrategyService {
         action: 'cpp-analysis-completed',
         resourceType: 'cpp-analysis',
         details: {
-          appStoreUrl: sanitizedUrl,
+          searchTerm: sanitizedSearchTerm,
           themesGenerated: cppStrategy.suggestedThemes.length,
           screenshotsAnalyzed: cppStrategy.originalApp.screenshots.length
         },
@@ -119,7 +126,7 @@ class CppStrategyService {
         action: 'cpp-analysis-failed',
         resourceType: 'cpp-analysis',
         details: {
-          appStoreUrl: sanitizedUrl,
+          searchTerm: sanitizedSearchTerm,
           error: error instanceof Error ? error.message : 'Unknown error'
         },
         ipAddress: securityContext.ipAddress,
