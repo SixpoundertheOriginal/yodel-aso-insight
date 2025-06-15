@@ -3,67 +3,31 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Import Design Tokens */
+@import './styles/design-tokens.css';
+
 @layer base {
   :root {
     --background: 240 10% 3.9%;
     --foreground: 0 0% 98%;
-
     --card: 240 10% 3.9%;
     --card-foreground: 0 0% 98%;
-
     --popover: 240 10% 3.9%;
     --popover-foreground: 0 0% 98%;
-
     --primary: 24 100% 53%; /* Yodel orange */
     --primary-foreground: 0 0% 98%;
-
     --secondary: 240 3.7% 15.9%;
     --secondary-foreground: 0 0% 98%;
-
     --muted: 240 3.7% 15.9%;
     --muted-foreground: 240 5% 64.9%;
-
     --accent: 215 100% 50%; /* Yodel blue */
     --accent-foreground: 0 0% 98%;
-
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 0 0% 98%;
-
     --border: 240 3.7% 15.9%;
     --input: 240 3.7% 15.9%;
     --ring: 240 4.9% 83.9%;
-
     --radius: 0.5rem;
-  }
-
-  .light {
-    --background: 0 0% 100%;
-    --foreground: 240 10% 3.9%;
-
-    --card: 0 0% 100%;
-    --card-foreground: 240 10% 3.9%;
-
-    --popover: 0 0% 100%;
-    --popover-foreground: 240 10% 3.9%;
-
-    --primary: 24 100% 53%; /* Yodel orange */
-    --primary-foreground: 0 0% 98%;
-
-    --secondary: 240 4.8% 95.9%;
-    --secondary-foreground: 240 5.9% 10%;
-
-    --muted: 240 4.8% 95.9%;
-    --muted-foreground: 240 3.8% 46.1%;
-
-    --accent: 215 100% 50%; /* Yodel blue */
-    --accent-foreground: 240 5.9% 10%;
-
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 0 0% 98%;
-
-    --border: 240 5.9% 90%;
-    --input: 240 5.9% 90%;
-    --ring: 240 5.9% 10%;
   }
 }
 
@@ -74,50 +38,180 @@
 
   body {
     @apply bg-zinc-950 text-zinc-100 antialiased;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   }
 
-  .glass-card {
-    @apply bg-zinc-900/50 backdrop-blur-sm border border-zinc-800/50 shadow-xl;
+  /* Scrollbar Styling */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
   }
-  
-  /* Yodel Mobile specific styles */
-  .yodel-gradient-bg {
-    @apply bg-gradient-to-br from-zinc-900 via-zinc-950 to-zinc-900;
+
+  ::-webkit-scrollbar-track {
+    @apply bg-zinc-900;
   }
-  
-  .yodel-gradient-orange {
-    @apply bg-gradient-to-r from-orange-500 to-orange-600;
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-zinc-700 rounded-full;
   }
-  
-  .yodel-gradient-blue {
-    @apply bg-gradient-to-r from-blue-500 to-blue-600;
-  }
-  
-  .yodel-card {
-    @apply bg-zinc-900 border border-zinc-800 rounded-lg shadow-lg hover:shadow-xl transition-shadow duration-300;
-  }
-  
-  .yodel-button {
-    @apply bg-yodel-orange hover:bg-yodel-orange/90 text-white font-medium rounded-md px-4 py-2 transition-colors;
-  }
-  
-  .chart-container {
-    @apply p-6 rounded-lg bg-zinc-900 border border-zinc-800 shadow-lg;
-  }
-  
-  .chart-title {
-    @apply text-2xl font-bold text-white mb-4;
-  }
-  
-  .stat-card {
-    @apply bg-zinc-900/70 backdrop-blur-sm border border-zinc-800/70 rounded-xl p-6 transition-all hover:bg-zinc-900/90;
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-zinc-600;
   }
 }
 
-@font-face {
-  font-family: 'Inter';
-  font-style: normal;
-  font-weight: 100 900;
-  font-display: swap;
-  src: url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
+@layer components {
+  /* Yodel Component Classes */
+  .yodel-gradient-bg {
+    @apply bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950;
+  }
+  
+  .yodel-gradient-orange {
+    @apply bg-gradient-to-r from-yodel-orange to-orange-600;
+  }
+  
+  .yodel-gradient-blue {
+    @apply bg-gradient-to-r from-yodel-blue to-blue-600;
+  }
+  
+  .yodel-card {
+    @apply bg-zinc-900 border border-zinc-800 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200;
+  }
+  
+  .yodel-button-primary {
+    @apply bg-yodel-orange hover:bg-yodel-orange/90 text-white font-medium rounded-lg px-4 py-2 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-yodel-orange/50 focus:ring-offset-2 focus:ring-offset-zinc-900 shadow-sm hover:shadow-md;
+  }
+  
+  .yodel-input {
+    @apply bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-yodel-orange/50 focus:border-yodel-orange/50 transition-all duration-200;
+  }
+
+  /* Status Indicators */
+  .status-success {
+    @apply text-green-400 bg-green-500/10 border-green-500/20;
+  }
+
+  .status-warning {
+    @apply text-yellow-400 bg-yellow-500/10 border-yellow-500/20;
+  }
+
+  .status-error {
+    @apply text-red-400 bg-red-500/10 border-red-500/20;
+  }
+
+  .status-info {
+    @apply text-blue-400 bg-blue-500/10 border-blue-500/20;
+  }
+
+  /* Animation Classes */
+  .animate-fade-in {
+    animation: fadeIn 0.3s ease-out;
+  }
+
+  .animate-slide-in-left {
+    animation: slideInLeft 0.3s ease-out;
+  }
+
+  .animate-slide-in-right {
+    animation: slideInRight 0.3s ease-out;
+  }
+
+  .animate-scale-in {
+    animation: scaleIn 0.2s ease-out;
+  }
+}
+
+@layer utilities {
+  /* Custom Utilities */
+  .text-gradient-orange {
+    @apply bg-gradient-to-r from-yodel-orange to-orange-600 bg-clip-text text-transparent;
+  }
+
+  .text-gradient-blue {
+    @apply bg-gradient-to-r from-yodel-blue to-blue-600 bg-clip-text text-transparent;
+  }
+
+  .glass-effect {
+    @apply bg-zinc-900/50 backdrop-blur-sm border border-zinc-800/50;
+  }
+
+  .hover-lift {
+    @apply transition-transform duration-200 hover:-translate-y-1;
+  }
+
+  .focus-ring-yodel {
+    @apply focus:outline-none focus:ring-2 focus:ring-yodel-orange/50 focus:ring-offset-2 focus:ring-offset-zinc-900;
+  }
+}
+
+/* Keyframes */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideInLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Loading States */
+.loading-skeleton {
+  @apply animate-pulse bg-zinc-800 rounded;
+}
+
+.loading-shimmer {
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.04), transparent);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+/* Print Styles */
+@media print {
+  .no-print {
+    display: none !important;
+  }
 }
