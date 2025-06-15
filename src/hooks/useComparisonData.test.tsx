@@ -17,15 +17,15 @@ jest.mock('../utils/format', () => ({
 describe('useComparisonData', () => {
   // Sample mock data
   const mockTimeseriesData = [
-    { date: '2023-01-01', impressions: 100, downloads: 50, pageViews: 200 },
-    { date: '2023-01-02', impressions: 110, downloads: 55, pageViews: 220 },
+    { date: '2023-01-01', impressions: 100, downloads: 50, product_page_views: 200 },
+    { date: '2023-01-02', impressions: 110, downloads: 55, product_page_views: 220 },
   ];
   
   const mockData = {
     summary: {
       impressions: { value: 210, delta: 5 },
       downloads: { value: 105, delta: 10 },
-      pageViews: { value: 420, delta: 7 },
+      product_page_views: { value: 420, delta: 7 },
       cvr: { value: 50, delta: 3 },
     },
     timeseriesData: mockTimeseriesData,

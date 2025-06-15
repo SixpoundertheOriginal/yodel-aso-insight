@@ -6,15 +6,15 @@ import ComparisonChart, { mergeSeries } from './ComparisonChart';
 describe('ComparisonChart', () => {
   // Mock data for testing
   const currentData = [
-    { date: '2023-01-01', downloads: 100, impressions: 500, pageViews: 300 },
-    { date: '2023-01-02', downloads: 120, impressions: 550, pageViews: 320 },
-    { date: '2023-01-03', downloads: 110, impressions: 530, pageViews: 310 }
+    { date: '2023-01-01', downloads: 100, impressions: 500, product_page_views: 300 },
+    { date: '2023-01-02', downloads: 120, impressions: 550, product_page_views: 320 },
+    { date: '2023-01-03', downloads: 110, impressions: 530, product_page_views: 310 }
   ];
   
   const previousData = [
-    { date: '2023-01-01', downloads: 90, impressions: 480, pageViews: 280 },
-    { date: '2023-01-03', downloads: 95, impressions: 490, pageViews: 290 },
-    { date: '2023-01-04', downloads: 85, impressions: 470, pageViews: 270 }
+    { date: '2023-01-01', downloads: 90, impressions: 480, product_page_views: 280 },
+    { date: '2023-01-03', downloads: 95, impressions: 490, product_page_views: 290 },
+    { date: '2023-01-04', downloads: 85, impressions: 470, product_page_views: 270 }
   ];
 
   it('renders the chart with correct title', () => {
