@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { ScrapedMetadata } from './MetadataWorkspace';
+import { ScrapedMetadata } from '@/types/aso';
 import { Button } from '@/components/ui/button';
 import { Star } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';

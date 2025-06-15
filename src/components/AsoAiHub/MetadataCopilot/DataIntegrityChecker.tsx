@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { ScrapedMetadata } from './MetadataWorkspace';
+import { ScrapedMetadata } from '@/types/aso';
 import { AlertTriangle, CheckCircle, XCircle } from 'lucide-react';
 
 interface DataIntegrityCheckerProps {

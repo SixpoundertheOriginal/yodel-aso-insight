@@ -1,9 +1,9 @@
-
 import React, { useState } from 'react';
 import { Card, CardHeader, CardTitle } from '@/components/ui/card';
 import { MetadataImporter } from './MetadataImporter';
-import { MetadataWorkspace, ScrapedMetadata } from './MetadataWorkspace';
+import { MetadataWorkspace } from './MetadataWorkspace';
 import { MetadataErrorBoundary } from './MetadataErrorBoundary';
+import { ScrapedMetadata } from '@/types/aso';
 
 export const MetadataCopilot: React.FC = () => {
   const [importedData, setImportedData] = useState<ScrapedMetadata | null>(null);

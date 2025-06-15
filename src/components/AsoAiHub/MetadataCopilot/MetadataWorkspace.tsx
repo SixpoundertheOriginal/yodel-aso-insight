@@ -1,9 +1,11 @@
-
 import React from 'react';
 import { CurrentMetadataPanel } from './CurrentMetadataPanel';
 import { SuggestedMetadataPanel } from './SuggestedMetadataPanel';
 import { DataIntegrityChecker } from './DataIntegrityChecker';
 import { ScrapedMetadata } from '@/types/aso';
+
+// Re-export for convenience (legacy support)
+export type { ScrapedMetadata };
 
 interface MetadataWorkspaceProps {
   initialData: ScrapedMetadata;

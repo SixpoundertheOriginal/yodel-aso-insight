@@ -62,7 +62,7 @@ class MetadataEngine {
   }
 
   /**
-   * Calculate comprehensive metadata score
+   * Calculate comprehensive metadata score - Updated to match centralized MetadataScore interface
    */
   calculateMetadataScore(metadata: MetadataField, keywords: KeywordData[] = []): MetadataScore {
     const titleScore = this.scoreTitleUsage(metadata.title);
