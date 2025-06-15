@@ -1,4 +1,4 @@
-import { MetadataField, MetadataScore, CompetitorKeywordAnalysis, KeywordData } from '@/types/aso';
+import { MetadataField, MetadataScore, CompetitorKeywordAnalysis, KeywordData, CompetitorData } from '@/types/aso';
 
 interface ValidationResult {
   isValid: boolean;

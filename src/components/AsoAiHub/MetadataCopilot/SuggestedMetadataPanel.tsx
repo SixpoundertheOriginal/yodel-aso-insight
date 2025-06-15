@@ -277,7 +277,7 @@ KEYWORDS: [keyword1,keyword2,keyword3]`;
                 size="sm"
                 onClick={saveMetadata}
                 className="bg-green-600 hover:bg-green-700 text-white"
-                disabled={isSaving || isLoading}
+                disabled={isSaving || isGenerating || isChatLoading}
               >
                 <Save className="w-4 h-4 mr-2" />
                 {isSaving ? 'Saving...' : 'Save'}
@@ -287,7 +287,7 @@ KEYWORDS: [keyword1,keyword2,keyword3]`;
                 size="sm"
                 onClick={() => { /* handleRegenerate */ }}
                 className="border-zinc-700 text-zinc-300 hover:bg-zinc-800"
-                disabled={isLoading || isSaving}
+                disabled={isGenerating || isChatLoading || isSaving}
               >
                 <RefreshCw className="w-4 h-4 mr-2" />
                 Regenerate
