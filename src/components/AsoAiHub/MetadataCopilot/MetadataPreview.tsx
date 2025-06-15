@@ -4,7 +4,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Smartphone, Star, Download } from 'lucide-react';
 import { CharacterCounter } from './CharacterCounter';
-import { MetadataField, MetadataScore } from '@/utils/metadataEngine';
+-import { MetadataField, MetadataScore } from '@/utils/metadataEngine';
++import { MetadataField, MetadataScore } from '@/engines/metadata.engine';
 
 interface MetadataPreviewProps {
   metadata: MetadataField;
