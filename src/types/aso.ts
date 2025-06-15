@@ -1,3 +1,4 @@
+
 export interface ScrapedMetadata {
   name: string;
   url: string;
@@ -12,7 +13,11 @@ export interface ScrapedMetadata {
   rating?: number;
   reviews?: number;
   price?: string;
-  [key: string]: any;
+  
+  // CPP Enhancement Fields
+  screenshotAnalysis?: import('./cpp').ScreenshotAnalysis[];
+  suggestedCppThemes?: import('./cpp').CppTheme[];
+  competitorScreenshots?: import('./cpp').CompetitorScreenshot[];
 }
 
 export interface CompetitorData {
@@ -69,30 +74,6 @@ export interface ExportFormat {
   format: 'json' | 'csv' | 'xlsx';
   includeMetadata?: boolean;
   includeAnalytics?: boolean;
-}
-
-// Add CPP-specific extensions to ScrapedMetadata
-export interface ScrapedMetadata {
-  name: string;
-  url: string;
-  appId: string;
-  title: string;
-  subtitle: string;
-  description?: string;
-  applicationCategory?: string;
-  locale: string;
-  icon?: string;
-  developer?: string;
-  rating?: number;
-  reviews?: number;
-  price?: string;
-  
-  // CPP Enhancement Fields
-  screenshotAnalysis?: ScreenshotAnalysis[];
-  suggestedCppThemes?: CppTheme[];
-  competitorScreenshots?: CompetitorScreenshot[];
-  
-  [key: string]: any;
 }
 
 // Re-export CPP types for convenience

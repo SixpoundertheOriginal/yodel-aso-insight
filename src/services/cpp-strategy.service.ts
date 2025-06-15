@@ -1,36 +1,76 @@
-
 import { supabase } from '@/integrations/supabase/client';
 import { ScrapedMetadata, CppConfig, CppStrategyData, CppTheme } from '@/types/aso';
+import { securityService } from './security.service';
+import { SecurityContext } from '@/types/security';
 
 class CppStrategyService {
   private cache = new Map<string, { data: CppStrategyData; timestamp: number }>();
   private readonly CACHE_TTL = 10 * 60 * 1000; // 10 minutes
 
   /**
-   * Generate CPP strategy from App Store URL with screenshot analysis
+   * Generate CPP strategy from App Store URL with enterprise security
    */
-  async generateCppStrategy(appStoreUrl: string, config: CppConfig): Promise<CppStrategyData> {
-    const cacheKey = `${config.organizationId}-${appStoreUrl}-cpp`;
+  async generateCppStrategy(appStoreUrl: string, config: CppConfig, securityContext: SecurityContext): Promise<CppStrategyData> {
+    // Security validation
+    const urlValidation = securityService.validateAppStoreUrl(appStoreUrl);
+    if (!urlValidation.success) {
+      throw new Error(`URL validation failed: ${urlValidation.errors?.[0]?.message}`);
+    }
+
+    const sanitizedUrl = urlValidation.data!;
+    
+    // Rate limiting check
+    const rateLimitCheck = await securityService.checkRateLimit(config.organizationId, 'cpp-analysis');
+    if (!rateLimitCheck.success) {
+      throw new Error(`Rate limit exceeded: ${rateLimitCheck.errors?.[0]?.message}`);
+    }
+
+    // Organization context validation
+    const orgValidation = await securityService.validateOrganizationContext(config.organizationId, securityContext.userId);
+    if (!orgValidation.success) {
+      throw new Error(`Organization access denied: ${orgValidation.errors?.[0]?.message}`);
+    }
+
+    // Audit logging
+    const auditResult = await securityService.logAuditEntry({
+      organizationId: config.organizationId,
+      userId: securityContext.userId,
+      action: 'cpp-analysis-started',
+      resourceType: 'cpp-analysis',
+      details: {
+        appStoreUrl: sanitizedUrl,
+        config: {
+          includeScreenshotAnalysis: config.includeScreenshotAnalysis,
+          generateThemes: config.generateThemes,
+          includeCompetitorAnalysis: config.includeCompetitorAnalysis
+        }
+      },
+      ipAddress: securityContext.ipAddress,
+      userAgent: securityContext.userAgent
+    });
+
+    const cacheKey = `${config.organizationId}-${sanitizedUrl}-cpp`;
     
     // Check cache first
     const cached = this.cache.get(cacheKey);
     if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
-      console.log('📦 [CPP-CACHE] Using cached strategy for:', appStoreUrl);
+      console.log('📦 [CPP-CACHE] Using cached strategy for:', sanitizedUrl);
       return cached.data;
     }
 
-    console.log('🚀 [CPP-STRATEGY] Starting CPP analysis for:', appStoreUrl);
+    console.log('🚀 [CPP-STRATEGY] Starting secure CPP analysis for:', sanitizedUrl);
 
     try {
       // Call enhanced app-store-scraper with CPP analysis
       const { data: responseData, error: invokeError } = await supabase.functions.invoke('app-store-scraper', {
         body: { 
-          appStoreUrl, 
+          appStoreUrl: sanitizedUrl, 
           organizationId: config.organizationId,
           analyzeCpp: true,
           includeScreenshotAnalysis: config.includeScreenshotAnalysis !== false,
           generateThemes: config.generateThemes !== false,
-          includeCompetitorAnalysis: config.includeCompetitorAnalysis
+          includeCompetitorAnalysis: config.includeCompetitorAnalysis,
+          securityContext
         },
       });
 
@@ -47,28 +87,60 @@ class CppStrategyService {
       // Transform the enhanced metadata into CPP strategy
       const cppStrategy = this.transformToCppStrategy(responseData);
       
-      // Cache the result
+      // Cache the result with organization isolation
       this.cache.set(cacheKey, {
         data: cppStrategy,
         timestamp: Date.now()
+      });
+
+      // Success audit log
+      await securityService.logAuditEntry({
+        organizationId: config.organizationId,
+        userId: securityContext.userId,
+        action: 'cpp-analysis-completed',
+        resourceType: 'cpp-analysis',
+        details: {
+          appStoreUrl: sanitizedUrl,
+          themesGenerated: cppStrategy.suggestedThemes.length,
+          screenshotsAnalyzed: cppStrategy.originalApp.screenshots.length
+        },
+        ipAddress: securityContext.ipAddress,
+        userAgent: securityContext.userAgent
       });
 
       console.log('✅ [CPP-STRATEGY] Analysis complete:', cppStrategy.suggestedThemes.length, 'themes generated');
       return cppStrategy;
 
     } catch (error) {
+      // Error audit log
+      await securityService.logAuditEntry({
+        organizationId: config.organizationId,
+        userId: securityContext.userId,
+        action: 'cpp-analysis-failed',
+        resourceType: 'cpp-analysis',
+        details: {
+          appStoreUrl: sanitizedUrl,
+          error: error instanceof Error ? error.message : 'Unknown error'
+        },
+        ipAddress: securityContext.ipAddress,
+        userAgent: securityContext.userAgent
+      });
+
       console.error('❌ [CPP-STRATEGY] Generation failed:', error);
       throw error;
     }
   }
 
   /**
-   * Transform enhanced metadata into CPP strategy data
+   * Transform enhanced metadata into CPP strategy data with security validation
    */
   private transformToCppStrategy(metadata: ScrapedMetadata): CppStrategyData {
+    // Sanitize all text inputs
+    const sanitizedName = securityService.sanitizeInput(metadata.name || 'Unknown App');
+    
     return {
       originalApp: {
-        name: metadata.name,
+        name: sanitizedName,
         screenshots: metadata.screenshotAnalysis || []
       },
       suggestedThemes: metadata.suggestedCppThemes || [],
@@ -82,13 +154,18 @@ class CppStrategyService {
   }
 
   /**
-   * Extract key differentiators from screenshot analysis
+   * Extract key differentiators from screenshot analysis with input sanitization
    */
   private extractKeyDifferentiators(metadata: ScrapedMetadata): string[] {
     const features = new Set<string>();
     
     metadata.screenshotAnalysis?.forEach(screenshot => {
-      screenshot.analysis.features.forEach(feature => features.add(feature));
+      screenshot.analysis.features.forEach(feature => {
+        const sanitizedFeature = securityService.sanitizeInput(feature);
+        if (sanitizedFeature.length > 0) {
+          features.add(sanitizedFeature);
+        }
+      });
     });
     
     return Array.from(features).slice(0, 5);
@@ -164,7 +241,7 @@ class CppStrategyService {
   }
 
   /**
-   * Clear cache
+   * Clear cache with organization isolation
    */
   clearCache(organizationId?: string): void {
     if (organizationId) {

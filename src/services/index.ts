@@ -4,3 +4,4 @@ export { competitorAnalysisService } from './competitor-analysis.service';
 export { dataValidationService } from './data-validation.service';
 export { exportService } from './export.service';
 export { cppStrategyService } from './cpp-strategy.service';
+export { securityService } from './security.service';
