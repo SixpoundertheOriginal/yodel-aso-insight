@@ -1,4 +1,3 @@
-
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
@@ -14,7 +13,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-const VERSION = '3.2.0-enterprise-fix-mapping' // Versioning for monitoring deployment consistency
+const VERSION = '3.3.0-enterprise-stability-fix' // Versioning for monitoring deployment consistency
 
 // --- Enterprise Architecture: Standardized Data Contracts ---
 // This interface now reflects the desired OUTPUT contract for the frontend
@@ -130,8 +129,19 @@ const extractFromJsonLd = (html: string, data: ScrapedMetadata) => {
       data.screenshot = data.screenshot ?? jsonData.screenshot
       data.url = data.url ?? jsonData.url
       data.author = data.author ?? jsonData.author?.name
-      data.ratingValue = data.ratingValue ?? jsonData.aggregateRating?.ratingValue
-      data.reviewCount = data.reviewCount ?? jsonData.aggregateRating?.reviewCount
+
+      // Ensure numeric types for rating and review count from JSON-LD
+      const ratingVal = jsonData.aggregateRating?.ratingValue
+      if (ratingVal !== undefined && data.ratingValue === undefined) {
+        const numVal = Number(ratingVal)
+        if (!isNaN(numVal)) data.ratingValue = numVal
+      }
+      const reviewVal = jsonData.aggregateRating?.reviewCount
+      if (reviewVal !== undefined && data.reviewCount === undefined) {
+        const numVal = Number(reviewVal)
+        if (!isNaN(numVal)) data.reviewCount = numVal
+      }
+
       data.icon = data.icon ?? jsonData.image // Extract icon from JSON-LD
       console.log('Successfully extracted data from JSON-LD.')
     } catch (e) {
@@ -176,6 +186,25 @@ const extractFromStandardMeta = (html: string, data: ScrapedMetadata) => {
   // 'application-name' is sometimes used for the app's title
   data.name = data.name ?? extractMetaContent(html, 'name', 'application-name')
   if (data.description || data.name) console.log('Extracted some data from standard meta tags.')
+}
+
+// NEW: Enterprise-grade data sanitization to ensure a stable contract with the frontend.
+const sanitizeMetadata = (metadata: ScrapedMetadata): ScrapedMetadata => {
+  return {
+    ...metadata,
+    name: metadata.name || 'Unknown App',
+    url: metadata.url || '',
+    title: metadata.title || metadata.name || 'App Title',
+    subtitle: metadata.subtitle || '',
+    description: metadata.description || 'No description available.',
+    applicationCategory: metadata.applicationCategory || 'App',
+    locale: '', // The frontend will add this based on the final URL
+    icon: metadata.icon || undefined,
+    developer: metadata.developer || undefined,
+    rating: metadata.rating || 0,
+    reviews: metadata.reviews || 0,
+    price: metadata.price || 'Free',
+  }
 }
 
 serve(async (req: Request) => {
@@ -299,7 +328,9 @@ serve(async (req: Request) => {
         if (cachedResult) {
           console.log(`Cache hit with status: ${cachedResult.status}`)
           if (cachedResult.status === 'SUCCESS') {
-            return new Response(JSON.stringify(cachedResult.data), {
+            // Sanitize cached data to ensure it adheres to the latest contract
+            const finalMetadata = sanitizeMetadata(cachedResult.data as ScrapedMetadata)
+            return new Response(JSON.stringify(finalMetadata), {
               headers: { ...corsHeaders, 'Content-Type': 'application/json' },
               status: 200,
             })
@@ -402,7 +433,7 @@ serve(async (req: Request) => {
 
       console.log(`Successfully processed metadata for: ${metadata.name}`)
 
-      // Cache the successful result. Use canonicalUrl
+      // Cache the successful result. Use canonicalUrl. Store the raw-ish data.
       await supabaseAdmin
         .from('scrape_cache')
         .upsert(
@@ -416,7 +447,10 @@ serve(async (req: Request) => {
           { onConflict: 'url,organization_id' }
         )
 
-      return new Response(JSON.stringify(metadata), {
+      // Sanitize the metadata before sending it to the frontend.
+      const finalMetadata = sanitizeMetadata(metadata)
+
+      return new Response(JSON.stringify(finalMetadata), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 200,
       })
