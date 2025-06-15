@@ -206,6 +206,17 @@ const sanitizeMetadata = (metadata: ScrapedMetadata): ScrapedMetadata => {
     // Basic decoding for common entities
     return text.replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>');
   }
+
+  // Helper to ensure we get a number, using a fallback if needed.
+  const getValidNumber = (primary: any, fallback: any): number => {
+    const primaryNum = Number(primary);
+    if (typeof primary === 'number' && !isNaN(primaryNum)) return primaryNum;
+    
+    const fallbackNum = Number(fallback);
+    if (typeof fallback === 'number' && !isNaN(fallbackNum)) return fallbackNum;
+
+    return 0;
+  }
   
   return {
     ...metadata,
@@ -218,8 +229,9 @@ const sanitizeMetadata = (metadata: ScrapedMetadata): ScrapedMetadata => {
     locale: '', // The frontend will add this based on the final URL
     icon: metadata.icon || undefined,
     developer: decodeHtmlEntities(metadata.developer || metadata.author) || undefined,
-    rating: typeof metadata.rating === 'number' && !isNaN(metadata.rating) ? metadata.rating : 0,
-    reviews: typeof metadata.reviews === 'number' && !isNaN(metadata.reviews) ? metadata.reviews : 0,
+    // --- CRITICAL FIX: Use helper to ensure rating/reviews are correctly populated ---
+    rating: getValidNumber(metadata.rating, metadata.ratingValue),
+    reviews: getValidNumber(metadata.reviews, metadata.reviewCount),
     price: metadata.price || 'Free',
   }
 }
@@ -329,104 +341,66 @@ serve(async (req: Request) => {
       else if (isUrl && !apiDataUsed) {
         canonicalUrl = appStoreUrl
       }
-
-      // --- Enterprise Architecture: Caching Layer ---
-      // Now that we have a canonical URL, check cache.
+      
+      // --- Enterprise Architecture: Data Enrichment via HTML Scraping ---
+      // We always attempt to scrape the HTML to enrich the API data, as some fields like
+      // the true subtitle or a higher-quality icon might be found there.
+      let html = '';
       if (canonicalUrl) {
-        console.log(`Checking cache for URL: ${canonicalUrl} in org: ${organizationId}`)
-        const { data: cachedResult, error: cacheError } = await supabaseAdmin
-          .from('scrape_cache')
-          .select('status, data, error')
-          .eq('url', canonicalUrl)
-          .eq('organization_id', organizationId)
-          .maybeSingle()
+          console.log(`Scraping for enrichment: ${canonicalUrl}`)
+          const scraperResponse = await fetch(canonicalUrl, {
+              headers: {
+                  'User-Agent':
+                  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+              },
+          })
 
-        if (cacheError) {
-          console.error('Error reading from cache (non-fatal):', cacheError.message)
-        }
-
-        if (cachedResult) {
-          console.log(`Cache hit with status: ${cachedResult.status}`)
-          if (cachedResult.status === 'SUCCESS') {
-            // Sanitize cached data to ensure it adheres to the latest contract
-            const finalMetadata = sanitizeMetadata(cachedResult.data as ScrapedMetadata)
-            return new Response(JSON.stringify(finalMetadata), {
-              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-              status: 200,
-            })
-          }
-          if (cachedResult.status === 'FAILED') {
-            return new Response(JSON.stringify({ error: cachedResult.error }), {
-              status: 422, // Unprocessable Entity
-              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            })
-          }
-        }
-        console.log('Cache miss. Proceeding to fetch data.')
-      }
-
-      // Fallback to HTML scraping if API-first approach did not yield data
-      if (!metadata && canonicalUrl) {
-        console.warn('API-first approach did not yield data. Falling back to HTML scraping.')
-
-        console.log(`Scraping URL: ${canonicalUrl}`)
-        const scraperResponse = await fetch(canonicalUrl, {
-          headers: {
-            'User-Agent':
-              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-          },
-        })
-
-        if (!scraperResponse.ok) {
-          console.error(`Scraper fetch failed with status: ${scraperResponse.status}`)
-          return new Response(
-            JSON.stringify({ error: `Failed to fetch App Store page. Status: ${scraperResponse.status}` }),
-            {
-              status: scraperResponse.status,
-              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            }
-          )
-        }
-
-        const html = await scraperResponse.text()
-
-        // --- Multi-Source Extraction Pipeline (Enrichment) ---
-        console.log('--- Starting multi-source enrichment pipeline ---')
-        extractFromJsonLd(html, metadata)
-        extractFromAppleTags(html, metadata)
-        extractFromOpenGraph(html, metadata)
-        extractFromStandardMeta(html, metadata)
-        console.log('--- Enrichment pipeline finished ---')
-
-        // --- Data Transformation & Validation for SCRAPED data ---
-        // Only parse title/subtitle from name if API didn't provide them.
-        if (!apiDataUsed && metadata.name) {
-          // Use the same robust splitting logic for scraped names
-          const parts = metadata.name.split(' - ')
-          if (parts.length > 1) {
-            metadata.title = parts[0].trim()
-            metadata.subtitle = parts.slice(1).join(' - ').trim()
+          if (scraperResponse.ok) {
+              html = await scraperResponse.text();
           } else {
-            metadata.title = metadata.name.trim()
+              console.warn(`HTML scrape for enrichment failed with status: ${scraperResponse.status}`)
           }
-        }
-        
-        console.log('Transforming raw scraped data to frontend contract...')
-        // Use ?? to avoid overwriting API data with scraped data
-        metadata.developer = metadata.developer ?? metadata.author
-        metadata.rating = metadata.rating ?? metadata.ratingValue
-        metadata.reviews = metadata.reviews ?? metadata.reviewCount
-        metadata.price = metadata.price ?? 'Free' // Scraper can't get price reliably
-        console.log(
-          `Transformed fields: developer=${metadata.developer}, rating=${metadata.rating}, reviews=${metadata.reviews}, icon=${!!metadata.icon}`
-        )
-        
-        try {
-          metadata.url = new URL(metadata.url, canonicalUrl).href
-        } catch (e) {
-          metadata.url = canonicalUrl
+      }
+
+      // --- Multi-Source Extraction & Intelligent Merging ---
+      if (html) {
+          const scrapedData: ScrapedMetadata = {};
+          console.log('--- Starting multi-source enrichment pipeline ---')
+          extractFromJsonLd(html, scrapedData)
+          extractFromAppleTags(html, scrapedData)
+          extractFromOpenGraph(html, scrapedData)
+          extractFromStandardMeta(html, scrapedData)
+          console.log('--- Enrichment pipeline finished ---')
+
+          // Merge scraped data into our primary metadata object.
+          // API data takes precedence for core, structured fields.
+          // HTML data is used for enrichment or as a fallback.
+          metadata.name = metadata.name ?? scrapedData.name;
+          metadata.description = scrapedData.description ?? metadata.description;
+          metadata.icon = metadata.icon ?? scrapedData.icon;
+          metadata.screenshot = metadata.screenshot ?? scrapedData.screenshot;
+          
+          // Only take scraped rating/reviews if API failed to provide them.
+          metadata.ratingValue = metadata.ratingValue ?? scrapedData.ratingValue;
+          metadata.reviewCount = metadata.reviewCount ?? scrapedData.reviewCount;
+      }
+
+      // --- Data Transformation & Validation for SCRAPED data ---
+      if (!apiDataUsed && metadata.name && !metadata.title) {
+        const parts = metadata.name.split(' - ')
+        if (parts.length > 1) {
+          metadata.title = parts[0].trim()
+          metadata.subtitle = parts.slice(1).join(' - ').trim()
+        } else {
+          metadata.title = metadata.name.trim()
         }
       }
+
+      // Final mapping to frontend contract fields
+      metadata.developer = metadata.developer ?? metadata.author;
+      metadata.rating = metadata.rating ?? metadata.ratingValue;
+      metadata.reviews = metadata.reviews ?? metadata.reviewCount;
+      metadata.price = metadata.price ?? 'Free';
 
       // --- Enterprise Architecture: Final Validation, Caching & Response ---
       if (!metadata || !metadata.name || !metadata.url) {
@@ -454,7 +428,10 @@ serve(async (req: Request) => {
 
       console.log(`Successfully processed metadata for: ${metadata.name}`)
 
-      // Cache the successful result. Use canonicalUrl. Store the raw-ish data.
+      // Sanitize the metadata before it is cached and sent to the frontend.
+      const finalMetadata = sanitizeMetadata(metadata)
+
+      // Cache the successful result. Use canonicalUrl. Store the sanitized data.
       await supabaseAdmin
         .from('scrape_cache')
         .upsert(
@@ -462,14 +439,11 @@ serve(async (req: Request) => {
             url: canonicalUrl,
             organization_id: organizationId,
             status: 'SUCCESS',
-            data: metadata,
+            data: finalMetadata, // Cache the clean, final object
             expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // Cache success for 24 hours
           },
           { onConflict: 'url,organization_id' }
         )
-
-      // Sanitize the metadata before sending it to the frontend.
-      const finalMetadata = sanitizeMetadata(metadata)
 
       return new Response(JSON.stringify(finalMetadata), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

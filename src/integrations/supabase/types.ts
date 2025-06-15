@@ -9,6 +9,42 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      admin_creation_sessions: {
+        Row: {
+          created_at: string | null
+          email: string
+          error_details: string | null
+          id: string
+          ip_address: unknown | null
+          state: string
+          step: string
+          updated_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          email: string
+          error_details?: string | null
+          id?: string
+          ip_address?: unknown | null
+          state?: string
+          step?: string
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          email?: string
+          error_details?: string | null
+          id?: string
+          ip_address?: unknown | null
+          state?: string
+          step?: string
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       apps: {
         Row: {
           app_icon_url: string | null
@@ -471,6 +507,14 @@ export type Database = {
       get_current_user_role: {
         Args: Record<PropertyKey, never>
         Returns: string
+      }
+      lock_platform_admin_creation: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
+      unlock_platform_admin_creation: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
       }
     }
     Enums: {
