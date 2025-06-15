@@ -48,7 +48,7 @@ export const useComparisonData = (type: ComparisonType): ComparisonData => {
           ...item,
           downloads: Math.floor(item.downloads * factor),
           impressions: Math.floor(item.impressions * factor),
-          pageViews: Math.floor(item.pageViews * factor),
+          product_page_views: Math.floor(item.product_page_views * factor),
         };
       }),
     };

@@ -14,7 +14,7 @@ export interface MetricSummary {
 export interface AsoMetrics {
   impressions: MetricSummary;
   downloads: MetricSummary;
-  pageViews: MetricSummary; // Renamed from 'product_page_views' to match the actual data structure
+  product_page_views: MetricSummary; // Renamed from 'pageViews' to match App Store Connect
   cvr: MetricSummary;
 }
 
@@ -28,7 +28,7 @@ export interface TimeSeriesPoint {
   date: string;
   impressions: number;
   downloads: number;
-  pageViews: number; // Renamed to be consistent with AsoMetrics
+  product_page_views: number; // Renamed to be consistent with AsoMetrics
 }
 
 export interface AsoData {
@@ -62,7 +62,7 @@ export const useMockAsoData = (
         const summary: AsoMetrics = {
           impressions: generateMetric(),
           downloads: generateMetric(),
-          pageViews: generateMetric(), // Renamed from 'product_page_views'
+          product_page_views: generateMetric(), // Renamed from 'pageViews'
           cvr: { 
             value: parseFloat((Math.random() * 10).toFixed(2)), // 0 to 10%
             delta: parseFloat((Math.random() * 40 - 20).toFixed(1)) // -20% to +20%
@@ -83,7 +83,7 @@ export const useMockAsoData = (
             date: currentDate.toISOString().split('T')[0],
             impressions: Math.floor(Math.random() * 5000) + 500,
             downloads: Math.floor(Math.random() * 1000) + 100,
-            pageViews: Math.floor(Math.random() * 3000) + 300, // Renamed from 'pageViews'
+            product_page_views: Math.floor(Math.random() * 3000) + 300, // Renamed from 'pageViews'
           });
         }
         

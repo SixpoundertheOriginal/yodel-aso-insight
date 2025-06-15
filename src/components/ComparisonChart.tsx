@@ -16,7 +16,7 @@ interface TimeSeriesDataPoint {
   date: string;
   impressions: number;
   downloads: number;
-  pageViews: number;
+  product_page_views: number;
   [key: string]: any;
 }
 

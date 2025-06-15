@@ -21,7 +21,7 @@ const TimeSeriesChart: React.FC<TimeSeriesChartProps> = React.memo(({
   const chartConfigObj = {
     impressions: { label: "Impressions", color: chartColors.impressions },
     downloads: { label: "Downloads", color: chartColors.downloads },
-    pageViews: { label: "Page Views", color: chartColors.pageViews },
+    product_page_views: { label: "Product Page Views", color: chartColors.product_page_views },
   } satisfies ChartConfig;
   
   return (
@@ -71,8 +71,8 @@ const TimeSeriesChart: React.FC<TimeSeriesChartProps> = React.memo(({
           />
           <Line 
             type="monotone" 
-            dataKey="pageViews" 
-            stroke="var(--color-pageViews)"
+            dataKey="product_page_views" 
+            stroke="var(--color-product_page_views)"
             strokeWidth={2}
             dot={false}
             activeDot={{ r: 6 }}

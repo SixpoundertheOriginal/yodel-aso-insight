@@ -3,7 +3,7 @@
 export const chartColors = {
   impressions: "#F97316", // Yodel orange for impressions 
   downloads: "#3B82F6",   // Yodel blue for downloads
-  pageViews: "#8B5CF6",   // Complementary purple
+  product_page_views: "#8B5CF6",   // Complementary purple
   current: "#F97316",     // Yodel orange for current data
   previous: "#94A3B8",    // Grey for previous data
 };

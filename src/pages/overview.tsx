@@ -5,7 +5,7 @@ import ComparisonChart from "../components/ComparisonChart";
 import { useComparisonData } from "../hooks";
 import { DateRange } from "../hooks/useMockAsoData";
 import { Card, CardContent, CardTitle, CardHeader } from "@/components/ui/card";
-import { ChartContainer } from "@/components/ui/ChartContainer";
+import { ChartContainer } from "@/components/ui/chart";
 import { Skeleton } from "@/components/ui/skeleton";
 import { 
   Select,
