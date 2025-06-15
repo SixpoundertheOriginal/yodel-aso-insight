@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -10,7 +9,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { ScrapedMetadata } from './MetadataWorkspace';
 
 interface MetadataImporterProps {
-  onImportSuccess: (data: ScrapedMetadata) => void;
+  onImportSuccess: (data: ScrapedMetadata, organizationId: string) => void;
 }
 
 // Enterprise-grade data validation function
@@ -20,6 +19,7 @@ const validateMetadata = (data: any): { isValid: boolean; issues: string[]; sani
   console.log('🔍 [VALIDATION] Raw data received from scraper:', JSON.stringify(data, null, 2));
   
   // Check required fields
+  if (!data.id) issues.push('Missing app ID');
   if (!data.name) issues.push('Missing app name');
   if (!data.url) issues.push('Missing app URL');
   if (!data.title) issues.push('Missing app title');
@@ -42,6 +42,7 @@ const validateMetadata = (data: any): { isValid: boolean; issues: string[]; sani
   
   // Create sanitized version with enterprise-grade defaults
   const sanitized: ScrapedMetadata = {
+    appId: data.id || '',
     name: data.name || 'Unknown App',
     url: data.url || '',
     title: data.title || data.name || 'App Title',
@@ -151,7 +152,6 @@ export const MetadataImporter: React.FC<MetadataImporterProps> = ({ onImportSucc
         throw new Error(responseData.error);
       }
       
-      // Enterprise-grade data validation
       const validation = validateMetadata(responseData);
       
       if (!validation.isValid) {
@@ -185,7 +185,7 @@ export const MetadataImporter: React.FC<MetadataImporterProps> = ({ onImportSucc
 
       console.log('🎯 [IMPORT] Final metadata being passed to workspace:', JSON.stringify(finalMetadata, null, 2));
       
-      onImportSuccess(finalMetadata);
+      onImportSuccess(finalMetadata, organizationId);
 
     } catch (e: any) {
       console.error('❌ [IMPORT] Import failed:', e);

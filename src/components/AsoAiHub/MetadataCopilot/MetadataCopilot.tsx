@@ -7,15 +7,18 @@ import { MetadataErrorBoundary } from './MetadataErrorBoundary';
 
 export const MetadataCopilot: React.FC = () => {
   const [importedData, setImportedData] = useState<ScrapedMetadata | null>(null);
+  const [organizationId, setOrganizationId] = useState<string | null>(null);
 
-  const handleImportSuccess = (data: ScrapedMetadata) => {
-    console.log('🎯 [COPILOT] Received imported data:', data);
+  const handleImportSuccess = (data: ScrapedMetadata, orgId: string) => {
+    console.log('🎯 [COPILOT] Received imported data:', data, 'for org:', orgId);
     setImportedData(data);
+    setOrganizationId(orgId);
   };
 
   const handleReset = () => {
     console.log('🔄 [COPILOT] Resetting copilot state');
     setImportedData(null);
+    setOrganizationId(null);
   };
 
   return (
@@ -33,10 +36,10 @@ export const MetadataCopilot: React.FC = () => {
           </CardHeader>
         </Card>
         
-        {!importedData ? (
+        {!importedData || !organizationId ? (
           <MetadataImporter onImportSuccess={handleImportSuccess} />
         ) : (
-          <MetadataWorkspace initialData={importedData} />
+          <MetadataWorkspace initialData={importedData} organizationId={organizationId} />
         )}
       </div>
     </MetadataErrorBoundary>

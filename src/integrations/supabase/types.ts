@@ -248,6 +248,78 @@ export type Database = {
         }
         Relationships: []
       }
+      keyword_rankings: {
+        Row: {
+          app_store_id: string
+          checked_at: string
+          country: string
+          id: number
+          keyword: string
+          organization_id: string
+          rank: number | null
+        }
+        Insert: {
+          app_store_id: string
+          checked_at?: string
+          country: string
+          id?: number
+          keyword: string
+          organization_id: string
+          rank?: number | null
+        }
+        Update: {
+          app_store_id?: string
+          checked_at?: string
+          country?: string
+          id?: number
+          keyword?: string
+          organization_id?: string
+          rank?: number | null
+        }
+        Relationships: []
+      }
+      metadata_versions: {
+        Row: {
+          app_store_id: string
+          created_at: string
+          created_by: string | null
+          id: string
+          is_live: boolean
+          keywords: string
+          notes: string | null
+          organization_id: string
+          score: Json | null
+          subtitle: string
+          title: string
+        }
+        Insert: {
+          app_store_id: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_live?: boolean
+          keywords: string
+          notes?: string | null
+          organization_id: string
+          score?: Json | null
+          subtitle: string
+          title: string
+        }
+        Update: {
+          app_store_id?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_live?: boolean
+          keywords?: string
+          notes?: string | null
+          organization_id?: string
+          score?: Json | null
+          subtitle?: string
+          title?: string
+        }
+        Relationships: []
+      }
       organizations: {
         Row: {
           api_limits: Json | null

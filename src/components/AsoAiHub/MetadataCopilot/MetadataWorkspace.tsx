@@ -9,6 +9,7 @@ import { DataIntegrityChecker } from './DataIntegrityChecker';
 export interface ScrapedMetadata {
   name: string; // The full, original name from the App Store
   url: string; // The canonical App Store URL for the app
+  appId: string; // The app store ID (e.g., from search results)
   title: string; // The parsed main title of the app
   subtitle: string; // The parsed subtitle of the app
   description?: string;
@@ -28,9 +29,10 @@ export interface ScrapedMetadata {
 
 interface MetadataWorkspaceProps {
   initialData: ScrapedMetadata;
+  organizationId: string;
 }
 
-export const MetadataWorkspace: React.FC<MetadataWorkspaceProps> = ({ initialData }) => {
+export const MetadataWorkspace: React.FC<MetadataWorkspaceProps> = ({ initialData, organizationId }) => {
   console.log('🏗️ [WORKSPACE] Initializing workspace with data:', JSON.stringify(initialData, null, 2));
   
   return (
@@ -45,7 +47,7 @@ export const MetadataWorkspace: React.FC<MetadataWorkspaceProps> = ({ initialDat
           <CurrentMetadataPanel metadata={initialData} />
         </div>
         <div>
-          <SuggestedMetadataPanel initialData={initialData} />
+          <SuggestedMetadataPanel initialData={initialData} organizationId={organizationId} />
         </div>
       </div>
     </div>
