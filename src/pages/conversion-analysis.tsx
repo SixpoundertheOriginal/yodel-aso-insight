@@ -1,4 +1,3 @@
-
 import React from "react";
 import { MainLayout } from "../layouts";
 import { useAsoData } from "../context/AsoDataContext";
@@ -75,7 +74,7 @@ const ConversionAnalysisPage: React.FC = () => {
               onSourceChange={setSelectedSources} 
             />
           </div>
-          <TimeSeriesChart data={data.timeseriesData} title="Conversion Rate Trends" />
+          <TimeSeriesChart data={data.timeseriesData} />
         </section>
         
         {/* By Traffic Source Section */}
@@ -103,7 +102,6 @@ const ConversionAnalysisPage: React.FC = () => {
               {/* Traffic Source Time Series Chart */}
               <TimeSeriesChart 
                 data={filteredData} 
-                title="Conversion Rate by Traffic Source" 
               />
             </>
           )}

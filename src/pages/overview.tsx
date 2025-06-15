@@ -1,4 +1,3 @@
-
 import React, { useState } from "react";
 import { MainLayout } from "../layouts";
 import { useAsoData } from "../context/AsoDataContext";
@@ -117,14 +116,12 @@ const OverviewPage: React.FC = () => {
                 <CardTitle className="text-2xl font-bold text-white">Impressions</CardTitle>
               </CardHeader>
               <CardContent className="p-8">
-                <ChartContainer height={500}>
-                  <ComparisonChart
-                    currentData={current.timeseriesData}
-                    previousData={previous.timeseriesData}
-                    title="Impressions"
-                    metric="impressions"
-                  />
-                </ChartContainer>
+                <ComparisonChart
+                  currentData={current.timeseriesData}
+                  previousData={previous.timeseriesData}
+                  title="Impressions"
+                  metric="impressions"
+                />
               </CardContent>
             </Card>
             
@@ -134,14 +131,12 @@ const OverviewPage: React.FC = () => {
                 <CardTitle className="text-2xl font-bold text-white">Downloads</CardTitle>
               </CardHeader>
               <CardContent className="p-8">
-                <ChartContainer height={500}>
-                  <ComparisonChart
-                    currentData={current.timeseriesData}
-                    previousData={previous.timeseriesData}
-                    title="Downloads"
-                    metric="downloads"
-                  />
-                </ChartContainer>
+                <ComparisonChart
+                  currentData={current.timeseriesData}
+                  previousData={previous.timeseriesData}
+                  title="Downloads"
+                  metric="downloads"
+                />
               </CardContent>
             </Card>
             
@@ -154,7 +149,7 @@ const OverviewPage: React.FC = () => {
                 {data && data.summary && (
                   <>
                     <div className="mb-10">
-                      <ChartContainer height={250}>
+                      <div className="h-[250px]">
                         <div className="flex flex-col h-full justify-center items-center">
                           <div className="text-8xl font-bold text-yodel-orange">
                             {((data.summary.downloads.value / data.summary.impressions.value) * 100).toFixed(1)}%
@@ -167,11 +162,11 @@ const OverviewPage: React.FC = () => {
                             <span className="text-xl text-zinc-400 ml-3">vs previous period</span>
                           </div>
                         </div>
-                      </ChartContainer>
+                      </div>
                     </div>
                     
                     <div className="mt-8">
-                      <ChartContainer height={220}>
+                      <div className="h-[220px]">
                         <div className="grid grid-cols-2 gap-8 h-full">
                           <div className="stat-card flex flex-col justify-center">
                             <div className="text-zinc-400 mb-3 text-lg">Total Impressions</div>
@@ -195,7 +190,7 @@ const OverviewPage: React.FC = () => {
                             </div>
                           </div>
                         </div>
-                      </ChartContainer>
+                      </div>
                     </div>
                   </>
                 )}
