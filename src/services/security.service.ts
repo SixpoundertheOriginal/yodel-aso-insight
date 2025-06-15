@@ -1,4 +1,3 @@
-
 import { supabase } from '@/integrations/supabase/client';
 import { SecurityContext, AuditLogEntry, RateLimitConfig, SecureResponse, ValidationError } from '@/types/security';
 
@@ -104,15 +103,20 @@ class SecurityService {
    */
   async logAuditEntry(entry: Omit<AuditLogEntry, 'id' | 'timestamp'>): Promise<SecureResponse<string>> {
     try {
-      const auditEntry = {
-        ...entry,
-        timestamp: new Date().toISOString(),
-        details: JSON.stringify(entry.details)
+      const auditEntryForDb = {
+        organization_id: entry.organizationId,
+        user_id: entry.userId,
+        action: entry.action,
+        resource_type: entry.resourceType,
+        resource_id: entry.resourceId,
+        details: entry.details,
+        ip_address: entry.ipAddress,
+        user_agent: entry.userAgent,
       };
 
       const { data, error } = await supabase
         .from('audit_logs')
-        .insert(auditEntry)
+        .insert(auditEntryForDb)
         .select('id')
         .single();
 
