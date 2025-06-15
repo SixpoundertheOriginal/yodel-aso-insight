@@ -22,5 +22,4 @@ export const chartConfig = {
     border: "border-zinc-800", 
     text: "text-zinc-300"
   },
-  height: 450 // increased chart height for better visualization
 };

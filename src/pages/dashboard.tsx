@@ -1,4 +1,3 @@
-
 // src/pages/dashboard.tsx
 import React, { useState, useEffect } from "react";
 import { MainLayout } from "../layouts";
@@ -9,8 +8,6 @@ import { useAsoData } from "../context/AsoDataContext";
 import { useComparisonData } from "../hooks/useComparisonData";
 import { Toggle } from "@/components/ui/toggle";
 import { Card, CardContent } from "@/components/ui/card";
-import ChartContainer from "@/components/ui/ChartContainer";
-import { chartConfig } from "@/utils/chartConfig";
 
 const Dashboard: React.FC = () => {
   const [excludeAsa, setExcludeAsa] = useState(false);
@@ -105,9 +102,7 @@ const Dashboard: React.FC = () => {
       <Card className="bg-zinc-800 rounded-md mb-8">
         <CardContent className="p-6">
           <h2 className="text-lg font-medium mb-4">Performance Metrics</h2>
-          <ChartContainer height={chartConfig.height}>
-            {data.timeseriesData && <TimeSeriesChart data={data.timeseriesData} />}
-          </ChartContainer>
+          {data.timeseriesData && <TimeSeriesChart data={data.timeseriesData} />}
         </CardContent>
       </Card>
 
@@ -118,14 +113,12 @@ const Dashboard: React.FC = () => {
           <Card className="bg-zinc-800 rounded-md mb-8">
             <CardContent className="p-6">
               <h2 className="text-lg font-medium mb-4">Previous Period</h2>
-              <ChartContainer height={chartConfig.height}>
-                <ComparisonChart
-                  currentData={periodComparison.current.timeseriesData}
-                  previousData={periodComparison.previous.timeseriesData}
-                  title="Previous Period"
-                  metric="downloads"
-                />
-              </ChartContainer>
+              <ComparisonChart
+                currentData={periodComparison.current.timeseriesData}
+                previousData={periodComparison.previous.timeseriesData}
+                title="Previous Period"
+                metric="downloads"
+              />
             </CardContent>
           </Card>
         )}
@@ -137,14 +130,12 @@ const Dashboard: React.FC = () => {
           <Card className="bg-zinc-800 rounded-md mb-8">
             <CardContent className="p-6">
               <h2 className="text-lg font-medium mb-4">Previous Year</h2>
-              <ChartContainer height={chartConfig.height}>
-                <ComparisonChart
-                  currentData={yearComparison.current.timeseriesData}
-                  previousData={yearComparison.previous.timeseriesData}
-                  title="Previous Year"
-                  metric="downloads"
-                />
-              </ChartContainer>
+              <ComparisonChart
+                currentData={yearComparison.current.timeseriesData}
+                previousData={yearComparison.previous.timeseriesData}
+                title="Previous Year"
+                metric="downloads"
+              />
             </CardContent>
           </Card>
         )}

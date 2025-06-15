@@ -1,27 +1,16 @@
 
 import React from "react";
-import { 
-  LineChart, 
-  Line, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
-  Legend, 
-  ResponsiveContainer 
-} from "recharts";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid } from "recharts";
 import { TimeSeriesPoint } from "@/hooks/useMockAsoData";
-import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
-import { chartColors, chartConfig } from "@/utils/chartConfig";
+import { ChartContainer, ChartTooltip, ChartTooltipContent, ChartLegend, ChartLegendContent, type ChartConfig } from "@/components/ui/chart";
+import { chartColors } from "@/utils/chartConfig";
 
 interface TimeSeriesChartProps {
   data: TimeSeriesPoint[];
-  title?: string;
 }
 
 const TimeSeriesChart: React.FC<TimeSeriesChartProps> = React.memo(({ 
   data,
-  title = "Performance Over Time"
 }) => {
   // Format the date to be more readable
   const formattedData = data.map(item => ({
@@ -29,87 +18,67 @@ const TimeSeriesChart: React.FC<TimeSeriesChartProps> = React.memo(({
     date: new Date(item.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
   }));
 
-  // Use shared chart config
   const chartConfigObj = {
-    impressions: { color: chartColors.impressions },
-    downloads: { color: chartColors.downloads },
-    pageViews: { color: chartColors.pageViews }
-  };
+    impressions: { label: "Impressions", color: chartColors.impressions },
+    downloads: { label: "Downloads", color: chartColors.downloads },
+    pageViews: { label: "Page Views", color: chartColors.pageViews },
+  } satisfies ChartConfig;
   
   return (
-    <div className="w-full">
-      <div className="flex justify-between items-center mb-6">
-        <div className="flex items-center space-x-4">
-          <div className="flex items-center">
-            <div className="w-3 h-3 bg-blue-500 rounded-full mr-2" style={{ backgroundColor: chartColors.impressions }}></div>
-            <span className="text-sm text-zinc-400">Impressions</span>
-          </div>
-          <div className="flex items-center">
-            <div className="w-3 h-3 bg-green-500 rounded-full mr-2" style={{ backgroundColor: chartColors.downloads }}></div>
-            <span className="text-sm text-zinc-400">Downloads</span>
-          </div>
-          <div className="flex items-center">
-            <div className="w-3 h-3 bg-purple-500 rounded-full mr-2" style={{ backgroundColor: chartColors.pageViews }}></div>
-            <span className="text-sm text-zinc-400">Page Views</span>
-          </div>
-        </div>
-      </div>
-      
-      <div className="h-80 w-full">
-        <ChartContainer config={chartConfigObj}>
-          <LineChart data={formattedData}>
-            <CartesianGrid 
-              strokeDasharray={chartConfig.grid.strokeDasharray} 
-              stroke={chartConfig.grid.stroke}
-            />
-            <XAxis 
-              dataKey="date"
-              tick={{ fill: chartConfig.axis.tick.fill }}
-              tickLine={{ stroke: chartConfig.axis.tick.fill }}
-              tickFormatter={(value) => {
-                // On mobile screens, show shorter date format
-                if (window.innerWidth < 768) {
-                  return value.split(' ')[1]; // Just show the day
-                }
-                return value;
-              }}
-            />
-            <YAxis 
-              tick={{ fill: chartConfig.axis.tick.fill }} 
-              tickLine={{ stroke: chartConfig.axis.tick.fill }}
-              width={60}
-            />
-            <ChartTooltip 
-              content={<ChartTooltipContent />}
-            />
-            <Legend />
-            <Line 
-              type="monotone" 
-              dataKey="impressions" 
-              stroke={chartColors.impressions}
-              strokeWidth={2}
-              dot={false}
-              activeDot={{ r: 6 }}
-            />
-            <Line 
-              type="monotone" 
-              dataKey="downloads" 
-              stroke={chartColors.downloads}
-              strokeWidth={2}
-              dot={false}
-              activeDot={{ r: 6 }}
-            />
-            <Line 
-              type="monotone" 
-              dataKey="pageViews" 
-              stroke={chartColors.pageViews}
-              strokeWidth={2}
-              dot={false}
-              activeDot={{ r: 6 }}
-            />
-          </LineChart>
-        </ChartContainer>
-      </div>
+    <div className="w-full h-[450px]">
+      <ChartContainer config={chartConfigObj} className="w-full h-full">
+        <LineChart data={formattedData} accessibilityLayer>
+          <CartesianGrid vertical={false} />
+          <XAxis 
+            dataKey="date"
+            tickLine={false}
+            axisLine={false}
+            tickMargin={8}
+            tickFormatter={(value) => {
+              if (window.innerWidth < 768) {
+                return value.split(' ')[1]; // Just show the day on mobile
+              }
+              return value;
+            }}
+          />
+          <YAxis 
+            tickLine={false}
+            axisLine={false}
+            tickMargin={8}
+            tickFormatter={(value) => value.toLocaleString()}
+            width={60}
+          />
+          <ChartTooltip 
+            cursor={false}
+            content={<ChartTooltipContent indicator="dot" />}
+          />
+          <ChartLegend content={<ChartLegendContent />} />
+          <Line 
+            type="monotone" 
+            dataKey="impressions" 
+            stroke="var(--color-impressions)"
+            strokeWidth={2}
+            dot={false}
+            activeDot={{ r: 6 }}
+          />
+          <Line 
+            type="monotone" 
+            dataKey="downloads" 
+            stroke="var(--color-downloads)"
+            strokeWidth={2}
+            dot={false}
+            activeDot={{ r: 6 }}
+          />
+          <Line 
+            type="monotone" 
+            dataKey="pageViews" 
+            stroke="var(--color-pageViews)"
+            strokeWidth={2}
+            dot={false}
+            activeDot={{ r: 6 }}
+          />
+        </LineChart>
+      </ChartContainer>
     </div>
   );
 });
