@@ -1,13 +1,14 @@
+
 import React, { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Upload, FileText, X, Image, FileSpreadsheet } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
-interface FileUploadSectionProps {
+interface GrowthGapFileUploadProps {
   onFilesUploaded: (files: File[]) => void;
 }
 
-export const FileUploadSection: React.FC<FileUploadSectionProps> = ({ onFilesUploaded }) => {
+export const GrowthGapFileUpload: React.FC<GrowthGapFileUploadProps> = ({ onFilesUploaded }) => {
   const [files, setFiles] = useState<File[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);

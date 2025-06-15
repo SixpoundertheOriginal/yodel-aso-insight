@@ -1,0 +1,2 @@
+
+export { GrowthGapCopilot } from './GrowthGapCopilot';

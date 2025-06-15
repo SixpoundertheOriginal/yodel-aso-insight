@@ -1,15 +1,13 @@
 
 import React, { useState } from "react";
-import { MainLayout } from "@/layouts";
-import { ChatInterface } from "@/components/GrowthGapFinder/ChatInterface";
-import { FileUploadSection } from "@/components/GrowthGapFinder/FileUploadSection";
-import { InsightModules } from "@/components/GrowthGapFinder/InsightModules";
-import { ResultsDisplay } from "@/components/GrowthGapFinder/ResultsDisplay";
 import { Card } from "@/components/ui/card";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { GrowthGapChatInterface } from "./GrowthGapChatInterface";
+import { GrowthGapFileUpload } from "./GrowthGapFileUpload";
+import { GrowthGapInsights } from "./GrowthGapInsights";
+import { GrowthGapResults } from "./GrowthGapResults";
 
-// Import our keyword analysis utilities
 import { 
   parseKeywordData, 
   analyzeBrandVsGeneric,
@@ -20,7 +18,7 @@ import {
   analyzeMissedImpressions
 } from "@/utils/keywordAnalysis";
 
-const GrowthGapFinderPage = () => {
+export const GrowthGapCopilot: React.FC = () => {
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
   const [selectedInsight, setSelectedInsight] = useState<string | null>(null);
   const [results, setResults] = useState<any | null>(null);
@@ -32,7 +30,6 @@ const GrowthGapFinderPage = () => {
     setUploadedFiles(files);
     
     if (files.length > 0) {
-      // Read and process the first file
       const file = files[0];
       if (file.type === 'text/csv' || file.type === 'text/tab-separated-values' || file.name.endsWith('.csv') || file.name.endsWith('.tsv')) {
         const reader = new FileReader();
@@ -61,7 +58,6 @@ const GrowthGapFinderPage = () => {
     setSelectedInsight(insightType);
     setIsAnalyzing(true);
     
-    // If we have real keyword data, use it for analysis
     if (keywordData) {
       try {
         const parsedKeywords = parseKeywordData(keywordData);
@@ -69,36 +65,29 @@ const GrowthGapFinderPage = () => {
         
         let resultData;
         
-        // Try to do local analysis first
         if (parsedKeywords.length > 0) {
           switch(insightType) {
             case "BrandVsGeneric":
               resultData = analyzeBrandVsGeneric(parsedKeywords);
               break;
-              
             case "CompetitorComparison":
               resultData = analyzeCompetitorComparison(parsedKeywords);
               break;
-              
             case "MetadataSuggestions":
               resultData = analyzeMetadataSuggestions(parsedKeywords);
               break;
-              
             case "GrowthOpportunity":
               resultData = analyzeGrowthOpportunity(parsedKeywords);
               break;
-              
             case "QuickWins":
               resultData = analyzeQuickWins(parsedKeywords);
               break;
-              
             case "MissedImpressions":
               resultData = analyzeMissedImpressions(parsedKeywords);
               break;
           }
         }
         
-        // If local analysis isn't available or fails, try the edge function
         if (!resultData) {
           const { data, error } = await supabase.functions.invoke('aso-chat', {
             body: {
@@ -128,21 +117,16 @@ const GrowthGapFinderPage = () => {
         });
       } catch (error) {
         console.error('Error analyzing data:', error);
-        // Fall back to simulated analysis
         simulateAnalysis(insightType);
       }
     } else {
-      // Fall back to simulated analysis
       simulateAnalysis(insightType);
     }
   };
   
-  // Simulated analysis as fallback
   const simulateAnalysis = (insightType: string) => {
-    // Simulated analysis duration
-    const analysisDuration = 2000 + Math.random() * 1500; // Between 2-3.5 seconds
+    const analysisDuration = 2000 + Math.random() * 1500;
     
-    // Simulate results for each insight type
     setTimeout(() => {
       let resultData;
       
@@ -167,7 +151,6 @@ const GrowthGapFinderPage = () => {
             ]
           };
           break;
-          
         case "BrandVsGeneric":
           resultData = {
             title: "Brand vs Generic Keyword Analysis",
@@ -188,96 +171,6 @@ const GrowthGapFinderPage = () => {
             ]
           };
           break;
-          
-        case "CompetitorComparison":
-          resultData = {
-            title: "Competitor Comparison",
-            summary: "Analysis of your app compared to top 3 competitors in your category.",
-            metrics: [
-              { label: "Keyword Overlap", value: "42%" },
-              { label: "Ranking Advantage", value: "18%" },
-              { label: "Category Position", value: "#4" }
-            ],
-            recommendations: [
-              "Target keywords where competitors rank but you don't",
-              "Improve keyword density for terms where you're close to top 3",
-              "Analyze top competitor creative assets for insights"
-            ],
-            chartData: [
-              { name: "Top 10", value: 24, fill: "#10B981" },
-              { name: "11-50", value: 38, fill: "#3B82F6" },
-              { name: "51+", value: 15, fill: "#F97316" },
-              { name: "Not Ranking", value: 83, fill: "#6B7280" }
-            ]
-          };
-          break;
-          
-        case "MetadataSuggestions":
-          resultData = {
-            title: "Metadata Optimization Suggestions",
-            summary: "Recommendations for optimizing your app store metadata.",
-            metrics: [
-              { label: "Title Optimization Score", value: "68%" },
-              { label: "Description Relevance", value: "Medium" },
-              { label: "Keyword Coverage", value: "72%" }
-            ],
-            recommendations: [
-              "Update app title to include 'fitness tracker'",
-              "Add more benefit-oriented language in first description paragraph",
-              "Include more category-specific keywords in subtitle"
-            ],
-            chartData: [
-              { name: "High Volume", value: 28, fill: "#F97316" },
-              { name: "Medium Volume", value: 45, fill: "#3B82F6" },
-              { name: "Low Volume", value: 37, fill: "#10B981" }
-            ]
-          };
-          break;
-          
-        case "GrowthOpportunity":
-          resultData = {
-            title: "Growth Opportunity Analysis",
-            summary: "Identification of key growth areas based on market trends and your app's performance.",
-            metrics: [
-              { label: "Growth Potential", value: "High" },
-              { label: "Market Share Gap", value: "18%" },
-              { label: "Trending Keywords", value: "12" }
-            ],
-            recommendations: [
-              "Focus on emerging 'wellness analytics' search trend",
-              "Target growing international markets (Spain, Brazil)",
-              "Capitalize on seasonality with themed promotions"
-            ],
-            chartData: [
-              { name: "High Volume Gaps", value: 18, fill: "#F97316" },
-              { name: "Quick Growth", value: 24, fill: "#3B82F6" },
-              { name: "Low Risk", value: 32, fill: "#10B981" }
-            ]
-          };
-          break;
-          
-        case "QuickWins":
-          resultData = {
-            title: "Quick Wins Analysis",
-            summary: "Low-effort, high-impact opportunities for immediate results.",
-            metrics: [
-              { label: "Easy Improvements", value: "8" },
-              { label: "Estimated Impact", value: "~15%" },
-              { label: "Implementation Time", value: "1-2 weeks" }
-            ],
-            recommendations: [
-              "Update screenshots to highlight key features",
-              "Add missing keywords to subtitle",
-              "Respond to recent negative reviews"
-            ],
-            chartData: [
-              { name: "Low Difficulty", value: 12, fill: "#10B981" },
-              { name: "Just Outside Top 10", value: 8, fill: "#3B82F6" },
-              { name: "Other Opportunities", value: 5, fill: "#F97316" }
-            ]
-          };
-          break;
-          
         default:
           resultData = {
             title: "ASO Analysis",
@@ -312,7 +205,6 @@ const GrowthGapFinderPage = () => {
     }, analysisDuration);
   };
   
-  // Helper function to format insight type names for display
   const formatInsightName = (insightType: string): string => {
     switch(insightType) {
       case "MissedImpressions": return "Missed Impressions";
@@ -324,56 +216,39 @@ const GrowthGapFinderPage = () => {
       default: return insightType;
     }
   };
-  
+
   return (
-    <MainLayout>
-      <div className="flex flex-col space-y-6">
-        <div className="flex items-center">
-          <h1 className="text-2xl font-bold text-white">
-            <span className="text-yodel-orange mr-2">•</span>
-            Growth Gap Finder
-          </h1>
-        </div>
-        
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-12rem)]">
-          {/* Left Column - Chat & File Upload */}
-          <div className="lg:col-span-1 flex flex-col space-y-6">
-            <Card className="flex-1 bg-zinc-900/70 border-zinc-800 shadow-lg">
-              <ChatInterface 
-                onInsightSelect={handleInsightSelect} 
-                uploadedFiles={uploadedFiles}
-              />
-            </Card>
-            
-            <Card className="bg-zinc-900/70 border-zinc-800 shadow-lg">
-              <FileUploadSection onFilesUploaded={handleFileUpload} />
-            </Card>
-          </div>
-          
-          {/* Middle Column - Insight Modules */}
-          <div className="lg:col-span-1">
-            <Card className="h-full bg-zinc-900/70 border-zinc-800 shadow-lg">
-              <InsightModules 
-                onInsightSelect={handleInsightSelect}
-                selectedInsight={selectedInsight}
-                isAnalyzing={isAnalyzing}
-              />
-            </Card>
-          </div>
-          
-          {/* Right Column - Results Display */}
-          <div className="lg:col-span-1">
-            <Card className="h-full bg-zinc-900/70 border-zinc-800 shadow-lg overflow-auto">
-              <ResultsDisplay 
-                results={results} 
-                isLoading={isAnalyzing} 
-              />
-            </Card>
-          </div>
-        </div>
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full">
+      <div className="lg:col-span-1 flex flex-col space-y-6">
+        <Card className="flex-1 bg-zinc-800/50 border-zinc-700/50 shadow-lg h-full max-h-[calc(50%-0.75rem)]">
+          <GrowthGapChatInterface 
+            onInsightSelect={handleInsightSelect} 
+            uploadedFiles={uploadedFiles}
+          />
+        </Card>
+        <Card className="bg-zinc-800/50 border-zinc-700/50 shadow-lg h-full max-h-[calc(50%-0.75rem)]">
+          <GrowthGapFileUpload onFilesUploaded={handleFileUpload} />
+        </Card>
       </div>
-    </MainLayout>
+      
+      <div className="lg:col-span-1">
+        <Card className="h-full bg-zinc-800/50 border-zinc-700/50 shadow-lg">
+          <GrowthGapInsights 
+            onInsightSelect={handleInsightSelect}
+            selectedInsight={selectedInsight}
+            isAnalyzing={isAnalyzing}
+          />
+        </Card>
+      </div>
+      
+      <div className="lg:col-span-1">
+        <Card className="h-full bg-zinc-800/50 border-zinc-700/50 shadow-lg overflow-auto">
+          <GrowthGapResults 
+            results={results} 
+            isLoading={isAnalyzing} 
+          />
+        </Card>
+      </div>
+    </div>
   );
 };
-
-export default GrowthGapFinderPage;

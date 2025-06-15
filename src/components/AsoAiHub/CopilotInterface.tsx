@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -7,6 +6,7 @@ import { X, Send, RotateCcw } from 'lucide-react';
 import { useAsoAiHub } from '@/context/AsoAiHubContext';
 import { CopilotChatMessage } from './CopilotChatMessage';
 import { MetadataCopilot } from './MetadataCopilot/MetadataCopilot';
+import { GrowthGapCopilot } from './GrowthGapCopilot';
 import { useCopilotChat } from '@/hooks/useCopilotChat';
 
 export const CopilotInterface: React.FC = () => {
@@ -27,43 +27,66 @@ export const CopilotInterface: React.FC = () => {
     return null;
   }
 
-  // Show specialized interface for Metadata Copilot
-  if (activeCopilot === 'metadata-copilot') {
-    return (
-      <Card className="bg-zinc-900/70 backdrop-blur-sm border-zinc-800 fixed inset-x-4 bottom-4 top-20 z-50 flex flex-col">
-        <CardHeader className="pb-3 border-b border-zinc-800">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <div className="text-2xl">{activeCopilotData.icon}</div>
-              <div>
-                <CardTitle className="text-lg text-white">
-                  {activeCopilotData.name}
-                </CardTitle>
-                <p className="text-sm text-zinc-400">
-                  {activeCopilotData.description}
-                </p>
-              </div>
+  const renderCopilot = () => {
+    switch (activeCopilot) {
+      case 'metadata-copilot':
+        return <MetadataCopilot />;
+      case 'growth-gap-finder':
+        return <GrowthGapCopilot />;
+      default:
+        return (
+          <div className="flex-1 flex flex-col p-0">
+            {/* Chat UI for other copilots */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              {currentSession.messages.length === 0 ? (
+                <div className="text-center py-8">
+                  <div className="text-4xl mb-4">{activeCopilotData.icon}</div>
+                  <h3 className="text-xl font-semibold text-white mb-2">
+                    Welcome to {activeCopilotData.name}
+                  </h3>
+                  <p className="text-zinc-400 max-w-md mx-auto">
+                    I'm here to help you with {activeCopilotData.description.toLowerCase()}. 
+                    What would you like to work on today?
+                  </p>
+                </div>
+              ) : (
+                currentSession.messages.map((msg) => (
+                  <CopilotChatMessage key={msg.id} message={msg} />
+                ))
+              )}
+              
+              {isLoading && (
+                <div className="flex items-center space-x-2 text-zinc-400">
+                  <div className="animate-spin w-4 h-4 border-2 border-yodel-orange border-t-transparent rounded-full" />
+                  <span>Thinking...</span>
+                </div>
+              )}
             </div>
             
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setActiveCopilot(null)}
-              className="text-zinc-400 hover:text-white"
-            >
-              <X className="w-4 h-4" />
-            </Button>
+            <div className="p-4 border-t border-zinc-800">
+              <div className="flex space-x-2">
+                <Input
+                  value={message}
+                  onChange={(e) => setMessage(e.target.value)}
+                  onKeyPress={handleKeyPress}
+                  placeholder={`Ask ${activeCopilotData.name} anything...`}
+                  className="flex-1 bg-zinc-800 border-zinc-700 text-white placeholder-zinc-400"
+                  disabled={isLoading}
+                />
+                <Button
+                  onClick={handleSendMessage}
+                  disabled={!message.trim() || isLoading}
+                  className="bg-yodel-orange hover:bg-yodel-orange/90 text-white"
+                >
+                  <Send className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
           </div>
-        </CardHeader>
-        
-        <CardContent className="flex-1 overflow-y-auto p-4">
-          <MetadataCopilot />
-        </CardContent>
-      </Card>
-    );
-  }
+        );
+    }
+  };
 
-  // Default chat interface for other copilots
   const handleSendMessage = async () => {
     if (!message.trim() || isLoading) return;
     
@@ -117,52 +140,8 @@ export const CopilotInterface: React.FC = () => {
         </div>
       </CardHeader>
       
-      <CardContent className="flex-1 flex flex-col p-0">
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {currentSession.messages.length === 0 ? (
-            <div className="text-center py-8">
-              <div className="text-4xl mb-4">{activeCopilotData.icon}</div>
-              <h3 className="text-xl font-semibold text-white mb-2">
-                Welcome to {activeCopilotData.name}
-              </h3>
-              <p className="text-zinc-400 max-w-md mx-auto">
-                I'm here to help you with {activeCopilotData.description.toLowerCase()}. 
-                What would you like to work on today?
-              </p>
-            </div>
-          ) : (
-            currentSession.messages.map((msg) => (
-              <CopilotChatMessage key={msg.id} message={msg} />
-            ))
-          )}
-          
-          {isLoading && (
-            <div className="flex items-center space-x-2 text-zinc-400">
-              <div className="animate-spin w-4 h-4 border-2 border-yodel-orange border-t-transparent rounded-full" />
-              <span>Thinking...</span>
-            </div>
-          )}
-        </div>
-        
-        <div className="p-4 border-t border-zinc-800">
-          <div className="flex space-x-2">
-            <Input
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-              onKeyPress={handleKeyPress}
-              placeholder={`Ask ${activeCopilotData.name} anything...`}
-              className="flex-1 bg-zinc-800 border-zinc-700 text-white placeholder-zinc-400"
-              disabled={isLoading}
-            />
-            <Button
-              onClick={handleSendMessage}
-              disabled={!message.trim() || isLoading}
-              className="bg-yodel-orange hover:bg-yodel-orange/90 text-white"
-            >
-              <Send className="w-4 h-4" />
-            </Button>
-          </div>
-        </div>
+      <CardContent className="flex-1 overflow-y-auto p-4">
+        {renderCopilot()}
       </CardContent>
     </Card>
   );

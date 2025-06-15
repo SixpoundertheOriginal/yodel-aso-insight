@@ -29,7 +29,7 @@ interface ResultData {
   chartData?: any[];
 }
 
-interface ResultsDisplayProps {
+interface GrowthGapResultsProps {
   results: {
     type: string;
     data: ResultData;
@@ -37,7 +37,7 @@ interface ResultsDisplayProps {
   isLoading?: boolean;
 }
 
-export const ResultsDisplay: React.FC<ResultsDisplayProps> = ({ results, isLoading = false }) => {
+export const GrowthGapResults: React.FC<GrowthGapResultsProps> = ({ results, isLoading = false }) => {
   // Loading state
   if (isLoading) {
     return (

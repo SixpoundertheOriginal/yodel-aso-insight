@@ -15,12 +15,12 @@ interface ChatMessage {
   error?: boolean;
 }
 
-interface ChatInterfaceProps {
+interface GrowthGapChatInterfaceProps {
   onInsightSelect: (insightType: string) => void;
   uploadedFiles?: File[];
 }
 
-export const ChatInterface: React.FC<ChatInterfaceProps> = ({ 
+export const GrowthGapChatInterface: React.FC<GrowthGapChatInterfaceProps> = ({ 
   onInsightSelect, 
   uploadedFiles = [] 
 }) => {
@@ -315,7 +315,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
       </CardHeader>
       
       <CardContent className="flex-1 p-4 pt-0 overflow-hidden">
-        <ScrollArea className="h-[400px] pr-4">
+        <ScrollArea className="h-full pr-4">
           <div className="flex flex-col space-y-4">
             {messages.map((message, index) => (
               <div

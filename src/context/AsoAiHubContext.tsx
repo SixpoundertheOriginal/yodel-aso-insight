@@ -53,6 +53,15 @@ const initialCopilots: CopilotData[] = [
     status: 'available'
   },
   {
+    id: 'growth-gap-finder',
+    name: 'Growth Gap Finder',
+    description: 'Analyze keyword data to uncover ranking gaps and growth opportunities.',
+    icon: '💡',
+    progress: 75,
+    category: 'analysis',
+    status: 'available'
+  },
+  {
     id: 'cpp-strategy-builder',
     name: 'CPP Strategy Builder',
     description: 'Craft seasonal Custom Product Pages with strategic conversion hooks',

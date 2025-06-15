@@ -14,13 +14,13 @@ import {
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
-interface InsightModuleProps {
+interface GrowthGapInsightsProps {
   onInsightSelect: (insightType: string) => void;
   selectedInsight?: string | null;
   isAnalyzing?: boolean;
 }
 
-export const InsightModules: React.FC<InsightModuleProps> = ({ 
+export const GrowthGapInsights: React.FC<GrowthGapInsightsProps> = ({ 
   onInsightSelect, 
   selectedInsight = null,
   isAnalyzing = false
