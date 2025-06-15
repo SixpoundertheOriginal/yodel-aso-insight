@@ -121,22 +121,22 @@ export const MetadataPreview: React.FC<MetadataPreviewProps> = ({
               
               <div className="grid grid-cols-3 gap-4">
                 <div className="text-center">
-                  <div className={`text-2xl font-bold ${getScoreColor(score.coverage)}`}>
-                    {Math.round(score.coverage)}%
+                  <div className={`text-2xl font-bold ${getScoreColor(score.title)}`}>
+                    {Math.round(score.title)}%
                   </div>
-                  <div className="text-sm text-zinc-400">Coverage</div>
+                  <div className="text-sm text-zinc-400">Title Quality</div>
                 </div>
                 <div className="text-center">
-                  <div className={`text-2xl font-bold ${getScoreColor(score.conversion)}`}>
-                    {Math.round(score.conversion)}%
+                  <div className={`text-2xl font-bold ${getScoreColor(score.subtitle)}`}>
+                    {Math.round(score.subtitle)}%
                   </div>
-                  <div className="text-sm text-zinc-400">Conversion</div>
+                  <div className="text-sm text-zinc-400">Subtitle Quality</div>
                 </div>
                 <div className="text-center">
-                  <div className={`text-2xl font-bold ${getScoreColor(score.compliance)}`}>
-                    {Math.round(score.compliance)}%
+                  <div className={`text-2xl font-bold ${getScoreColor(score.keywords)}`}>
+                    {Math.round(score.keywords)}%
                   </div>
-                  <div className="text-sm text-zinc-400">Compliance</div>
+                  <div className="text-sm text-zinc-400">Keyword Quality</div>
                 </div>
               </div>
             </div>
