@@ -13,7 +13,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-const VERSION = '3.3.0-enterprise-stability-fix' // Versioning for monitoring deployment consistency
+const VERSION = '3.4.0-enterprise-root-fix' // Versioning for monitoring deployment consistency
 
 // --- Enterprise Architecture: Standardized Data Contracts ---
 // This interface now reflects the desired OUTPUT contract for the frontend
@@ -59,10 +59,21 @@ const mapItunesDataToMetadata = (itunesData: any): ScrapedMetadata => {
   const metadata: ScrapedMetadata = {}
   metadata.name = itunesData.trackName
   if (metadata.name) {
-    const [title, ...subtitleParts] = itunesData.trackName.split(/ - | \| /)
-    metadata.title = title.trim()
-    metadata.subtitle = subtitleParts.join(' - ').trim()
+    // Enterprise Fix: More robust title/subtitle parsing.
+    // Avoid splitting by '|' as it's often part of a brand name.
+    // Only split by ' - ' as it's a more reliable separator for subtitles.
+    const parts = itunesData.trackName.split(' - ')
+    if (parts.length > 1 && parts[0].length > 0) {
+      metadata.title = parts[0].trim()
+      // Join back in case subtitle itself contains ' - '
+      metadata.subtitle = parts.slice(1).join(' - ').trim()
+    } else {
+      metadata.title = itunesData.trackName.trim()
+      // Initialize as empty; will be enriched by HTML scraper if found.
+      metadata.subtitle = ''
+    }
   }
+
   metadata.url = itunesData.trackViewUrl
   metadata.description = itunesData.description
   metadata.applicationCategory = itunesData.primaryGenreName
@@ -190,19 +201,25 @@ const extractFromStandardMeta = (html: string, data: ScrapedMetadata) => {
 
 // NEW: Enterprise-grade data sanitization to ensure a stable contract with the frontend.
 const sanitizeMetadata = (metadata: ScrapedMetadata): ScrapedMetadata => {
+  const decodeHtmlEntities = (text?: string): string | undefined => {
+    if (!text) return undefined;
+    // Basic decoding for common entities
+    return text.replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+  }
+  
   return {
     ...metadata,
-    name: metadata.name || 'Unknown App',
+    name: decodeHtmlEntities(metadata.name) || 'Unknown App',
     url: metadata.url || '',
-    title: metadata.title || metadata.name || 'App Title',
-    subtitle: metadata.subtitle || '',
+    title: decodeHtmlEntities(metadata.title) || decodeHtmlEntities(metadata.name) || 'App Title',
+    subtitle: decodeHtmlEntities(metadata.subtitle) || '',
     description: metadata.description || 'No description available.',
     applicationCategory: metadata.applicationCategory || 'App',
     locale: '', // The frontend will add this based on the final URL
     icon: metadata.icon || undefined,
-    developer: metadata.developer || undefined,
-    rating: metadata.rating || 0,
-    reviews: metadata.reviews || 0,
+    developer: decodeHtmlEntities(metadata.developer || metadata.author) || undefined,
+    rating: typeof metadata.rating === 'number' && !isNaN(metadata.rating) ? metadata.rating : 0,
+    reviews: typeof metadata.reviews === 'number' && !isNaN(metadata.reviews) ? metadata.reviews : 0,
     price: metadata.price || 'Free',
   }
 }
@@ -242,7 +259,8 @@ serve(async (req: Request) => {
       }
 
       let canonicalUrl = ''
-      let metadata: ScrapedMetadata | null = null
+      let metadata: ScrapedMetadata = {} // Start with empty object to merge data into
+      let apiDataUsed = false
 
       // --- Enterprise Architecture: API-First Data Acquisition ---
       // The goal is to get structured JSON data from Apple's APIs first.
@@ -259,9 +277,10 @@ serve(async (req: Request) => {
         if (apiResponse.ok) {
           const apiResult = await apiResponse.json()
           if (apiResult.resultCount > 0) {
-            console.log('Successfully fetched data from iTunes Lookup API.')
+            console.log('Successfully fetched base data from iTunes Lookup API.')
             metadata = mapItunesDataToMetadata(apiResult.results[0])
             canonicalUrl = metadata.url! // Use the canonical URL from the API response
+            apiDataUsed = true
           } else {
             console.warn(`Lookup API found no results for app ID: ${appId}`)
           }
@@ -282,9 +301,10 @@ serve(async (req: Request) => {
         if (searchResponse.ok) {
           const searchResult = await searchResponse.json()
           if (searchResult.resultCount > 0) {
-            console.log('Found app via search. Using data from iTunes Search API.')
+            console.log('Found app via search. Using base data from iTunes Search API.')
             metadata = mapItunesDataToMetadata(searchResult.results[0])
             canonicalUrl = metadata.url! // Use the canonical URL from the API response
+            apiDataUsed = true
           } else {
             console.log(`No app found for search term: "${appStoreUrl}"`)
             return new Response(
@@ -306,7 +326,7 @@ serve(async (req: Request) => {
         }
       }
       // If input was a URL but we failed to get data from API, set canonicalUrl to scrape
-      else if (isUrl && !metadata) {
+      else if (isUrl && !apiDataUsed) {
         canonicalUrl = appStoreUrl
       }
 
@@ -370,41 +390,42 @@ serve(async (req: Request) => {
 
         const html = await scraperResponse.text()
 
-        // --- Multi-Source Extraction Pipeline ---
-        console.log('--- Starting multi-source extraction pipeline ---')
-        const scrapedMetadata: ScrapedMetadata = {} // Use a temporary object for scraping
-
-        extractFromJsonLd(html, scrapedMetadata)
-        extractFromAppleTags(html, scrapedMetadata)
-        extractFromOpenGraph(html, scrapedMetadata)
-        extractFromStandardMeta(html, scrapedMetadata)
-
-        console.log('--- Extraction pipeline finished ---')
+        // --- Multi-Source Extraction Pipeline (Enrichment) ---
+        console.log('--- Starting multi-source enrichment pipeline ---')
+        extractFromJsonLd(html, metadata)
+        extractFromAppleTags(html, metadata)
+        extractFromOpenGraph(html, metadata)
+        extractFromStandardMeta(html, metadata)
+        console.log('--- Enrichment pipeline finished ---')
 
         // --- Data Transformation & Validation for SCRAPED data ---
-        if (scrapedMetadata.name) {
-          const [title, ...subtitleParts] = scrapedMetadata.name.split(/ - | \| /)
-          scrapedMetadata.title = title.trim()
-          scrapedMetadata.subtitle = subtitleParts.join(' - ').trim()
+        // Only parse title/subtitle from name if API didn't provide them.
+        if (!apiDataUsed && metadata.name) {
+          // Use the same robust splitting logic for scraped names
+          const parts = metadata.name.split(' - ')
+          if (parts.length > 1) {
+            metadata.title = parts[0].trim()
+            metadata.subtitle = parts.slice(1).join(' - ').trim()
+          } else {
+            metadata.title = metadata.name.trim()
+          }
         }
-
+        
         console.log('Transforming raw scraped data to frontend contract...')
-        scrapedMetadata.developer = scrapedMetadata.author
-        scrapedMetadata.rating = scrapedMetadata.ratingValue
-        scrapedMetadata.reviews = scrapedMetadata.reviewCount
-        scrapedMetadata.price = 'Free' // Scraper can't get price reliably
+        // Use ?? to avoid overwriting API data with scraped data
+        metadata.developer = metadata.developer ?? metadata.author
+        metadata.rating = metadata.rating ?? metadata.ratingValue
+        metadata.reviews = metadata.reviews ?? metadata.reviewCount
+        metadata.price = metadata.price ?? 'Free' // Scraper can't get price reliably
         console.log(
-          `Transformed fields: developer=${scrapedMetadata.developer}, rating=${scrapedMetadata.rating}, reviews=${scrapedMetadata.reviews}, icon=${!!scrapedMetadata.icon}`
+          `Transformed fields: developer=${metadata.developer}, rating=${metadata.rating}, reviews=${metadata.reviews}, icon=${!!metadata.icon}`
         )
-
+        
         try {
-          scrapedMetadata.url = new URL(scrapedMetadata.url, canonicalUrl).href
+          metadata.url = new URL(metadata.url, canonicalUrl).href
         } catch (e) {
-          scrapedMetadata.url = canonicalUrl
+          metadata.url = canonicalUrl
         }
-
-        // Assign the processed scraped data to the main metadata object
-        metadata = scrapedMetadata
       }
 
       // --- Enterprise Architecture: Final Validation, Caching & Response ---
