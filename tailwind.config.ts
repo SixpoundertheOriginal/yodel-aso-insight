@@ -13,10 +13,24 @@ export default {
   theme: {
     container: {
       center: true,
-      padding: "2rem",
+      padding: {
+        DEFAULT: "1rem",
+        sm: "2rem",
+        lg: "4rem",
+        xl: "5rem",
+        "2xl": "6rem",
+      },
       screens: {
         "2xl": "1400px",
       },
+    },
+    screens: {
+      xs: "320px",
+      sm: "640px",
+      md: "768px",
+      lg: "1024px",
+      xl: "1280px",
+      "2xl": "1536px",
     },
     extend: {
       fontFamily: {
@@ -56,6 +70,16 @@ export default {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        sidebar: {
+          DEFAULT: "hsl(var(--sidebar))",
+          foreground: "hsl(var(--sidebar-foreground))",
+          primary: "hsl(var(--sidebar-primary))",
+          "primary-foreground": "hsl(var(--sidebar-primary-foreground))",
+          accent: "hsl(var(--sidebar-accent))",
+          "accent-foreground": "hsl(var(--sidebar-accent-foreground))",
+          border: "hsl(var(--sidebar-border))",
+          ring: "hsl(var(--sidebar-ring))",
+        },
         // Yodel Mobile brand colors - Enhanced Palette
         yodel: {
           orange: {
@@ -89,6 +113,15 @@ export default {
           error: "#EF4444",
           info: "#06B6D4",
         },
+      },
+      spacing: {
+        // Touch-friendly sizes
+        'touch-sm': '44px',
+        'touch-md': '48px', 
+        'touch-lg': '56px',
+        // Additional responsive spacing
+        '18': '4.5rem',
+        '88': '22rem',
       },
       borderRadius: {
         lg: "var(--radius)",
@@ -161,10 +194,6 @@ export default {
         "slide-in-right": "slide-in-right 0.3s ease-out",
         "scale-in": "scale-in 0.2s ease-out",
         shimmer: "shimmer 1.5s infinite",
-      },
-      spacing: {
-        '18': '4.5rem',
-        '88': '22rem',
       },
       zIndex: {
         '60': '60',

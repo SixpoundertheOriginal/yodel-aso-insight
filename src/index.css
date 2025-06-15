@@ -28,6 +28,16 @@
     --input: 240 3.7% 15.9%;
     --ring: 240 4.9% 83.9%;
     --radius: 0.5rem;
+    
+    /* Sidebar variables */
+    --sidebar: 240 5.9% 10%;
+    --sidebar-foreground: 0 0% 98%;
+    --sidebar-primary: 24 100% 53%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 240 3.7% 15.9%;
+    --sidebar-accent-foreground: 0 0% 98%;
+    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-ring: 24 100% 53%;
   }
 }
 
@@ -39,6 +49,20 @@
   body {
     @apply bg-zinc-950 text-zinc-100 antialiased;
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    /* Improve mobile scrolling */
+    -webkit-overflow-scrolling: touch;
+    /* Prevent horizontal scroll on mobile */
+    overflow-x: hidden;
+  }
+
+  /* Mobile-first responsive typography */
+  h1, h2, h3, h4, h5, h6 {
+    @apply leading-tight tracking-tight;
+  }
+
+  /* Improve tap targets on mobile */
+  button, [role="button"], input, select, textarea {
+    @apply min-h-[44px] sm:min-h-[40px];
   }
 
   /* Scrollbar Styling */
@@ -58,10 +82,18 @@
   ::-webkit-scrollbar-thumb:hover {
     @apply bg-zinc-600;
   }
+
+  /* Mobile viewport fixes */
+  @supports (-webkit-touch-callout: none) {
+    body {
+      /* Fix iOS viewport issues */
+      -webkit-text-size-adjust: 100%;
+    }
+  }
 }
 
 @layer components {
-  /* Yodel Component Classes */
+  /* Mobile-first Yodel Component Classes */
   .yodel-gradient-bg {
     @apply bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950;
   }
@@ -75,35 +107,35 @@
   }
   
   .yodel-card {
-    @apply bg-zinc-900 border border-zinc-800 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200;
+    @apply bg-zinc-900 border border-zinc-800 rounded-lg sm:rounded-xl shadow-lg hover:shadow-xl transition-all duration-200;
   }
   
   .yodel-button-primary {
-    @apply bg-yodel-orange hover:bg-yodel-orange/90 text-white font-medium rounded-lg px-4 py-2 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-yodel-orange/50 focus:ring-offset-2 focus:ring-offset-zinc-900 shadow-sm hover:shadow-md;
+    @apply bg-yodel-orange hover:bg-yodel-orange/90 text-white font-medium rounded-lg px-4 py-2 sm:px-6 sm:py-3 min-h-[44px] transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-yodel-orange/50 focus:ring-offset-2 focus:ring-offset-zinc-900 shadow-sm hover:shadow-md;
   }
   
   .yodel-input {
-    @apply bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-yodel-orange/50 focus:border-yodel-orange/50 transition-all duration-200;
+    @apply bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 sm:px-4 sm:py-3 text-white placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-yodel-orange/50 focus:border-yodel-orange/50 transition-all duration-200 min-h-[44px];
   }
 
-  /* Status Indicators */
+  /* Mobile-optimized Status Indicators */
   .status-success {
-    @apply text-green-400 bg-green-500/10 border-green-500/20;
+    @apply text-green-400 bg-green-500/10 border-green-500/20 px-2 py-1 rounded-md text-sm;
   }
 
   .status-warning {
-    @apply text-yellow-400 bg-yellow-500/10 border-yellow-500/20;
+    @apply text-yellow-400 bg-yellow-500/10 border-yellow-500/20 px-2 py-1 rounded-md text-sm;
   }
 
   .status-error {
-    @apply text-red-400 bg-red-500/10 border-red-500/20;
+    @apply text-red-400 bg-red-500/10 border-red-500/20 px-2 py-1 rounded-md text-sm;
   }
 
   .status-info {
-    @apply text-blue-400 bg-blue-500/10 border-blue-500/20;
+    @apply text-blue-400 bg-blue-500/10 border-blue-500/20 px-2 py-1 rounded-md text-sm;
   }
 
-  /* Animation Classes */
+  /* Responsive Animation Classes */
   .animate-fade-in {
     animation: fadeIn 0.3s ease-out;
   }
@@ -119,10 +151,19 @@
   .animate-scale-in {
     animation: scaleIn 0.2s ease-out;
   }
+
+  /* Mobile-specific components */
+  .mobile-safe-area {
+    @apply pb-safe-bottom;
+  }
+
+  .touch-target {
+    @apply min-h-[44px] min-w-[44px] flex items-center justify-center;
+  }
 }
 
 @layer utilities {
-  /* Custom Utilities */
+  /* Mobile-first Custom Utilities */
   .text-gradient-orange {
     @apply bg-gradient-to-r from-yodel-orange to-orange-600 bg-clip-text text-transparent;
   }
@@ -142,13 +183,77 @@
   .focus-ring-yodel {
     @apply focus:outline-none focus:ring-2 focus:ring-yodel-orange/50 focus:ring-offset-2 focus:ring-offset-zinc-900;
   }
+
+  /* Mobile spacing utilities */
+  .safe-top {
+    padding-top: env(safe-area-inset-top);
+  }
+
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .safe-left {
+    padding-left: env(safe-area-inset-left);
+  }
+
+  .safe-right {
+    padding-right: env(safe-area-inset-right);
+  }
+
+  /* Container queries support */
+  .container-xs {
+    @apply max-w-xs;
+  }
+
+  .container-sm {
+    @apply max-w-sm;
+  }
+
+  /* Mobile-first responsive text sizes */
+  .text-responsive-xs {
+    @apply text-xs sm:text-sm;
+  }
+
+  .text-responsive-sm {
+    @apply text-sm sm:text-base;
+  }
+
+  .text-responsive-base {
+    @apply text-base sm:text-lg;
+  }
+
+  .text-responsive-lg {
+    @apply text-lg sm:text-xl;
+  }
+
+  .text-responsive-xl {
+    @apply text-xl sm:text-2xl;
+  }
+
+  .text-responsive-2xl {
+    @apply text-2xl sm:text-3xl;
+  }
+
+  /* Grid utilities for responsive layouts */
+  .grid-responsive {
+    @apply grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4;
+  }
+
+  .grid-responsive-2 {
+    @apply grid grid-cols-1 md:grid-cols-2;
+  }
+
+  .grid-responsive-3 {
+    @apply grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3;
+  }
 }
 
-/* Keyframes */
+/* Enhanced Keyframes for mobile */
 @keyframes fadeIn {
   from {
     opacity: 0;
-    transform: translateY(10px);
+    transform: translateY(20px);
   }
   to {
     opacity: 1;
@@ -159,7 +264,7 @@
 @keyframes slideInLeft {
   from {
     opacity: 0;
-    transform: translateX(-20px);
+    transform: translateX(-30px);
   }
   to {
     opacity: 1;
@@ -170,7 +275,7 @@
 @keyframes slideInRight {
   from {
     opacity: 0;
-    transform: translateX(20px);
+    transform: translateX(30px);
   }
   to {
     opacity: 1;
@@ -181,7 +286,7 @@
 @keyframes scaleIn {
   from {
     opacity: 0;
-    transform: scale(0.95);
+    transform: scale(0.9);
   }
   to {
     opacity: 1;
@@ -200,18 +305,35 @@
   animation: shimmer 1.5s infinite;
 }
 
-@keyframes shimmer {
-  0% {
-    background-position: -200% 0;
-  }
-  100% {
-    background-position: 200% 0;
-  }
-}
-
 /* Print Styles */
 @media print {
   .no-print {
     display: none !important;
+  }
+  
+  * {
+    @apply text-black bg-white;
+  }
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  .yodel-card {
+    @apply border-2 border-white;
+  }
+  
+  .yodel-button-primary {
+    @apply border-2 border-white;
+  }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }
