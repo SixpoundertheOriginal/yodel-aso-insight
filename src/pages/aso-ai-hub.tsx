@@ -1,11 +1,15 @@
 
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { MainLayout } from '@/layouts';
 import { AsoAiHubProvider } from '@/context/AsoAiHubContext';
 import { CopilotGrid } from '@/components/AsoAiHub/CopilotGrid';
 import { CopilotInterface } from '@/components/AsoAiHub/CopilotInterface';
+import { HeroSection } from '@/components/ui/design-system';
 
 const AsoAiHubPage: React.FC = () => {
+  const navigate = useNavigate();
+
   return (
     <MainLayout>
       <AsoAiHubProvider>
@@ -17,6 +21,16 @@ const AsoAiHubPage: React.FC = () => {
               Each specialist is designed to tackle specific ASO challenges with precision and intelligence.
             </p>
           </div>
+          
+          <HeroSection
+            title="NEW: Featuring Strategy Toolkit"
+            subtitle="Craft winning Apple App Store submissions"
+            description="Leverage our new AI-powered toolkit to analyze, optimize, and package your app's story for a higher chance of being featured by Apple's editors."
+            primaryAction={{
+              text: 'Launch Toolkit',
+              onClick: () => navigate('/featuring-toolkit')
+            }}
+          />
           
           <CopilotGrid />
           <CopilotInterface />

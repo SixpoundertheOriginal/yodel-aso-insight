@@ -15,6 +15,7 @@ import TrafficSourcesPage from "./pages/traffic-sources";
 import ConversionAnalysisPage from "./pages/conversion-analysis";
 import OverviewPage from "./pages/overview";
 import AsoAiHubPage from "./pages/aso-ai-hub";
+import FeaturingToolkitPage from './pages/featuring-toolkit';
 import NotFound from "./pages/NotFound";
 import { withAuth } from "./components/Auth/withAuth";
 
@@ -33,6 +34,7 @@ const ProtectedTrafficSourcesPage = withAuth(TrafficSourcesPage);
 const ProtectedConversionAnalysisPage = withAuth(ConversionAnalysisPage);
 const ProtectedOverviewPage = withAuth(OverviewPage);
 const ProtectedAsoAiHubPage = withAuth(AsoAiHubPage);
+const ProtectedFeaturingToolkitPage = withAuth(FeaturingToolkitPage);
 
 const App: React.FC = () => {
   return (
@@ -51,6 +53,7 @@ const App: React.FC = () => {
                   <Route path="/conversion-analysis" element={<ProtectedConversionAnalysisPage />} />
                   <Route path="/overview" element={<ProtectedOverviewPage />} />
                   <Route path="/aso-ai-hub" element={<ProtectedAsoAiHubPage />} />
+                  <Route path="/featuring-toolkit" element={<ProtectedFeaturingToolkitPage />} />
                   <Route path="*" element={<NotFound />} />
                 </Routes>
               </div>
