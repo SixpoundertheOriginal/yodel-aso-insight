@@ -36,6 +36,7 @@ interface ScrapedMetadata {
   rating?: number
   reviews?: number
   price?: string // Defaulted if not found
+  locale?: string
 }
 
 // Function to validate if the string is a plausible Apple App Store URL
@@ -271,12 +272,10 @@ serve(async (req: Request) => {
       }
 
       let canonicalUrl = ''
-      let metadata: ScrapedMetadata = {} // Start with empty object to merge data into
+      let metadata: ScrapedMetadata = {}
       let apiDataUsed = false
 
       // --- Enterprise Architecture: API-First Data Acquisition ---
-      // The goal is to get structured JSON data from Apple's APIs first.
-
       const isUrl = isAppStoreUrl(appStoreUrl)
       const appId = isUrl ? extractAppIdFromUrl(appStoreUrl) : null
 
@@ -401,21 +400,62 @@ serve(async (req: Request) => {
       metadata.rating = metadata.rating ?? metadata.ratingValue;
       metadata.reviews = metadata.reviews ?? metadata.reviewCount;
       metadata.price = metadata.price ?? 'Free';
+      
+      // --- NEW: Enterprise Architecture: Competitor Analysis ---
+      let competitors: ScrapedMetadata[] = []
+      if (metadata.applicationCategory && canonicalUrl) {
+        console.log(`Analyzing competitors for category: ${metadata.applicationCategory}`)
+        try {
+          const url = new URL(canonicalUrl)
+          const country = url.pathname.split('/')[1] || 'us'
+
+          const searchTerm = encodeURIComponent(metadata.applicationCategory)
+          // Search for top 10 competitors in the same category and country
+          const competitorSearchUrl = `https://itunes.apple.com/search?term=${searchTerm}&country=${country}&entity=software&limit=10`
+          
+          console.log(`Fetching competitors from: ${competitorSearchUrl}`)
+          const competitorResponse = await fetch(competitorSearchUrl)
+
+          if (competitorResponse.ok) {
+            const competitorResult = await competitorResponse.json()
+            if (competitorResult.resultCount > 0) {
+              const appIdNum = appId ? parseInt(appId, 10) : -1
+              // Filter out the original app and map data for competitors
+              competitors = competitorResult.results
+                .filter((comp: any) => comp.trackId !== appIdNum)
+                .map((comp: any) => sanitizeMetadata(mapItunesDataToMetadata(comp)))
+              console.log(`Found ${competitors.length} competitors.`)
+            }
+          } else {
+            console.warn(`Competitor search failed with status: ${competitorResponse.status}`)
+          }
+        } catch (e) {
+          console.error('Error during competitor analysis:', e.message)
+        }
+      }
+
+      // Sanitize the main app metadata.
+      const finalMetadata = sanitizeMetadata(metadata)
+
+      // WORKAROUND: Embed competitor data into the description field as a JSON string.
+      // This is necessary to pass data through read-only parent components that we cannot modify.
+      if (competitors.length > 0) {
+        finalMetadata.description += `\n<!--COMPETITORS_START-->${JSON.stringify(competitors)}<!--COMPETITORS_END-->`;
+      }
 
       // --- Enterprise Architecture: Final Validation, Caching & Response ---
-      if (!metadata || !metadata.name || !metadata.url) {
-        const errorMsg =
-          'Could not automatically extract app data. The App Store page might be structured in a non-standard way. Please try again or check the URL.'
+      if (!finalMetadata || !finalMetadata.name || !finalMetadata.url) {
+        const errorMsg = 'Could not automatically extract app data. The App Store page might be structured in a non-standard way.'
         console.error('Scraper could not find essential metadata (name, url). Caching as FAILED.')
         await supabaseAdmin
           .from('scrape_cache')
           .upsert(
             {
-              url: canonicalUrl || appStoreUrl, // Use what we have
+              url: canonicalUrl || appStoreUrl,
               organization_id: organizationId,
               status: 'FAILED',
               error: errorMsg,
-              expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(), // Cache failure for 1 hour
+              expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
             },
             { onConflict: 'url,organization_id' }
           )
@@ -426,12 +466,9 @@ serve(async (req: Request) => {
         })
       }
 
-      console.log(`Successfully processed metadata for: ${metadata.name}`)
+      console.log(`Successfully processed metadata for: ${finalMetadata.name}`)
 
-      // Sanitize the metadata before it is cached and sent to the frontend.
-      const finalMetadata = sanitizeMetadata(metadata)
-
-      // Cache the successful result. Use canonicalUrl. Store the sanitized data.
+      // Cache the successful result. Use canonicalUrl. Store the final object.
       await supabaseAdmin
         .from('scrape_cache')
         .upsert(
@@ -439,8 +476,8 @@ serve(async (req: Request) => {
             url: canonicalUrl,
             organization_id: organizationId,
             status: 'SUCCESS',
-            data: finalMetadata, // Cache the clean, final object
-            expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // Cache success for 24 hours
+            data: finalMetadata, // Cache the object with embedded competitor data
+            expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
           },
           { onConflict: 'url,organization_id' }
         )

@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Download, RefreshCw } from 'lucide-react';
@@ -14,14 +15,52 @@ interface SuggestedMetadataPanelProps {
   initialData: ScrapedMetadata;
 }
 
+type CompetitorKeywordAnalysis = {
+  keyword: string;
+  frequency: number;
+  percentage: number;
+  apps: string[];
+};
+
 export const SuggestedMetadataPanel: React.FC<SuggestedMetadataPanelProps> = ({ initialData }) => {
   const [generatedMetadata, setGeneratedMetadata] = useState<MetadataField | null>(null);
   const [metadataScore, setMetadataScore] = useState<MetadataScore | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
-
   const { sendMessage, isLoading } = useCopilotChat();
   const { toast } = useToast();
+
+  const [competitorKeywords, setCompetitorKeywords] = useState<CompetitorKeywordAnalysis[]>([]);
+  const [cleanDescription, setCleanDescription] = useState(initialData.description);
   
+  useEffect(() => {
+    // This effect extracts the competitor data embedded in the description.
+    // This is a workaround for not being able to modify read-only parent components.
+    console.log("Parsing for competitor data in description...");
+    const regex = /<!--COMPETITORS_START-->((.|\n)*)<!--COMPETITORS_END-->/;
+    const description = initialData.description || '';
+    const match = description.match(regex);
+    
+    if (match && match[1]) {
+      try {
+        const competitorData = JSON.parse(match[1]);
+        console.log(`✅ Extracted ${competitorData.length} competitors.`);
+
+        const analysis = metadataEngine.analyzeCompetitors(competitorData);
+        setCompetitorKeywords(analysis);
+        console.log(`📊 Analyzed competitor keywords:`, analysis);
+
+        // Clean the description for use in prompts
+        setCleanDescription(description.replace(regex, '').trim());
+      } catch (e) {
+        console.error("Failed to parse or analyze competitor data from description", e);
+        setCleanDescription(description); // use original on error
+      }
+    } else {
+      console.log("No competitor data found in description.");
+      setCleanDescription(description);
+    }
+  }, [initialData]);
+
   const parseAIResponse = (response: string): MetadataField | null => {
     try {
       const titleMatch = response.match(/TITLE:\s*(.+)/);
@@ -66,24 +105,33 @@ export const SuggestedMetadataPanel: React.FC<SuggestedMetadataPanelProps> = ({ 
       const keywords = parseKeywordData(formData.keywordData);
       const enhancedKeywords = metadataEngine.filterAndPrioritizeKeywords(keywords);
       
+      const competitorInsight = competitorKeywords.length > 0
+        ? `
+Top Competitor Keywords (found in over ${competitorKeywords[0]?.percentage - (competitorKeywords[0]?.percentage % 10)}% of competitors):
+${competitorKeywords.slice(0, 15).map(k => `- ${k.keyword} (in ${k.frequency} apps)`).join('\n')}
+`
+        : '';
+        
       const prompt = `Generate App Store optimized metadata for:
 
 App Name: ${initialData.title}
+Current Description Summary: ${cleanDescription.substring(0, 200)}...
 Category: ${initialData.applicationCategory}
 Locale: ${initialData.locale}
 Target Audience: ${formData.targetAudience || 'General'}
-
-STRICT REQUIREMENTS:
-- Title: Maximum 30 characters, include 1-2 primary keywords
-- Subtitle: Maximum 30 characters, complementary keywords, no overlap with title
-- Keywords: Maximum 100 characters, comma-separated, no spaces, no repetition from title/subtitle
-
-Top Keywords Available:
+${competitorInsight}
+Your Provided Keywords (Prioritized):
 ${enhancedKeywords.slice(0, 20).map(k => `${k.keyword} (Volume: ${k.volume}, Relevancy: ${k.relevancy})`).join('\n')}
 
-Generate natural, readable metadata that maximizes keyword coverage while staying within character limits. Format as:
+STRICT REQUIREMENTS:
+- Title: Maximum 30 characters. Should be catchy and include 1-2 primary keywords.
+- Subtitle: Maximum 30 characters. Complementary to title, use different keywords.
+- Keywords: Maximum 100 characters total. Comma-separated, no spaces. Do not repeat words from title or subtitle.
+
+Analyze the competitor keywords and your provided keywords to generate a unique and powerful metadata set that stands out.
+Format as:
 TITLE: [your title]
-SUBTITLE: [your subtitle]  
+SUBTITLE: [your subtitle]
 KEYWORDS: [keyword1,keyword2,keyword3]`;
 
       const aiResponse = await sendMessage(prompt, 'metadata-copilot');

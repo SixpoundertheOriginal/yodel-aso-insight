@@ -1,5 +1,5 @@
-
-import { KeywordData, parseKeywordData } from './keywordAnalysis';
+import { KeywordData } from './keywordAnalysis';
+import { ScrapedMetadata } from '@/components/AsoAiHub/MetadataCopilot/MetadataWorkspace';
 
 export interface MetadataField {
   title: string;
@@ -223,6 +223,51 @@ export class MetadataEngine {
       .map(k => k.keyword.toLowerCase())
       .join(',')
       .substring(0, this.constraints.keywordsLimit);
+  }
+
+  public extractKeywordsFromText(text: string): string[] {
+    if (!text) return [];
+    // A set of common English stop words.
+    const stopWords = new Set(['a', 'about', 'above', 'after', 'again', 'against', 'all', 'am', 'an', 'and', 'any', 'are', "aren't", 'as', 'at', 'be', 'because', 'been', 'before', 'being', 'below', 'between', 'both', 'but', 'by', "can't", 'cannot', 'com', 'could', "couldn't", 'did', "didn't", 'do', 'does', "doesn't", 'doing', "don't", 'down', 'during', 'each', 'few', 'for', 'from', 'further', 'had', "hadn't", 'has', "hasn't", 'have', "haven't", 'having', 'he', "he'd", "he'll", "he's", 'her', 'here', "here's", 'hers', 'herself', 'him', 'himself', 'his', 'how', "how's", 'i', "i'd", "i'll", "i'm", "i've", 'if', 'in', 'into', 'is', "isn't", 'it', "it's", 'its', 'itself', "let's", 'me', 'more', 'most', "mustn't", 'my', 'myself', 'no', 'nor', 'not', 'of', 'off', 'on', 'once', 'only', 'or', 'other', 'ought', 'our', 'ours', 'ourselves', 'out', 'over', 'own', 'r', 'same', "shan't", 'she', "she'd", "she'll", "she's", 'should', "shouldn't", 'so', 'some', 'such', 'than', 'that', "that's", 'the', 'their', 'theirs', 'them', 'themselves', 'then', 'there', "there's", 'these', 'they', "they'd", "they'll", "they're", "they've", 'this', 'those', 'through', 'to', 'too', 'under', 'until', 'up', 'very', 'was', "wasn't", 'we', "we'd", "we'll", "we're", "we've", 'were', "weren't", 'what', "what's", 'when', "when's", 'where', "where's", 'which', 'while', 'who', "who's", 'whom', 'why', "why's", 'with', "won't", 'would', "wouldn't", 'you', "you'd", "you'll", "you're", "you've", 'your', 'yours', 'yourself', 'yourselves']);
+    
+    // Remove HTML tags and our embedded data comments before processing
+    const cleanText = text.replace(/<!--COMPETITORS_START-->[\s\S]*<!--COMPETITORS_END-->/g, '').replace(/<[^>]*>/g, '');
+
+    const words = cleanText
+      .toLowerCase()
+      .match(/\b[a-z0-9]+(?:-[a-z0-9]+)*\b/g) || [];
+      
+    return Array.from(new Set(words.filter(word => word.length > 2 && !stopWords.has(word))));
+  }
+
+  public analyzeCompetitors(competitors: ScrapedMetadata[]): { keyword: string; frequency: number; percentage: number; apps: string[] }[] {
+    const keywordFrequency: { [key: string]: { count: number; apps: Set<string> } } = {};
+    const totalCompetitors = competitors.length;
+    if (totalCompetitors === 0) return [];
+
+    competitors.forEach(app => {
+      const textToAnalyze = `${app.title} ${app.subtitle} ${app.description}`;
+      const keywords = this.extractKeywordsFromText(textToAnalyze);
+      
+      const uniqueKeywordsPerApp = new Set(keywords);
+
+      uniqueKeywordsPerApp.forEach(keyword => {
+        if (!keywordFrequency[keyword]) {
+          keywordFrequency[keyword] = { count: 0, apps: new Set() };
+        }
+        keywordFrequency[keyword].count++;
+        keywordFrequency[keyword].apps.add(app.title || app.name);
+      });
+    });
+
+    return Object.entries(keywordFrequency)
+      .map(([keyword, { count, apps }]) => ({
+        keyword,
+        frequency: count,
+        percentage: Math.round((count / totalCompetitors) * 100),
+        apps: Array.from(apps),
+      }))
+      .sort((a, b) => b.frequency - a.frequency);
   }
 }
 
