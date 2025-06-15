@@ -55,8 +55,8 @@ export const Caption: React.FC<TypographyProps> = ({ children, className }) => (
   </span>
 );
 
-export const Label: React.FC<TypographyProps> = ({ children, className }) => (
-  <label className={cn("text-sm font-medium text-zinc-300 leading-normal", className)}>
+export const Label: React.FC<TypographyProps & React.ComponentPropsWithoutRef<'label'>> = ({ children, className, ...props }) => (
+  <label {...props} className={cn("text-sm font-medium text-zinc-300 leading-normal", className)}>
     {children}
   </label>
 );
