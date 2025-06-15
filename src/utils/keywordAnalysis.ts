@@ -1,17 +1,6 @@
+import { KeywordData } from '@/types/aso';
 
 // Keyword analysis utilities for the Growth Gap Finder
-
-export interface KeywordData {
-  keyword: string;
-  volume: number;
-  maxReach: number;
-  results: number;
-  difficulty: number;
-  chance: number;
-  kei: number;
-  relevancy: number;
-  rank: number | null;
-}
 
 export interface AnalysisResult {
   title: string;

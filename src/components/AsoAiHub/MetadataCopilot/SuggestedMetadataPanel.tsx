@@ -1,8 +1,7 @@
-
 import React, { useState, useEffect } from 'react';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { RefreshCw, Save } from 'lucide-react';
+import { RefreshCw, Save, Sparkles } from 'lucide-react';
 import { MetadataGenerationForm } from './MetadataGenerationForm';
 import { MetadataPreview } from './MetadataPreview';
 import { useCopilotChat } from '@/hooks/useCopilotChat';
@@ -10,9 +9,10 @@ import { metadataEngine } from '@/engines';
 import { competitorAnalysisService, exportService } from '@/services';
 import { parseKeywordData } from '@/utils/keywordAnalysis';
 import { useToast } from '@/hooks/use-toast';
-import { ScrapedMetadata, MetadataField, MetadataScore, CompetitorKeywordAnalysis } from '@/types/aso';
+import { ScrapedMetadata, MetadataField, MetadataScore, CompetitorKeywordAnalysis, KeywordData } from '@/types/aso';
 import { supabase } from '@/integrations/supabase/client';
 import { ExportManager } from '@/components/shared/ExportManager';
+import { Badge } from '@/components/ui/badge';
 
 interface SuggestedMetadataPanelProps {
   initialData: ScrapedMetadata;
@@ -24,26 +24,62 @@ export const SuggestedMetadataPanel: React.FC<SuggestedMetadataPanelProps> = ({ 
   const [metadataScore, setMetadataScore] = useState<MetadataScore | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const { sendMessage, isLoading } = useCopilotChat();
+  const { sendMessage, isLoading: isChatLoading } = useCopilotChat();
   const { toast } = useToast();
 
   const [competitorKeywords, setCompetitorKeywords] = useState<CompetitorKeywordAnalysis[]>([]);
   const [cleanDescription, setCleanDescription] = useState(initialData.description);
   
+  const [seedKeywords, setSeedKeywords] = useState<string[]>([]);
+  const [isSeeding, setIsSeeding] = useState(true);
+
   useEffect(() => {
-    // Extract competitor data using the new service
     const { competitors, cleanDescription: cleaned } = competitorAnalysisService.extractCompetitorData(
       initialData.description || ''
     );
     
+    setCleanDescription(cleaned);
+    let analysis: CompetitorKeywordAnalysis[] = [];
     if (competitors.length > 0) {
-      const analysis = competitorAnalysisService.analyzeCompetitorKeywords(competitors);
+      // Correctly call analyzeCompetitors from the metadataEngine
+      analysis = metadataEngine.analyzeCompetitors(competitors);
       setCompetitorKeywords(analysis);
       console.log(`📊 Analyzed competitor keywords:`, analysis);
     }
     
-    setCleanDescription(cleaned);
-  }, [initialData]);
+    const generateSeedKeywords = async () => {
+      setIsSeeding(true);
+      const competitorInsight = competitorAnalysisService.generateCompetitorInsights(analysis);
+      const prompt = `Based on the following app details, generate a concise, comma-separated list of 15-20 highly relevant seed keywords for App Store Optimization. Focus on terms a user would search for.
+
+App Name: ${initialData.title}
+Description Summary: ${cleaned?.substring(0, 250)}...
+Category: ${initialData.applicationCategory}
+Locale: ${initialData.locale}
+${competitorInsight}
+
+Do not use formatting, just return a single line of comma-separated keywords. Example: keyword1,keyword2,keyword3`;
+
+      try {
+        const aiResponse = await sendMessage(prompt, 'metadata-copilot-seeder');
+        if (aiResponse) {
+          const keywords = aiResponse.split(',').map(k => k.trim()).filter(Boolean);
+          setSeedKeywords(keywords);
+           toast({
+            title: "Keywords Suggested!",
+            description: "AI has generated seed keywords to get you started.",
+          });
+        }
+      } catch (e) {
+        toast({ title: "Could not generate seed keywords.", variant: "destructive" });
+      } finally {
+        setIsSeeding(false);
+      }
+    };
+    
+    generateSeedKeywords();
+
+  }, [initialData, sendMessage, toast]);
 
   const parseAIResponse = (response: string): MetadataField | null => {
     try {
@@ -85,8 +121,18 @@ export const SuggestedMetadataPanel: React.FC<SuggestedMetadataPanelProps> = ({ 
     setIsGenerating(true);
 
     try {
-      const keywords = parseKeywordData(formData.keywordData);
-      const enhancedKeywords = metadataEngine.filterAndPrioritizeKeywords(keywords);
+      const userKeywords = parseKeywordData(formData.keywordData);
+      
+      const seedKeywordObjects: KeywordData[] = seedKeywords.map(k => ({
+        keyword: k,
+        relevancy: 50 // Assign a default relevancy
+      }));
+
+      // Combine and deduplicate keywords
+      const combinedKeywords = [...userKeywords, ...seedKeywordObjects];
+      const uniqueKeywords = Array.from(new Map(combinedKeywords.map(item => [item.keyword, item])).values());
+
+      const enhancedKeywords = metadataEngine.filterAndPrioritizeKeywords(uniqueKeywords);
       
       const competitorInsight = competitorAnalysisService.generateCompetitorInsights(competitorKeywords);
         
@@ -98,7 +144,7 @@ Category: ${initialData.applicationCategory}
 Locale: ${initialData.locale}
 Target Audience: ${formData.targetAudience || 'General'}
 ${competitorInsight}
-Your Provided Keywords (Prioritized):
+Your Provided & AI-Suggested Keywords (Prioritized):
 ${enhancedKeywords.slice(0, 20).map(k => `${k.keyword} (Volume: ${k.volume}, Relevancy: ${k.relevancy})`).join('\n')}
 
 STRICT REQUIREMENTS:
@@ -187,9 +233,33 @@ KEYWORDS: [keyword1,keyword2,keyword3]`;
     <div className="space-y-6">
       <Card className="bg-zinc-900/50 border-zinc-800">
         <CardContent className="p-6">
+          {/* AI Suggested Keywords Section */}
+          <div className="mb-6">
+             <CardTitle className="text-lg mb-3 flex items-center">
+              <Sparkles className="w-5 h-5 mr-2 text-yodel-orange" />
+              <span>AI Suggested Keywords</span>
+            </CardTitle>
+            {isSeeding ? (
+              <div className="text-zinc-400">Generating keyword ideas...</div>
+            ) : seedKeywords.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {seedKeywords.map((keyword) => (
+                  <Badge key={keyword} variant="outline" className="bg-zinc-800 border-zinc-700 text-zinc-300">
+                    {keyword}
+                  </Badge>
+                ))}
+              </div>
+            ) : (
+              <div className="text-zinc-500">Could not generate keywords. Please add your own below.</div>
+            )}
+            <p className="text-xs text-zinc-500 mt-2">
+              Use these suggestions to inspire the keyword research you enter below.
+            </p>
+          </div>
+        
           <MetadataGenerationForm 
             onGenerate={handleGenerate}
-            isLoading={isGenerating || isLoading || isSaving}
+            isLoading={isGenerating || isChatLoading || isSaving || isSeeding}
             appName={initialData.name}
             category={initialData.applicationCategory}
             locale={initialData.locale}

@@ -1,4 +1,3 @@
-
 export interface ScrapedMetadata {
   name: string;
   url: string;
@@ -74,6 +73,18 @@ export interface ExportFormat {
   format: 'json' | 'csv' | 'xlsx';
   includeMetadata?: boolean;
   includeAnalytics?: boolean;
+}
+
+export interface KeywordData {
+  keyword: string;
+  volume?: number;
+  difficulty?: number;
+  relevancy?: number;
+  chance?: number;
+  rank?: number | null;
+  maxReach?: number;
+  results?: number;
+  kei?: number;
 }
 
 // Re-export CPP types for convenience

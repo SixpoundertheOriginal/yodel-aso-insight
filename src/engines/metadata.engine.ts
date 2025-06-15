@@ -1,12 +1,4 @@
-
-import { MetadataField, MetadataScore, CompetitorKeywordAnalysis } from '@/types/aso';
-
-interface KeywordData {
-  keyword: string;
-  volume?: number;
-  difficulty?: number;
-  relevancy?: number;
-}
+import { MetadataField, MetadataScore, CompetitorKeywordAnalysis, KeywordData } from '@/types/aso';
 
 interface ValidationResult {
   isValid: boolean;
@@ -108,7 +100,7 @@ class MetadataEngine {
   /**
    * Analyze competitor keywords for insights
    */
-  analyzeCompetitors(competitors: any[]): CompetitorKeywordAnalysis[] {
+  analyzeCompetitors(competitors: CompetitorData[]): CompetitorKeywordAnalysis[] {
     const keywordMap = new Map<string, { frequency: number; apps: Set<string> }>();
     const totalApps = competitors.length;
 
@@ -128,16 +120,17 @@ class MetadataEngine {
         .filter(word => word.length > 2)
         .filter(word => !this.isStopWord(word));
 
-      words.forEach(word => {
+      // Use a Set to ensure we only count frequency once per competitor for a given word
+      const competitorWords = new Set(words);
+
+      competitorWords.forEach(word => {
         if (!keywordMap.has(word)) {
           keywordMap.set(word, { frequency: 0, apps: new Set() });
         }
         
         const entry = keywordMap.get(word)!;
-        if (!entry.apps.has(competitor.id || competitor.name)) {
-          entry.frequency++;
-          entry.apps.add(competitor.id || competitor.name);
-        }
+        entry.frequency++;
+        entry.apps.add(competitor.id || competitor.name);
       });
     });
 
