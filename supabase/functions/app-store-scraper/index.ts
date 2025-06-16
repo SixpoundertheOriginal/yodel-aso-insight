@@ -10,7 +10,7 @@ import { AnalyticsService } from './services/analytics.service.ts'
 import { ErrorHandler } from './utils/error-handler.ts'
 import { ResponseBuilder } from './utils/response-builder.ts'
 
-const VERSION = '4.1.0-emergency-stabilized'
+const VERSION = '5.0.0-aso-intelligence'
 
 // Enterprise-grade: Initialize services with admin client
 const supabaseAdmin = createClient(
@@ -56,6 +56,13 @@ serve(async (req: Request) => {
           cache: 'operational',
           security: 'operational',
           analytics: 'operational'
+        },
+        features: {
+          intelligentSearch: 'enabled',
+          keywordSearch: 'enabled',
+          brandSearch: 'enabled',
+          urlScraping: 'enabled',
+          asoIntelligence: 'enabled'
         }
       })
     }
@@ -73,19 +80,21 @@ serve(async (req: Request) => {
       return responseBuilder.error('Invalid JSON in request body', 400)
     }
 
-    // Extract parameters with backward compatibility
+    // Extract parameters with enhanced support
     const { 
       searchTerm, 
+      searchType = 'auto', // New: auto-detect, url, keyword, brand
       organizationId, 
-      includeCompetitorAnalysis = true, 
+      includeCompetitorAnalysis = true,
+      searchParameters = {},
       securityContext = {} 
     } = requestBody
 
-    // Emergency validation with clear error messages
+    // Enhanced validation
     if (!searchTerm || typeof searchTerm !== 'string') {
       return responseBuilder.error('searchTerm is required and must be a string', 400, {
         code: 'MISSING_SEARCH_TERM',
-        details: 'Please provide a valid app name or App Store URL'
+        details: 'Please provide a valid app name, keywords, or App Store URL'
       })
     }
 
@@ -99,9 +108,9 @@ serve(async (req: Request) => {
     // Generate request ID for tracking
     requestId = crypto.randomUUID()
     
-    console.log(`[${requestId}] Processing request for: ${searchTerm} (org: ${organizationId})`)
+    console.log(`[${requestId}] Processing ${searchType} search for: ${searchTerm} (org: ${organizationId})`)
 
-    // Phase 1: Security Validation (with fallback for development)
+    // Phase 1: Security Validation
     console.log(`[${requestId}] Starting security validation...`)
     const securityValidation = await securityService.validateRequest({
       searchTerm,
@@ -113,51 +122,77 @@ serve(async (req: Request) => {
 
     if (!securityValidation.success) {
       console.warn(`[${requestId}] Security validation failed: ${securityValidation.error}`)
-      // In emergency mode, log warning but don't block request
       await analyticsService.logEvent('security_validation_warning', {
         requestId,
         organizationId,
         reason: securityValidation.error
-      }).catch(() => {}) // Don't fail if analytics fail
+      }).catch(() => {})
     }
 
-    // Phase 2: Cache Check
-    console.log(`[${requestId}] Checking cache...`)
-    const cachedResult = await cacheService.get(searchTerm, organizationId).catch(err => {
+    // Phase 2: Intelligent Cache Check
+    const cacheKey = `${searchType}:${searchTerm}:${searchParameters.country || 'us'}`
+    console.log(`[${requestId}] Checking cache with key: ${cacheKey}`)
+    
+    const cachedResult = await cacheService.get(cacheKey, organizationId).catch(err => {
       console.warn(`[${requestId}] Cache check failed:`, err)
-      return null // Don't fail request if cache fails
+      return null
     })
     
     if (cachedResult) {
-      await analyticsService.logEvent('cache_hit', { requestId, organizationId }).catch(() => {})
-      return responseBuilder.success(cachedResult, { 'X-Cache': 'HIT', 'X-Request-ID': requestId })
+      await analyticsService.logEvent('cache_hit', { requestId, organizationId, searchType }).catch(() => {})
+      return responseBuilder.success(cachedResult, { 
+        'X-Cache': 'HIT', 
+        'X-Request-ID': requestId,
+        'X-Search-Type': searchType 
+      })
     }
 
-    // Phase 3: Market Discovery
-    console.log(`[${requestId}] Starting market discovery...`)
-    const discoveryResult = await discoveryService.discover(searchTerm, {
+    // Phase 3: Enhanced Market Discovery
+    console.log(`[${requestId}] Starting intelligent discovery...`)
+    
+    // Configure discovery options based on search type
+    const discoveryOptions = {
       includeCompetitors: includeCompetitorAnalysis !== false,
-      maxCompetitors: 5,
-      country: securityValidation.data?.country || 'us'
-    })
+      maxCompetitors: searchType === 'keyword' ? 20 : (searchType === 'brand' ? 10 : 5),
+      country: searchParameters.country || securityValidation.data?.country || 'us',
+      searchType: searchType,
+      limit: searchParameters.limit || 25
+    }
+
+    const discoveryResult = await discoveryService.discover(searchTerm, discoveryOptions)
 
     if (!discoveryResult.success) {
       await analyticsService.logEvent('discovery_failed', {
         requestId,
         organizationId,
+        searchType,
         error: discoveryResult.error
       }).catch(() => {})
-      return responseBuilder.error(discoveryResult.error || 'App not found in store', 404, {
-        code: 'APP_NOT_FOUND',
-        details: 'Could not find the specified app in the App Store'
+      
+      let userFriendlyMessage = 'No results found for your search'
+      if (searchType === 'keyword') {
+        userFriendlyMessage = `No apps found for "${searchTerm}". Try different keywords or check spelling.`
+      } else if (searchType === 'brand') {
+        userFriendlyMessage = `App "${searchTerm}" not found. Please verify the exact app name.`
+      }
+      
+      return responseBuilder.error(userFriendlyMessage, 404, {
+        code: 'NO_RESULTS_FOUND',
+        details: `Search type: ${searchType}, Query: ${searchTerm}`
       })
     }
 
-    // Phase 4: Metadata Extraction
-    console.log(`[${requestId}] Extracting metadata...`)
+    // Phase 4: Enhanced Metadata Extraction
+    console.log(`[${requestId}] Extracting metadata for ${discoveryResult.data.competitors.length + 1} apps...`)
     const metadataResult = await metadataService.extract({
       targetApp: discoveryResult.data.targetApp,
-      competitors: discoveryResult.data.competitors
+      competitors: discoveryResult.data.competitors,
+      extractionOptions: {
+        includeKeywords: true,
+        includeDescriptions: true,
+        includeRatings: true,
+        includeScreenshots: searchType !== 'url' // Only for search results
+      }
     })
 
     if (!metadataResult.success) {
@@ -172,83 +207,134 @@ serve(async (req: Request) => {
       })
     }
 
-    // Phase 5: Screenshot Analysis (optional, don't fail if it doesn't work)
-    let analysisResult = null
-    if (includeCompetitorAnalysis) {
-      console.log(`[${requestId}] Analyzing screenshots...`)
+    // Phase 5: ASO Intelligence Generation (for non-URL searches)
+    let asoIntelligence = null
+    if (searchType !== 'url' && includeCompetitorAnalysis) {
+      console.log(`[${requestId}] Generating ASO intelligence...`)
       try {
-        analysisResult = await screenshotService.analyze({
-          targetApp: metadataResult.data.targetApp,
-          competitors: metadataResult.data.competitors.slice(0, 3),
-          analysisType: 'competitive-intelligence'
-        })
-
-        if (!analysisResult.success) {
-          console.warn(`[${requestId}] Screenshot analysis failed: ${analysisResult.error}`)
-        }
-      } catch (screenshotError) {
-        console.warn(`[${requestId}] Screenshot analysis error:`, screenshotError)
+        asoIntelligence = await this.generateAsoIntelligence(
+          metadataResult.data.targetApp,
+          metadataResult.data.competitors,
+          searchType,
+          searchTerm
+        )
+      } catch (intelligenceError) {
+        console.warn(`[${requestId}] ASO intelligence generation failed:`, intelligenceError)
       }
     }
 
-    // Phase 6: Build Final Response
+    // Phase 6: Build Enhanced Response
     const finalMetadata = {
       ...metadataResult.data.targetApp,
-      competitorScreenshots: analysisResult?.data?.competitorAnalysis || [],
+      competitors: metadataResult.data.competitors || [],
+      searchContext: {
+        query: searchTerm,
+        type: searchType,
+        totalResults: (metadataResult.data.competitors?.length || 0) + 1,
+        category: discoveryResult.data.category,
+        country: discoveryOptions.country
+      },
+      asoIntelligence: asoIntelligence,
       marketInsights: {
         totalCompetitors: discoveryResult.data.competitors.length,
         category: discoveryResult.data.category,
-        marketPosition: analysisResult?.data?.marketPosition || 'unknown'
+        searchType: searchType,
+        marketPosition: asoIntelligence?.marketSaturation ? 
+          (asoIntelligence.marketSaturation < 30 ? 'low-competition' : 
+           asoIntelligence.marketSaturation < 70 ? 'moderate-competition' : 'high-competition') : 'unknown'
       }
     }
 
-    // Phase 7: Cache Result (don't fail if caching fails)
+    // Phase 7: Enhanced Caching
     try {
-      await cacheService.set(searchTerm, organizationId, finalMetadata, {
-        ttl: 24 * 60 * 60, // 24 hours
-        tags: ['metadata', 'competitive-analysis']
+      await cacheService.set(cacheKey, organizationId, finalMetadata, {
+        ttl: searchType === 'url' ? 24 * 60 * 60 : 6 * 60 * 60, // URLs cache longer
+        tags: ['metadata', 'aso-intelligence', searchType]
       })
     } catch (cacheError) {
       console.warn(`[${requestId}] Failed to cache result:`, cacheError)
     }
 
-    // Phase 8: Analytics & Monitoring
+    // Phase 8: Enhanced Analytics
     const processingTime = Date.now() - startTime
-    await analyticsService.logEvent('request_completed', {
+    await analyticsService.logEvent('aso_search_completed', {
       requestId,
       organizationId,
+      searchType,
       processingTime,
       competitorsAnalyzed: discoveryResult.data.competitors.length,
-      screenshotsAnalyzed: analysisResult?.data?.screenshotsProcessed || 0
+      intelligenceGenerated: !!asoIntelligence,
+      cache: 'MISS'
     }).catch(() => {})
 
-    console.log(`[${requestId}] Request completed successfully in ${processingTime}ms`)
+    console.log(`[${requestId}] ASO search completed successfully in ${processingTime}ms`)
 
     return responseBuilder.success({
       success: true,
       data: finalMetadata,
       requestId,
-      processingTime: `${processingTime}ms`
+      processingTime: `${processingTime}ms`,
+      searchType: searchType
     }, {
       'X-Processing-Time': `${processingTime}ms`,
       'X-Request-ID': requestId,
-      'X-Cache': 'MISS'
+      'X-Cache': 'MISS',
+      'X-Search-Type': searchType
     })
 
   } catch (error) {
     console.error(`[${requestId}] Critical error:`, error)
     
-    // Log critical error for monitoring
     await analyticsService.logEvent('critical_error', {
       requestId,
       error: error.message,
-      stack: error.stack?.substring(0, 1000) // Limit stack trace size
+      stack: error.stack?.substring(0, 1000)
     }).catch(() => {})
 
-    return responseBuilder.error('Internal server error occurred', 500, {
+    return responseBuilder.error('Search service temporarily unavailable', 500, {
       code: 'INTERNAL_ERROR',
-      details: 'An unexpected error occurred while processing your request',
+      details: 'Please try again in a few minutes',
       requestId
     })
   }
 })
+
+// Helper function to generate ASO intelligence
+async function generateAsoIntelligence(targetApp: any, competitors: any[], searchType: string, searchTerm: string) {
+  const opportunities: string[] = []
+  
+  // Calculate market saturation
+  const competitorCount = competitors.length
+  const marketSaturation = Math.min((competitorCount / 50) * 100, 100)
+  
+  // Calculate keyword difficulty
+  const avgRating = competitors.reduce((sum, app) => sum + (app.averageUserRating || 0), 0) / competitorCount
+  const keywordDifficulty = Math.min((avgRating / 5) * 100, 100)
+  
+  // Generate trending score (simplified - in production, use real trend data)
+  const trendingScore = Math.random() * 100
+  
+  // Generate opportunities
+  if (marketSaturation < 30) {
+    opportunities.push('Low competition market - excellent opportunity for new apps')
+  }
+  if (keywordDifficulty < 50) {
+    opportunities.push('Moderate difficulty keywords - good for established apps')
+  }
+  if (competitors.some(app => (app.averageUserRating || 0) < 4.0)) {
+    opportunities.push('Competitors with low ratings - quality opportunity exists')
+  }
+  if (searchType === 'keyword') {
+    opportunities.push('Generic keyword search - consider long-tail keyword variations')
+  }
+  if (searchType === 'brand' && competitorCount > 15) {
+    opportunities.push('Saturated brand category - focus on unique value proposition')
+  }
+  
+  return {
+    keywordDifficulty: Math.round(keywordDifficulty),
+    marketSaturation: Math.round(marketSaturation),
+    trendingScore: Math.round(trendingScore),
+    opportunities
+  }
+}

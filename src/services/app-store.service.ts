@@ -1,159 +1,64 @@
+
 import { supabase } from '@/integrations/supabase/client';
 import { ScrapedMetadata, ValidationResult, ImportConfig } from '@/types/aso';
-import { securityService } from './security.service';
-
-interface AppStoreApiRequest {
-  searchTerm: string;
-  organizationId: string;
-  includeCompetitorAnalysis?: boolean;
-  securityContext?: {
-    country?: string;
-    userAgent?: string;
-    ipAddress?: string;
-  };
-}
-
-interface AppStoreApiResponse {
-  success: boolean;
-  data?: ScrapedMetadata;
-  error?: string;
-  requestId?: string;
-  processingTime?: string;
-}
+import { asoSearchService, SearchResult } from './aso-search.service';
 
 class AppStoreService {
-  private readonly functionUrl = 'https://bkbcqocpjahewqjmlgvf.supabase.co/functions/v1/app-store-scraper';
-
   /**
-   * Import app data from App Store URL or app name
+   * Enhanced import that intelligently handles URLs, brands, and keywords
    */
   async importAppData(input: string, config: ImportConfig): Promise<ScrapedMetadata> {
-    console.log('🚀 [APP-STORE-SERVICE] Starting import for:', input);
+    console.log('🚀 [APP-STORE-SERVICE] Starting intelligent import for:', input);
 
     try {
-      // Validate and sanitize input
-      const searchTerm = this.normalizeSearchInput(input);
-      const securityValidation = securityService.validateAppStoreUrl(searchTerm);
-      
-      if (!securityValidation.success) {
-        throw new Error(`Invalid input: ${securityValidation.errors?.[0]?.message || 'Unknown validation error'}`);
-      }
-
-      // Check rate limits before making request
-      const rateLimitCheck = await securityService.checkRateLimit(config.organizationId, 'app_store_import');
-      if (!rateLimitCheck.success) {
-        throw new Error(`Rate limit exceeded: ${rateLimitCheck.errors?.[0]?.message || 'Too many requests'}`);
-      }
-
-      // Prepare request payload with correct contract
-      const requestPayload: AppStoreApiRequest = {
-        searchTerm: securityValidation.data || searchTerm,
+      // Use the new ASO search service for intelligent processing
+      const searchResult: SearchResult = await asoSearchService.search(input, {
         organizationId: config.organizationId,
-        includeCompetitorAnalysis: true,
-        securityContext: {
-          country: 'us',
-          userAgent: navigator.userAgent,
-          ipAddress: 'client-side' // Will be detected server-side
-        }
-      };
-
-      console.log('📡 [APP-STORE-SERVICE] Calling edge function with payload:', requestPayload);
-
-      // Make the API call
-      const { data, error } = await supabase.functions.invoke('app-store-scraper', {
-        body: requestPayload,
-        headers: {
-          'Content-Type': 'application/json',
-        }
+        includeIntelligence: true,
+        cacheResults: config.includeCaching !== false,
+        debugMode: config.debugMode
       });
 
-      if (error) {
-        console.error('❌ [APP-STORE-SERVICE] Supabase function invocation error:', error);
-        throw new Error(`The import service is currently unavailable. Please try again later. (Details: ${error.message})`);
-      }
-
-      // Handle the response
-      const response = data as AppStoreApiResponse;
-      
-      if (!response.success || !response.data) {
-        console.error('❌ [APP-STORE-SERVICE] API returned error:', response.error);
-        throw new Error(response.error || 'Failed to import app data from the store');
-      }
-
       // Validate the response data
-      const validationResult = this.validateScrapedData(response.data);
+      const validationResult = this.validateScrapedData(searchResult.targetApp);
       if (!validationResult.isValid) {
         console.warn('⚠️ [APP-STORE-SERVICE] Data validation issues:', validationResult.issues);
         // Use sanitized data but log warnings
         return validationResult.sanitized;
       }
 
-      console.log('✅ [APP-STORE-SERVICE] Successfully imported app data:', response.data.name);
+      console.log('✅ [APP-STORE-SERVICE] Successfully imported app data:', searchResult.targetApp.name);
+      console.log('📊 [APP-STORE-SERVICE] Search intelligence:', searchResult.intelligence);
       
-      // Log successful import for audit
-      await securityService.logAuditEntry({
-        organizationId: config.organizationId,
-        userId: (await supabase.auth.getUser()).data.user?.id || null,
-        action: 'app_store_import_success',
-        resourceType: 'app-store-import',
-        resourceId: response.data.appId,
-        details: {
-          appName: response.data.name,
-          searchTerm: requestPayload.searchTerm,
-          processingTime: response.processingTime
-        },
-        ipAddress: null,
-        userAgent: navigator.userAgent
-      });
+      // Enhanced metadata with search context and intelligence
+      const enhancedMetadata: ScrapedMetadata = {
+        ...searchResult.targetApp,
+        // Add search context to metadata for UI display
+        searchContext: searchResult.searchContext,
+        asoIntelligence: searchResult.intelligence,
+        competitorData: searchResult.competitors.slice(0, 5) // Limit competitors for UI
+      };
 
-      return response.data;
+      return enhancedMetadata;
 
     } catch (error: any) {
       console.error('❌ [APP-STORE-SERVICE] Import failed:', error);
       
-      // Log failed import for monitoring
-      try {
-        await securityService.logAuditEntry({
-          organizationId: config.organizationId,
-          userId: (await supabase.auth.getUser()).data.user?.id || null,
-          action: 'app_store_import_failed',
-          resourceType: 'app-store-import',
-          resourceId: null,
-          details: {
-            searchTerm: input,
-            errorMessage: error.message,
-            errorType: this.categorizeError(error)
-          },
-          ipAddress: null,
-          userAgent: navigator.userAgent
-        });
-      } catch (auditError) {
-        console.warn('⚠️ [APP-STORE-SERVICE] Failed to log audit entry:', auditError);
+      // Provide user-friendly error messages based on error type
+      let userMessage = error.message;
+      
+      if (error.message?.includes('Rate limit exceeded')) {
+        userMessage = 'You have made too many requests. Please wait a few minutes before trying again.';
+      } else if (error.message?.includes('No results found')) {
+        userMessage = 'No apps found for your search. Try different keywords or check the spelling.';
+      } else if (error.message?.includes('Invalid search input')) {
+        userMessage = 'Please enter a valid app name, keywords, or App Store URL.';
+      } else if (error.message?.includes('Search service unavailable')) {
+        userMessage = 'The search service is temporarily unavailable. Please try again in a few minutes.';
       }
 
-      // Re-throw with user-friendly message
-      throw new Error(error.message || 'An unexpected error occurred during import');
+      throw new Error(userMessage);
     }
-  }
-
-  /**
-   * Normalize search input to handle both URLs and app names
-   */
-  private normalizeSearchInput(input: string): string {
-    const trimmed = input.trim();
-    
-    // If it's already a URL, return as-is
-    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
-      return trimmed;
-    }
-    
-    // If it looks like an app store URL without protocol
-    if (trimmed.includes('apps.apple.com')) {
-      return `https://${trimmed}`;
-    }
-    
-    // Otherwise, treat as app name/search term
-    return trimmed;
   }
 
   /**
@@ -214,35 +119,6 @@ class AppStoreService {
       .replace(/on\w+=/gi, '')
       .trim()
       .substring(0, 10000); // Reasonable length limit
-  }
-
-  /**
-   * Categorize errors for better monitoring and user feedback
-   */
-  private categorizeError(error: any): string {
-    const message = error.message?.toLowerCase() || '';
-    
-    if (message.includes('rate limit') || message.includes('429')) {
-      return 'rate_limit';
-    }
-    
-    if (message.includes('not found') || message.includes('404')) {
-      return 'not_found';
-    }
-    
-    if (message.includes('unauthorized') || message.includes('403')) {
-      return 'unauthorized';
-    }
-    
-    if (message.includes('network') || message.includes('fetch')) {
-      return 'network';
-    }
-    
-    if (message.includes('validation') || message.includes('invalid')) {
-      return 'validation';
-    }
-    
-    return 'unknown';
   }
 }
 

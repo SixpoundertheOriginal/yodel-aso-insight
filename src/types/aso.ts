@@ -1,3 +1,4 @@
+
 export interface ScrapedMetadata {
   name: string;
   url: string;
@@ -12,6 +13,30 @@ export interface ScrapedMetadata {
   rating?: number;
   reviews?: number;
   price?: string;
+  
+  // Enhanced ASO Intelligence Fields
+  searchContext?: {
+    query: string;
+    type: 'url' | 'keyword' | 'brand';
+    totalResults: number;
+    category: string;
+    country: string;
+  };
+  
+  asoIntelligence?: {
+    keywordDifficulty?: number;
+    marketSaturation?: number;
+    trendingScore?: number;
+    opportunities: string[];
+  };
+  
+  competitorData?: CompetitorData[];
+  marketInsights?: {
+    totalCompetitors: number;
+    category: string;
+    searchType?: string;
+    marketPosition: string;
+  };
   
   // CPP Enhancement Fields
   screenshotAnalysis?: import('./cpp').ScreenshotAnalysis[];
@@ -29,6 +54,8 @@ export interface CompetitorData {
   category: string;
   rating?: number;
   reviews?: number;
+  icon?: string;
+  developer?: string;
 }
 
 export interface CompetitorKeywordAnalysis {
@@ -85,6 +112,26 @@ export interface KeywordData {
   maxReach?: number;
   results?: number;
   kei?: number;
+}
+
+// ASO Intelligence Types
+export interface AsoIntelligence {
+  keywordDifficulty: number;
+  marketSaturation: number;
+  trendingScore: number;
+  opportunities: string[];
+  competitorStrength?: number;
+  marketGaps?: string[];
+  recommendedKeywords?: string[];
+}
+
+export interface SearchContext {
+  query: string;
+  type: 'url' | 'keyword' | 'brand' | 'auto';
+  totalResults: number;
+  category: string;
+  country: string;
+  processingTime?: string;
 }
 
 // Re-export CPP types for convenience
