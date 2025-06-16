@@ -1,14 +1,13 @@
-
 import { supabase } from '@/integrations/supabase/client';
 import { ScrapedMetadata, ValidationResult, ImportConfig, CompetitorData } from '@/types/aso';
 import { asoSearchService, SearchResult } from './aso-search.service';
 
 class AppStoreService {
   /**
-   * Emergency stabilized import with comprehensive error handling
+   * Simplified import with direct iTunes API integration
    */
   async importAppData(input: string, config: ImportConfig): Promise<ScrapedMetadata> {
-    console.log('🚀 [APP-STORE-SERVICE] Starting emergency stabilized import for:', input);
+    console.log('🚀 [APP-STORE-SERVICE] Starting simplified import for:', input);
     console.log('⚙️ [APP-STORE-SERVICE] Config:', config);
 
     // Input validation
@@ -23,9 +22,9 @@ class AppStoreService {
     const trimmedInput = input.trim();
 
     try {
-      console.log('📤 [APP-STORE-SERVICE] Calling asoSearchService.search...');
+      console.log('📤 [APP-STORE-SERVICE] Calling simplified asoSearchService.search...');
       
-      // Use the enhanced ASO search service
+      // Use the simplified ASO search service
       const searchResult: SearchResult = await asoSearchService.search(trimmedInput, {
         organizationId: config.organizationId,
         includeIntelligence: true,
@@ -62,7 +61,7 @@ class AppStoreService {
         developer: competitor.developer
       }));
 
-      // Enhanced metadata with all context
+      // Enhanced metadata with simplified context
       const enhancedMetadata: ScrapedMetadata = {
         ...validationResult.sanitized,
         // Override with actual data
@@ -70,7 +69,7 @@ class AppStoreService {
         title: searchResult.targetApp.title || validationResult.sanitized.title,
         subtitle: searchResult.targetApp.subtitle || validationResult.sanitized.subtitle,
         description: searchResult.targetApp.description || validationResult.sanitized.description,
-        // Add enhanced context
+        // Add simplified context
         searchContext: searchResult.searchContext,
         asoIntelligence: searchResult.intelligence,
         competitorData: transformedCompetitors.slice(0, 5), // Limit for UI performance

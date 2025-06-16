@@ -1,26 +1,7 @@
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { DiscoveryService } from './services/discovery.service.ts'
-import { MetadataExtractionService } from './services/metadata-extraction.service.ts'
-import { ScreenshotAnalysisService } from './services/screenshot-analysis.service.ts'
-import { CacheManagerService } from './services/cache-manager.service.ts'
-import { SecurityService } from './services/security.service.ts'
-import { AnalyticsService } from './services/analytics.service.ts'
-import { ErrorHandler } from './utils/error-handler.ts'
-import { ResponseBuilder } from './utils/response-builder.ts'
 
-const VERSION = '5.0.1-emergency-stabilized'
-
-// Initialize with better error handling
-const supabaseUrl = Deno.env.get('SUPABASE_URL')
-const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
-
-if (!supabaseUrl || !supabaseKey) {
-  console.error('[CRITICAL] Missing Supabase environment variables')
-}
-
-const supabaseAdmin = createClient(supabaseUrl ?? '', supabaseKey ?? '')
+const VERSION = '6.0.0-emergency-simplified'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -28,391 +9,297 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
 }
 
-// Initialize services with error handling
-let discoveryService: DiscoveryService
-let metadataService: MetadataExtractionService
-let screenshotService: ScreenshotAnalysisService
-let cacheService: CacheManagerService
-let securityService: SecurityService
-let analyticsService: AnalyticsService
-let errorHandler: ErrorHandler
-let responseBuilder: ResponseBuilder
+interface SearchRequest {
+  searchTerm: string
+  searchType?: 'keyword' | 'brand' | 'url'
+  organizationId: string
+  includeCompetitorAnalysis?: boolean
+  searchParameters?: {
+    country?: string
+    limit?: number
+  }
+}
 
-try {
-  discoveryService = new DiscoveryService(supabaseAdmin)
-  metadataService = new MetadataExtractionService(supabaseAdmin)
-  screenshotService = new ScreenshotAnalysisService()
-  cacheService = new CacheManagerService(supabaseAdmin)
-  securityService = new SecurityService(supabaseAdmin)
-  analyticsService = new AnalyticsService(supabaseAdmin)
-  errorHandler = new ErrorHandler()
-  responseBuilder = new ResponseBuilder(corsHeaders)
-  console.log('[STARTUP] All services initialized successfully')
-} catch (initError) {
-  console.error('[CRITICAL] Service initialization failed:', initError)
+interface AppData {
+  name: string
+  appId: string
+  title: string
+  subtitle?: string
+  description?: string
+  url: string
+  icon?: string
+  rating?: number
+  reviews?: number
+  developer?: string
+  applicationCategory?: string
+  locale: string
 }
 
 serve(async (req: Request) => {
   const startTime = Date.now()
-  let requestId: string | null = null
+  let requestId = crypto.randomUUID()
 
   try {
     // Handle CORS preflight requests
     if (req.method === 'OPTIONS') {
       console.log('[CORS] Handling preflight request')
-      return responseBuilder.cors()
+      return new Response(null, { headers: corsHeaders })
     }
 
     // Health Check Endpoint
     if (req.method === 'GET') {
       console.log('[HEALTH] Health check requested')
-      return responseBuilder.success({
+      return new Response(JSON.stringify({
         status: 'ok',
         version: VERSION,
         timestamp: new Date().toISOString(),
-        services: {
-          discovery: discoveryService ? 'operational' : 'failed',
-          metadata: metadataService ? 'operational' : 'failed',
-          screenshot: screenshotService ? 'operational' : 'failed',
-          cache: cacheService ? 'operational' : 'failed',
-          security: securityService ? 'operational' : 'failed',
-          analytics: analyticsService ? 'operational' : 'failed'
-        },
-        features: {
-          intelligentSearch: 'enabled',
-          keywordSearch: 'enabled',
-          brandSearch: 'enabled',
-          urlScraping: 'enabled',
-          asoIntelligence: 'enabled',
-          emergencyStabilization: 'active'
-        }
+        mode: 'emergency-simplified'
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
     }
 
     if (req.method !== 'POST') {
       console.warn('[METHOD] Invalid method:', req.method)
-      return responseBuilder.error('Method Not Allowed', 405)
-    }
-
-    // Parse request with better error handling
-    let requestBody: any
-    try {
-      const bodyText = await req.text()
-      console.log('[REQUEST] Raw body length:', bodyText.length)
-      
-      if (!bodyText || bodyText.trim() === '') {
-        console.error('[REQUEST] Empty request body received')
-        return responseBuilder.error('Request body is empty', 400, {
-          code: 'EMPTY_BODY',
-          details: 'Please provide a valid JSON request body'
-        })
-      }
-      
-      requestBody = JSON.parse(bodyText)
-      console.log('[REQUEST] Parsed request body keys:', Object.keys(requestBody))
-    } catch (parseError) {
-      console.error('[REQUEST] Failed to parse request body:', parseError)
-      return responseBuilder.error('Invalid JSON in request body', 400, {
-        code: 'INVALID_JSON',
-        details: 'Please provide valid JSON data'
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'Method Not Allowed'
+      }), {
+        status: 405,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
     }
 
-    // Extract and validate parameters
-    const { 
-      searchTerm, 
-      searchType = 'keyword', 
-      organizationId, 
-      includeCompetitorAnalysis = true,
-      searchParameters = {},
-      securityContext = {} 
-    } = requestBody
+    // Parse request body
+    let requestBody: SearchRequest
+    try {
+      const bodyText = await req.text()
+      if (!bodyText || bodyText.trim() === '') {
+        throw new Error('Request body is empty')
+      }
+      requestBody = JSON.parse(bodyText)
+    } catch (parseError) {
+      console.error(`[${requestId}] Failed to parse request:`, parseError)
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'Invalid JSON in request body'
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      })
+    }
 
-    console.log('[VALIDATION] Request parameters:', {
-      searchTerm: searchTerm ? `"${searchTerm}" (${typeof searchTerm})` : 'missing',
-      searchType,
-      organizationId: organizationId ? 'present' : 'missing',
-      includeCompetitorAnalysis,
-      searchParametersKeys: Object.keys(searchParameters),
-      securityContextKeys: Object.keys(securityContext)
-    })
+    const { searchTerm, searchType = 'keyword', organizationId, includeCompetitorAnalysis = true, searchParameters = {} } = requestBody
 
-    // Enhanced validation with better error messages
+    // Basic validation
     if (!searchTerm || typeof searchTerm !== 'string' || searchTerm.trim().length === 0) {
-      console.error('[VALIDATION] Invalid searchTerm:', searchTerm)
-      return responseBuilder.error('Search term is required and must be a non-empty string', 400, {
-        code: 'MISSING_SEARCH_TERM',
-        details: 'Please provide a valid app name, keywords, or App Store URL'
+      console.error(`[${requestId}] Invalid searchTerm:`, searchTerm)
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'Search term is required and must be a non-empty string'
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
     }
 
     if (!organizationId || typeof organizationId !== 'string') {
-      console.error('[VALIDATION] Invalid organizationId:', organizationId)
-      return responseBuilder.error('Organization ID is required and must be a string', 400, {
-        code: 'MISSING_ORGANIZATION_ID',
-        details: 'Organization context is required for this operation'
+      console.error(`[${requestId}] Invalid organizationId:`, organizationId)
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'Organization ID is required'
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
     }
 
-    // Generate request ID for tracking
-    requestId = crypto.randomUUID()
-    
-    console.log(`[${requestId}] Starting ${searchType} search for: "${searchTerm}" (org: ${organizationId})`)
+    console.log(`[${requestId}] Processing ${searchType} search: "${searchTerm}" (org: ${organizationId})`)
 
-    // Phase 1: Security Validation (non-blocking)
-    let securityValidation = { success: true, data: { country: 'us' } }
-    if (securityService) {
-      try {
-        securityValidation = await securityService.validateRequest({
-          searchTerm,
-          organizationId,
-          securityContext,
-          ipAddress: req.headers.get('x-forwarded-for') || 'unknown',
-          userAgent: req.headers.get('user-agent') || 'unknown'
+    // Determine search strategy
+    let searchResult: AppData
+    let competitors: AppData[] = []
+
+    if (searchType === 'url' && isAppStoreUrl(searchTerm)) {
+      // Handle App Store URL scraping
+      searchResult = await scrapeAppStoreUrl(searchTerm, requestId)
+    } else {
+      // Handle keyword/brand search using iTunes Search API
+      const searchResponse = await searchItunesApi(searchTerm, searchParameters.country || 'us', searchParameters.limit || 25, requestId)
+      
+      if (!searchResponse || searchResponse.length === 0) {
+        console.error(`[${requestId}] No results found for: ${searchTerm}`)
+        return new Response(JSON.stringify({
+          success: false,
+          error: `No apps found for "${searchTerm}". Try different keywords or check spelling.`
+        }), {
+          status: 404,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         })
-
-        if (!securityValidation.success) {
-          console.warn(`[${requestId}] Security validation warning:`, securityValidation.error)
-        }
-      } catch (securityError) {
-        console.warn(`[${requestId}] Security validation failed (non-blocking):`, securityError)
       }
-    }
 
-    // Phase 2: Cache Check (non-blocking)
-    const cacheKey = `${searchType}:${searchTerm}:${searchParameters.country || 'us'}`
-    let cachedResult = null
-    
-    if (cacheService) {
-      try {
-        cachedResult = await cacheService.get(cacheKey, organizationId)
-        if (cachedResult) {
-          console.log(`[${requestId}] Cache hit for key: ${cacheKey}`)
-          if (analyticsService) {
-            analyticsService.logEvent('cache_hit', { requestId, organizationId, searchType }).catch(() => {})
-          }
-          return responseBuilder.success(cachedResult, { 
-            'X-Cache': 'HIT', 
-            'X-Request-ID': requestId,
-            'X-Search-Type': searchType 
-          })
-        }
-      } catch (cacheError) {
-        console.warn(`[${requestId}] Cache check failed (non-blocking):`, cacheError)
-      }
-    }
-
-    // Phase 3: Discovery with improved error handling
-    console.log(`[${requestId}] Starting discovery phase...`)
-    
-    const discoveryOptions = {
-      includeCompetitors: includeCompetitorAnalysis !== false,
-      maxCompetitors: searchType === 'keyword' ? 20 : (searchType === 'brand' ? 10 : 5),
-      country: searchParameters.country || securityValidation.data?.country || 'us',
-      searchType: searchType,
-      limit: searchParameters.limit || 25
-    }
-
-    console.log(`[${requestId}] Discovery options:`, discoveryOptions)
-
-    const discoveryResult = await discoveryService.discover(searchTerm, discoveryOptions)
-
-    if (!discoveryResult.success) {
-      console.error(`[${requestId}] Discovery failed:`, discoveryResult.error)
+      // First result is the target app
+      searchResult = searchResponse[0]
       
-      if (analyticsService) {
-        analyticsService.logEvent('discovery_failed', {
-          requestId,
-          organizationId,
-          searchType,
-          error: discoveryResult.error
-        }).catch(() => {})
-      }
-      
-      // Return user-friendly error based on search type
-      let userMessage = 'No results found for your search'
-      if (searchType === 'keyword') {
-        userMessage = `No apps found for "${searchTerm}". Try different keywords or check spelling.`
-      } else if (searchType === 'brand') {
-        userMessage = `App "${searchTerm}" not found. Please verify the exact app name.`
-      } else if (searchType === 'url') {
-        userMessage = `Invalid App Store URL or app not found.`
-      }
-      
-      return responseBuilder.error(userMessage, 404, {
-        code: 'NO_RESULTS_FOUND',
-        details: `Search type: ${searchType}, Query: ${searchTerm}`,
-        requestId
-      })
-    }
-
-    console.log(`[${requestId}] Discovery successful, found ${discoveryResult.data.competitors.length} competitors`)
-
-    // Phase 4: Metadata Extraction
-    console.log(`[${requestId}] Starting metadata extraction...`)
-    
-    const metadataResult = await metadataService.extract({
-      targetApp: discoveryResult.data.targetApp,
-      competitors: discoveryResult.data.competitors,
-      extractionOptions: {
-        includeKeywords: true,
-        includeDescriptions: true,
-        includeRatings: true,
-        includeScreenshots: searchType !== 'url'
-      }
-    })
-
-    if (!metadataResult.success) {
-      console.error(`[${requestId}] Metadata extraction failed:`, metadataResult.error)
-      
-      if (analyticsService) {
-        analyticsService.logEvent('metadata_extraction_failed', {
-          requestId,
-          organizationId,
-          error: metadataResult.error
-        }).catch(() => {})
-      }
-      
-      return responseBuilder.error('Failed to extract complete app metadata', 422, {
-        code: 'METADATA_EXTRACTION_FAILED',
-        details: 'Could not extract complete metadata from the app store',
-        requestId
-      })
-    }
-
-    // Phase 5: ASO Intelligence Generation
-    let asoIntelligence = null
-    if (searchType !== 'url' && includeCompetitorAnalysis) {
-      console.log(`[${requestId}] Generating ASO intelligence...`)
-      try {
-        asoIntelligence = await generateAsoIntelligence(
-          metadataResult.data.targetApp,
-          metadataResult.data.competitors,
-          searchType,
-          searchTerm
-        )
-        console.log(`[${requestId}] ASO intelligence generated successfully`)
-      } catch (intelligenceError) {
-        console.warn(`[${requestId}] ASO intelligence generation failed (non-blocking):`, intelligenceError)
+      // Rest are competitors (if requested)
+      if (includeCompetitorAnalysis && searchResponse.length > 1) {
+        competitors = searchResponse.slice(1, 6) // Limit to 5 competitors for performance
       }
     }
 
-    // Phase 6: Build Response
-    const finalMetadata = {
-      ...metadataResult.data.targetApp,
-      competitors: metadataResult.data.competitors || [],
+    // Build final response
+    const finalResult = {
+      ...searchResult,
+      competitors: competitors,
       searchContext: {
         query: searchTerm,
         type: searchType,
-        totalResults: (metadataResult.data.competitors?.length || 0) + 1,
-        category: discoveryResult.data.category,
-        country: discoveryOptions.country
-      },
-      asoIntelligence: asoIntelligence,
-      marketInsights: {
-        totalCompetitors: discoveryResult.data.competitors.length,
-        category: discoveryResult.data.category,
-        searchType: searchType,
-        marketPosition: asoIntelligence?.marketSaturation ? 
-          (asoIntelligence.marketSaturation < 30 ? 'low-competition' : 
-           asoIntelligence.marketSaturation < 70 ? 'moderate-competition' : 'high-competition') : 'unknown'
+        totalResults: competitors.length + 1,
+        category: searchResult.applicationCategory || 'Unknown',
+        country: searchParameters.country || 'us'
       }
     }
 
-    // Phase 7: Cache Result (non-blocking)
-    if (cacheService) {
-      try {
-        await cacheService.set(cacheKey, organizationId, finalMetadata, {
-          ttl: searchType === 'url' ? 24 * 60 * 60 : 6 * 60 * 60,
-          tags: ['metadata', 'aso-intelligence', searchType]
-        })
-      } catch (cacheError) {
-        console.warn(`[${requestId}] Failed to cache result (non-blocking):`, cacheError)
-      }
-    }
-
-    // Phase 8: Analytics (non-blocking)
     const processingTime = Date.now() - startTime
-    if (analyticsService) {
-      analyticsService.logEvent('aso_search_completed', {
-        requestId,
-        organizationId,
-        searchType,
-        processingTime,
-        competitorsAnalyzed: discoveryResult.data.competitors.length,
-        intelligenceGenerated: !!asoIntelligence,
-        cache: 'MISS'
-      }).catch(() => {})
-    }
-
     console.log(`[${requestId}] Search completed successfully in ${processingTime}ms`)
 
-    return responseBuilder.success({
+    return new Response(JSON.stringify({
       success: true,
-      data: finalMetadata,
+      data: finalResult,
       requestId,
       processingTime: `${processingTime}ms`,
-      searchType: searchType,
       version: VERSION
-    }, {
-      'X-Processing-Time': `${processingTime}ms`,
-      'X-Request-ID': requestId,
-      'X-Cache': 'MISS',
-      'X-Search-Type': searchType
+    }), {
+      headers: {
+        ...corsHeaders,
+        'Content-Type': 'application/json',
+        'X-Processing-Time': `${processingTime}ms`,
+        'X-Request-ID': requestId
+      }
     })
 
   } catch (error) {
     console.error(`[${requestId}] Critical error:`, error)
     
-    if (analyticsService) {
-      analyticsService.logEvent('critical_error', {
-        requestId,
-        error: error.message,
-        stack: error.stack?.substring(0, 1000)
-      }).catch(() => {})
-    }
-
-    return responseBuilder.error('Search service temporarily unavailable', 500, {
-      code: 'INTERNAL_ERROR',
-      details: 'Please try again in a few minutes',
+    return new Response(JSON.stringify({
+      success: false,
+      error: 'Search service temporarily unavailable. Please try again.',
       requestId,
       version: VERSION
+    }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     })
   }
 })
 
-// ASO Intelligence generation function
-async function generateAsoIntelligence(targetApp: any, competitors: any[], searchType: string, searchTerm: string) {
-  const opportunities: string[] = []
-  
-  const competitorCount = competitors.length
-  const marketSaturation = Math.min((competitorCount / 50) * 100, 100)
-  
-  const avgRating = competitors.reduce((sum, app) => sum + (app.averageUserRating || 0), 0) / competitorCount
-  const keywordDifficulty = Math.min((avgRating / 5) * 100, 100)
-  
-  const trendingScore = Math.random() * 100
-  
-  if (marketSaturation < 30) {
-    opportunities.push('Low competition market - excellent opportunity for new apps')
+// Helper function to check if input is an App Store URL
+function isAppStoreUrl(input: string): boolean {
+  try {
+    const url = new URL(input.startsWith('http') ? input : `https://${input}`)
+    return url.hostname.includes('apps.apple.com') || url.hostname.includes('play.google.com')
+  } catch {
+    return false
   }
-  if (keywordDifficulty < 50) {
-    opportunities.push('Moderate difficulty keywords - good for established apps')
+}
+
+// Simplified iTunes Search API integration
+async function searchItunesApi(term: string, country: string, limit: number, requestId: string): Promise<AppData[]> {
+  try {
+    console.log(`[${requestId}] Searching iTunes API: term="${term}", country="${country}", limit="${limit}"`)
+    
+    const encodedTerm = encodeURIComponent(term)
+    const url = `https://itunes.apple.com/search?term=${encodedTerm}&country=${country}&entity=software&limit=${limit}`
+    
+    console.log(`[${requestId}] iTunes API URL: ${url}`)
+    
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'ASO-Insights-Platform/6.0.0'
+      }
+    })
+
+    if (!response.ok) {
+      throw new Error(`iTunes API responded with status: ${response.status}`)
+    }
+
+    const data = await response.json()
+    console.log(`[${requestId}] iTunes API returned ${data.results?.length || 0} results`)
+
+    if (!data.results || data.results.length === 0) {
+      return []
+    }
+
+    // Transform iTunes API results to our format
+    return data.results.map((app: any) => ({
+      name: app.trackName || 'Unknown App',
+      appId: app.trackId?.toString() || `itunes-${Date.now()}`,
+      title: app.trackName || 'Unknown App',
+      subtitle: app.trackCensoredName || '',
+      description: app.description || '',
+      url: app.trackViewUrl || '',
+      icon: app.artworkUrl512 || app.artworkUrl100 || '',
+      rating: app.averageUserRating || 0,
+      reviews: app.userRatingCount || 0,
+      developer: app.artistName || 'Unknown Developer',
+      applicationCategory: app.primaryGenreName || 'Unknown',
+      locale: 'en-US'
+    }))
+
+  } catch (error) {
+    console.error(`[${requestId}] iTunes API search failed:`, error)
+    throw new Error(`iTunes search failed: ${error.message}`)
   }
-  if (competitors.some(app => (app.averageUserRating || 0) < 4.0)) {
-    opportunities.push('Competitors with low ratings - quality opportunity exists')
-  }
-  if (searchType === 'keyword') {
-    opportunities.push('Generic keyword search - consider long-tail keyword variations')
-  }
-  if (searchType === 'brand' && competitorCount > 15) {
-    opportunities.push('Saturated brand category - focus on unique value proposition')
-  }
-  
-  return {
-    keywordDifficulty: Math.round(keywordDifficulty),
-    marketSaturation: Math.round(marketSaturation),
-    trendingScore: Math.round(trendingScore),
-    opportunities
+}
+
+// Basic App Store URL scraping (simplified)
+async function scrapeAppStoreUrl(url: string, requestId: string): Promise<AppData> {
+  try {
+    console.log(`[${requestId}] Scraping App Store URL: ${url}`)
+    
+    // Extract app ID from URL
+    const appIdMatch = url.match(/id(\d+)/)
+    if (!appIdMatch) {
+      throw new Error('Could not extract app ID from URL')
+    }
+    
+    const appId = appIdMatch[1]
+    
+    // Use iTunes Lookup API for URL-based requests
+    const lookupUrl = `https://itunes.apple.com/lookup?id=${appId}`
+    console.log(`[${requestId}] iTunes Lookup URL: ${lookupUrl}`)
+    
+    const response = await fetch(lookupUrl)
+    
+    if (!response.ok) {
+      throw new Error(`iTunes Lookup API responded with status: ${response.status}`)
+    }
+
+    const data = await response.json()
+    
+    if (!data.results || data.results.length === 0) {
+      throw new Error('App not found')
+    }
+
+    const app = data.results[0]
+    
+    return {
+      name: app.trackName || 'Unknown App',
+      appId: app.trackId?.toString() || appId,
+      title: app.trackName || 'Unknown App',
+      subtitle: app.trackCensoredName || '',
+      description: app.description || '',
+      url: app.trackViewUrl || url,
+      icon: app.artworkUrl512 || app.artworkUrl100 || '',
+      rating: app.averageUserRating || 0,
+      reviews: app.userRatingCount || 0,
+      developer: app.artistName || 'Unknown Developer',
+      applicationCategory: app.primaryGenreName || 'Unknown',
+      locale: 'en-US'
+    }
+
+  } catch (error) {
+    console.error(`[${requestId}] App Store URL scraping failed:`, error)
+    throw new Error(`Failed to scrape app data: ${error.message}`)
   }
 }
