@@ -178,8 +178,7 @@ class AppStoreService {
   /**
    * Generate user-friendly error messages
    */
-  private getUserFri 
-endlyError(error: any, input: string): string {
+  private getUserFriendlyError(error: any, input: string): string {
     const message = error.message?.toLowerCase() || '';
     
     if (message.includes('rate limit')) {
