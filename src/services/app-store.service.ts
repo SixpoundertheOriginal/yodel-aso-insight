@@ -1,6 +1,6 @@
 
 import { supabase } from '@/integrations/supabase/client';
-import { ScrapedMetadata, ValidationResult, ImportConfig } from '@/types/aso';
+import { ScrapedMetadata, ValidationResult, ImportConfig, CompetitorData } from '@/types/aso';
 import { asoSearchService, SearchResult } from './aso-search.service';
 
 class AppStoreService {
@@ -30,13 +30,28 @@ class AppStoreService {
       console.log('✅ [APP-STORE-SERVICE] Successfully imported app data:', searchResult.targetApp.name);
       console.log('📊 [APP-STORE-SERVICE] Search intelligence:', searchResult.intelligence);
       
+      // Transform competitors to match CompetitorData interface
+      const transformedCompetitors: CompetitorData[] = searchResult.competitors.map((competitor, index) => ({
+        id: competitor.appId || `competitor-${index}`,
+        name: competitor.name,
+        title: competitor.title,
+        subtitle: competitor.subtitle,
+        keywords: competitor.description?.substring(0, 200) || '', // Use description as keywords fallback
+        description: competitor.description,
+        category: competitor.applicationCategory || 'Unknown',
+        rating: competitor.rating,
+        reviews: competitor.reviews,
+        icon: competitor.icon,
+        developer: competitor.developer
+      }));
+
       // Enhanced metadata with search context and intelligence
       const enhancedMetadata: ScrapedMetadata = {
         ...searchResult.targetApp,
         // Add search context to metadata for UI display
         searchContext: searchResult.searchContext,
         asoIntelligence: searchResult.intelligence,
-        competitorData: searchResult.competitors.slice(0, 5) // Limit competitors for UI
+        competitorData: transformedCompetitors.slice(0, 5) // Limit competitors for UI
       };
 
       return enhancedMetadata;
