@@ -19,44 +19,45 @@ export interface SearchParameters {
 
 class InputDetectionService {
   /**
-   * Intelligently detect input type and validate accordingly
+   * Emergency stabilized input analysis - more permissive and robust
    */
   analyzeInput(input: string): SecureResponse<InputAnalysis> {
+    console.log('🔍 [INPUT-DETECTION] Analyzing input:', input);
+    
     const trimmed = input.trim();
     const errors: ValidationError[] = [];
 
-    // Empty input validation
-    if (!trimmed || trimmed.length < 2) {
+    // Basic validation - be more permissive
+    if (!trimmed || trimmed.length < 1) {
       errors.push({
         field: 'input',
-        message: 'Search term must be at least 2 characters long',
-        code: 'INPUT_TOO_SHORT'
+        message: 'Search term cannot be empty',
+        code: 'INPUT_EMPTY'
       });
       return { success: false, errors };
     }
 
-    // Length validation
-    if (trimmed.length > 100) {
+    if (trimmed.length > 200) {
       errors.push({
         field: 'input',
-        message: 'Search term must be less than 100 characters',
+        message: 'Search term is too long (max 200 characters)',
         code: 'INPUT_TOO_LONG'
       });
       return { success: false, errors };
     }
 
-    // Security validation - detect malicious patterns
+    // Security validation - only block obvious malicious content
     const maliciousPatterns = [
-      /<script/i,
+      /<script[^>]*>/i,
       /javascript:/i,
       /data:text\/html/i,
       /vbscript:/i,
-      /onload=/i,
-      /onerror=/i
+      /on\w+\s*=/i
     ];
 
     for (const pattern of maliciousPatterns) {
       if (pattern.test(trimmed)) {
+        console.warn('⚠️ [INPUT-DETECTION] Malicious pattern detected:', pattern);
         errors.push({
           field: 'input',
           message: 'Invalid characters detected in search term',
@@ -66,8 +67,9 @@ class InputDetectionService {
       }
     }
 
-    // URL detection
-    if (this.isAppStoreUrl(trimmed)) {
+    // Improved URL detection - more precise
+    if (this.isDefinitelyUrl(trimmed)) {
+      console.log('✅ [INPUT-DETECTION] Detected as URL');
       return {
         success: true,
         data: {
@@ -78,8 +80,9 @@ class InputDetectionService {
       };
     }
 
-    // Brand detection (specific app names)
-    if (this.isBrandName(trimmed)) {
+    // Improved brand detection
+    if (this.isLikelyBrand(trimmed)) {
+      console.log('✅ [INPUT-DETECTION] Detected as brand');
       return {
         success: true,
         data: {
@@ -91,7 +94,8 @@ class InputDetectionService {
       };
     }
 
-    // Keyword detection (generic search terms)
+    // Default to keyword - most permissive
+    console.log('✅ [INPUT-DETECTION] Detected as keyword');
     return {
       success: true,
       data: {
@@ -104,52 +108,94 @@ class InputDetectionService {
   }
 
   /**
-   * Create optimized search parameters based on input analysis
+   * Create search parameters with better defaults
    */
   createSearchParameters(input: string, analysis: InputAnalysis): SearchParameters {
-    return {
+    const params = {
       term: this.normalizeSearchTerm(input, analysis.type),
       type: analysis.type,
       country: analysis.region || 'us',
       limit: this.getOptimalLimit(analysis.type),
-      includeCompetitors: analysis.type !== 'url' // URLs get direct app data, keywords need competitors
+      includeCompetitors: analysis.type !== 'url'
     };
+    
+    console.log('📊 [INPUT-DETECTION] Created search parameters:', params);
+    return params;
   }
 
-  private isAppStoreUrl(input: string): boolean {
+  /**
+   * More precise URL detection
+   */
+  private isDefinitelyUrl(input: string): boolean {
     try {
+      // Must start with protocol or be a clear domain
+      if (!input.includes('://') && !input.startsWith('apps.apple.com') && !input.startsWith('play.google.com')) {
+        return false;
+      }
+      
       const url = new URL(input.startsWith('http') ? input : `https://${input}`);
-      return url.hostname.includes('apps.apple.com') || url.hostname.includes('play.google.com');
-    } catch {
+      const isAppStore = url.hostname.includes('apps.apple.com') || url.hostname.includes('play.google.com');
+      
+      console.log('🌐 [INPUT-DETECTION] URL analysis:', { hostname: url.hostname, isAppStore });
+      return isAppStore;
+    } catch (error) {
+      console.log('❌ [INPUT-DETECTION] URL parsing failed:', error.message);
       return false;
     }
   }
 
-  private isBrandName(input: string): boolean {
-    // Known patterns for brand names
-    const brandPatterns = [
-      /^[A-Z][a-zA-Z0-9\s]{2,30}$/,  // Capitalized brand names
-      /\b(app|mobile|pro|premium|plus)\b/i,  // Common app suffixes
-    ];
+  /**
+   * Improved brand detection - less aggressive
+   */
+  private isLikelyBrand(input: string): boolean {
+    // Single word with capital letter is likely a brand
+    const words = input.trim().split(/\s+/);
+    
+    // Very short inputs are likely brands
+    if (words.length === 1 && input.length >= 3 && input.length <= 20) {
+      const hasCapital = /[A-Z]/.test(input);
+      const isNotGeneric = !this.isGenericKeyword(input.toLowerCase());
+      
+      console.log('🏷️ [INPUT-DETECTION] Brand analysis:', { 
+        hasCapital, 
+        isNotGeneric, 
+        input 
+      });
+      
+      return hasCapital && isNotGeneric;
+    }
+    
+    // Multiple words starting with capitals
+    if (words.length <= 3 && words.every(word => /^[A-Z]/.test(word))) {
+      return !this.containsGenericKeywords(input.toLowerCase());
+    }
+    
+    return false;
+  }
 
-    // Common generic keywords that indicate it's NOT a brand
+  private isGenericKeyword(input: string): boolean {
+    const genericTerms = [
+      'app', 'apps', 'game', 'games', 'learning', 'education', 'fitness', 
+      'health', 'music', 'photo', 'video', 'social', 'messaging', 'chat',
+      'productivity', 'finance', 'shopping', 'travel', 'food', 'sports',
+      'news', 'weather', 'dating', 'meditation', 'workout', 'recipe',
+      'calculator', 'notes', 'calendar', 'email', 'browser', 'camera'
+    ];
+    
+    return genericTerms.includes(input);
+  }
+
+  private containsGenericKeywords(input: string): boolean {
     const genericKeywords = [
-      'learning', 'education', 'fitness', 'health', 'music', 'photo', 'video',
-      'social', 'messaging', 'productivity', 'finance', 'shopping', 'travel',
-      'food', 'sports', 'news', 'weather', 'dating', 'meditation', 'workout'
+      'learn', 'education', 'fitness', 'health', 'music', 'photo',
+      'social', 'messaging', 'productivity', 'finance', 'shopping',
+      'travel', 'food', 'sports', 'news', 'weather', 'dating'
     ];
 
-    const hasGenericKeywords = genericKeywords.some(keyword => 
-      input.toLowerCase().includes(keyword)
-    );
-
-    if (hasGenericKeywords) return false;
-
-    return brandPatterns.some(pattern => pattern.test(input));
+    return genericKeywords.some(keyword => input.includes(keyword));
   }
 
   private detectLanguage(input: string): string {
-    // Simple language detection based on character patterns
     if (/[\u4e00-\u9fff]/.test(input)) return 'zh';
     if (/[\u0590-\u05ff]/.test(input)) return 'he';
     if (/[\u0600-\u06ff]/.test(input)) return 'ar';
@@ -160,14 +206,14 @@ class InputDetectionService {
 
   private predictCategory(input: string): string {
     const categoryKeywords = {
-      'Education': ['learn', 'education', 'study', 'language', 'math', 'science'],
-      'Health & Fitness': ['fitness', 'health', 'workout', 'meditation', 'yoga'],
-      'Entertainment': ['music', 'video', 'movie', 'game', 'streaming'],
+      'Education': ['learn', 'education', 'study', 'language', 'math', 'science', 'school'],
+      'Health & Fitness': ['fitness', 'health', 'workout', 'meditation', 'yoga', 'diet'],
+      'Entertainment': ['music', 'video', 'movie', 'game', 'streaming', 'entertainment'],
       'Social Networking': ['social', 'chat', 'messaging', 'dating', 'community'],
-      'Productivity': ['productivity', 'task', 'note', 'calendar', 'office'],
-      'Finance': ['finance', 'banking', 'money', 'budget', 'crypto'],
-      'Shopping': ['shopping', 'ecommerce', 'store', 'marketplace'],
-      'Photo & Video': ['photo', 'camera', 'video', 'editor', 'filter']
+      'Productivity': ['productivity', 'task', 'note', 'calendar', 'office', 'work'],
+      'Finance': ['finance', 'banking', 'money', 'budget', 'crypto', 'investment'],
+      'Shopping': ['shopping', 'ecommerce', 'store', 'marketplace', 'buy'],
+      'Photo & Video': ['photo', 'camera', 'video', 'editor', 'filter', 'image']
     };
 
     const lowerInput = input.toLowerCase();
@@ -182,20 +228,22 @@ class InputDetectionService {
   }
 
   private extractRegionFromUrl(url: string): string {
-    const match = url.match(/\/([a-z]{2})\//);
-    return match ? match[1] : 'us';
+    try {
+      const match = url.match(/\/([a-z]{2})\//);
+      return match ? match[1] : 'us';
+    } catch {
+      return 'us';
+    }
   }
 
   private normalizeSearchTerm(input: string, type: InputAnalysis['type']): string {
     if (type === 'url') return input;
     
-    // Clean and optimize search terms
+    // Less aggressive cleaning for keywords
     return input
       .trim()
-      .toLowerCase()
-      .replace(/[^\w\s-]/g, ' ')  // Remove special chars except hyphens
-      .replace(/\s+/g, ' ')       // Normalize whitespace
-      .trim();
+      .replace(/\s+/g, ' ') // Normalize whitespace only
+      .substring(0, 100); // Reasonable length limit
   }
 
   private getOptimalLimit(type: InputAnalysis['type']): number {

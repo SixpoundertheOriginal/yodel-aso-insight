@@ -5,71 +5,104 @@ import { asoSearchService, SearchResult } from './aso-search.service';
 
 class AppStoreService {
   /**
-   * Enhanced import that intelligently handles URLs, brands, and keywords
+   * Emergency stabilized import with comprehensive error handling
    */
   async importAppData(input: string, config: ImportConfig): Promise<ScrapedMetadata> {
-    console.log('🚀 [APP-STORE-SERVICE] Starting intelligent import for:', input);
+    console.log('🚀 [APP-STORE-SERVICE] Starting emergency stabilized import for:', input);
+    console.log('⚙️ [APP-STORE-SERVICE] Config:', config);
+
+    // Input validation
+    if (!input || typeof input !== 'string' || input.trim().length === 0) {
+      throw new Error('Search input cannot be empty');
+    }
+
+    if (!config.organizationId) {
+      throw new Error('Organization ID is required');
+    }
+
+    const trimmedInput = input.trim();
 
     try {
-      // Use the new ASO search service for intelligent processing
-      const searchResult: SearchResult = await asoSearchService.search(input, {
+      console.log('📤 [APP-STORE-SERVICE] Calling asoSearchService.search...');
+      
+      // Use the enhanced ASO search service
+      const searchResult: SearchResult = await asoSearchService.search(trimmedInput, {
         organizationId: config.organizationId,
         includeIntelligence: true,
         cacheResults: config.includeCaching !== false,
         debugMode: config.debugMode
       });
 
+      console.log('✅ [APP-STORE-SERVICE] Search successful:', {
+        targetAppName: searchResult.targetApp.name,
+        competitorCount: searchResult.competitors.length,
+        searchType: searchResult.searchContext.type,
+        hasIntelligence: !!searchResult.intelligence
+      });
+
       // Validate the response data
       const validationResult = this.validateScrapedData(searchResult.targetApp);
       if (!validationResult.isValid) {
         console.warn('⚠️ [APP-STORE-SERVICE] Data validation issues:', validationResult.issues);
-        // Use sanitized data but log warnings
-        return validationResult.sanitized;
+        // Use sanitized data but continue
       }
-
-      console.log('✅ [APP-STORE-SERVICE] Successfully imported app data:', searchResult.targetApp.name);
-      console.log('📊 [APP-STORE-SERVICE] Search intelligence:', searchResult.intelligence);
       
       // Transform competitors to match CompetitorData interface
       const transformedCompetitors: CompetitorData[] = searchResult.competitors.map((competitor, index) => ({
-        id: competitor.appId || `competitor-${index}`,
-        name: competitor.name,
-        title: competitor.title,
-        subtitle: competitor.subtitle,
-        keywords: competitor.description?.substring(0, 200) || '', // Use description as keywords fallback
-        description: competitor.description,
-        category: competitor.applicationCategory || 'Unknown',
+        id: competitor.appId || competitor.name?.replace(/\s+/g, '-').toLowerCase() || `competitor-${index}`,
+        name: competitor.name || 'Unknown App',
+        title: competitor.title || competitor.name || 'Unknown Title',
+        subtitle: competitor.subtitle || '',
+        keywords: competitor.description?.substring(0, 200) || '',
+        description: competitor.description || '',
+        category: competitor.applicationCategory || searchResult.searchContext.category || 'Unknown',
         rating: competitor.rating,
         reviews: competitor.reviews,
         icon: competitor.icon,
         developer: competitor.developer
       }));
 
-      // Enhanced metadata with search context and intelligence
+      // Enhanced metadata with all context
       const enhancedMetadata: ScrapedMetadata = {
-        ...searchResult.targetApp,
-        // Add search context to metadata for UI display
+        ...validationResult.sanitized,
+        // Override with actual data
+        name: searchResult.targetApp.name || validationResult.sanitized.name,
+        title: searchResult.targetApp.title || validationResult.sanitized.title,
+        subtitle: searchResult.targetApp.subtitle || validationResult.sanitized.subtitle,
+        description: searchResult.targetApp.description || validationResult.sanitized.description,
+        // Add enhanced context
         searchContext: searchResult.searchContext,
         asoIntelligence: searchResult.intelligence,
-        competitorData: transformedCompetitors.slice(0, 5) // Limit competitors for UI
+        competitorData: transformedCompetitors.slice(0, 5), // Limit for UI performance
+        marketInsights: {
+          totalCompetitors: searchResult.competitors.length,
+          category: searchResult.searchContext.category,
+          searchType: searchResult.searchContext.type,
+          marketPosition: searchResult.intelligence?.marketSaturation ? 
+            (searchResult.intelligence.marketSaturation < 30 ? 'low-competition' : 
+             searchResult.intelligence.marketSaturation < 70 ? 'moderate-competition' : 'high-competition') : 'unknown'
+        }
       };
+
+      console.log('🎯 [APP-STORE-SERVICE] Enhanced metadata prepared:', {
+        name: enhancedMetadata.name,
+        hasSearchContext: !!enhancedMetadata.searchContext,
+        hasIntelligence: !!enhancedMetadata.asoIntelligence,
+        competitorCount: enhancedMetadata.competitorData?.length || 0,
+        marketInsights: enhancedMetadata.marketInsights
+      });
 
       return enhancedMetadata;
 
     } catch (error: any) {
       console.error('❌ [APP-STORE-SERVICE] Import failed:', error);
       
-      // Provide user-friendly error messages based on error type
-      let userMessage = error.message;
+      // Enhanced error handling with user-friendly messages
+      let userMessage = this.getUserFriendlyError(error, trimmedInput);
       
-      if (error.message?.includes('Rate limit exceeded')) {
-        userMessage = 'You have made too many requests. Please wait a few minutes before trying again.';
-      } else if (error.message?.includes('No results found')) {
-        userMessage = 'No apps found for your search. Try different keywords or check the spelling.';
-      } else if (error.message?.includes('Invalid search input')) {
-        userMessage = 'Please enter a valid app name, keywords, or App Store URL.';
-      } else if (error.message?.includes('Search service unavailable')) {
-        userMessage = 'The search service is temporarily unavailable. Please try again in a few minutes.';
+      // Add debugging info in development
+      if (config.debugMode && process.env.NODE_ENV === 'development') {
+        userMessage += ` [Debug: ${error.message}]`;
       }
 
       throw new Error(userMessage);
@@ -77,7 +110,7 @@ class AppStoreService {
   }
 
   /**
-   * Validate scraped metadata for completeness and security
+   * Enhanced data validation with better error recovery
    */
   private validateScrapedData(data: any): ValidationResult {
     const issues: string[] = [];
@@ -91,15 +124,15 @@ class AppStoreService {
       ...data
     };
 
-    // Required field validation
+    // Required field validation with fallbacks
     if (!data.name || typeof data.name !== 'string') {
       issues.push('App name is missing or invalid');
-      sanitized.name = 'Unknown App';
+      sanitized.name = data.title || data.trackName || 'Unknown App';
     }
 
     if (!data.appId || typeof data.appId !== 'string') {
       issues.push('App ID is missing or invalid');
-      sanitized.appId = `temp-${Date.now()}`;
+      sanitized.appId = data.trackId?.toString() || `temp-${Date.now()}`;
     }
 
     if (!data.title || typeof data.title !== 'string') {
@@ -108,14 +141,18 @@ class AppStoreService {
     }
 
     if (!data.subtitle || typeof data.subtitle !== 'string') {
-      issues.push('App subtitle is missing');
-      sanitized.subtitle = '';
+      sanitized.subtitle = data.shortDescription || '';
     }
 
     // Sanitize text fields
     if (sanitized.description) {
       sanitized.description = this.sanitizeText(sanitized.description);
     }
+
+    // Ensure required fields have values
+    if (!sanitized.name) sanitized.name = 'Unknown App';
+    if (!sanitized.title) sanitized.title = sanitized.name;
+    if (!sanitized.appId) sanitized.appId = `unknown-${Date.now()}`;
 
     return {
       isValid: issues.length === 0,
@@ -125,15 +162,56 @@ class AppStoreService {
   }
 
   /**
-   * Sanitize text content to prevent XSS
+   * Sanitize text content
    */
   private sanitizeText(text: string): string {
+    if (!text || typeof text !== 'string') return '';
+    
     return text
       .replace(/[<>]/g, '')
       .replace(/javascript:/gi, '')
       .replace(/on\w+=/gi, '')
       .trim()
       .substring(0, 10000); // Reasonable length limit
+  }
+
+  /**
+   * Generate user-friendly error messages
+   */
+  private getUserFri 
+endlyError(error: any, input: string): string {
+    const message = error.message?.toLowerCase() || '';
+    
+    if (message.includes('rate limit')) {
+      return 'You have made too many requests. Please wait a few minutes before trying again.';
+    }
+    
+    if (message.includes('no apps found') || message.includes('no results found')) {
+      return `No apps found for "${input}". Try different keywords or check the spelling.`;
+    }
+    
+    if (message.includes('invalid') && message.includes('url')) {
+      return 'Please enter a valid App Store URL, app name, or keywords.';
+    }
+    
+    if (message.includes('validation') || message.includes('invalid input')) {
+      return 'Please enter valid keywords, app name, or App Store URL.';
+    }
+    
+    if (message.includes('unavailable') || message.includes('network') || message.includes('service')) {
+      return 'The search service is temporarily unavailable. Please try again in a few minutes.';
+    }
+    
+    if (message.includes('unauthorized') || message.includes('authentication')) {
+      return 'Authentication required. Please log in and try again.';
+    }
+    
+    if (message.includes('organization')) {
+      return 'Organization context is missing. Please refresh the page and try again.';
+    }
+    
+    // Generic fallback
+    return 'Search failed. Please try again with different keywords.';
   }
 }
 

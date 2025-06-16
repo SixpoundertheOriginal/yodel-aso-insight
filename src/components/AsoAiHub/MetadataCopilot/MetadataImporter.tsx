@@ -5,7 +5,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { appStoreService } from '@/services';
 import { ScrapedMetadata } from '@/types/aso';
 import { DataImporter } from '@/components/shared/DataImporter';
-import { Sparkles, AlertCircle, Search, Zap } from 'lucide-react';
+import { Sparkles, AlertCircle, Search, Zap, Loader2 } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 
@@ -18,12 +18,13 @@ export const MetadataImporter: React.FC<MetadataImporterProps> = ({ onImportSucc
   const [organizationId, setOrganizationId] = useState<string | null>(null);
   const [lastError, setLastError] = useState<string | null>(null);
   const [searchType, setSearchType] = useState<'auto' | 'keyword' | 'brand' | 'url'>('auto');
+  const [searchHistory, setSearchHistory] = useState<string[]>([]);
   const { toast } = useToast();
 
   useEffect(() => {
     const fetchOrgId = async () => {
       try {
-        console.log('🔍 [DEBUG] Fetching user organization...');
+        console.log('🔍 [METADATA-IMPORTER] Fetching user organization...');
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
           const { data: profile, error } = await supabase
@@ -32,13 +33,16 @@ export const MetadataImporter: React.FC<MetadataImporterProps> = ({ onImportSucc
             .eq('id', user.id)
             .single();
 
-          if (error) throw error;
+          if (error) {
+            console.error('❌ [METADATA-IMPORTER] Profile fetch error:', error);
+            throw error;
+          }
           
           if (profile?.organization_id) {
             setOrganizationId(profile.organization_id);
-            console.log('✅ [DEBUG] Organization ID found:', profile.organization_id);
+            console.log('✅ [METADATA-IMPORTER] Organization ID found:', profile.organization_id);
           } else {
-            console.warn('⚠️ [DEBUG] User has no organization_id.');
+            console.warn('⚠️ [METADATA-IMPORTER] User has no organization_id.');
             toast({
               title: 'Organization Setup Required',
               description: 'Your account needs to be associated with an organization. Please contact support.',
@@ -46,7 +50,7 @@ export const MetadataImporter: React.FC<MetadataImporterProps> = ({ onImportSucc
             });
           }
         } else {
-          console.warn('⚠️ [DEBUG] User not authenticated.');
+          console.warn('⚠️ [METADATA-IMPORTER] User not authenticated.');
           toast({
             title: 'Authentication Required',
             description: 'Please log in to import app data.',
@@ -54,8 +58,11 @@ export const MetadataImporter: React.FC<MetadataImporterProps> = ({ onImportSucc
           });
         }
       } catch (err: any) {
-        console.error("❌ [DEBUG] Error fetching user profile/organization:", err);
-        toast({ title: 'Could not load your profile. Please refresh and try again.', variant: 'destructive' });
+        console.error("❌ [METADATA-IMPORTER] Error fetching user profile/organization:", err);
+        toast({ 
+          title: 'Could not load your profile. Please refresh and try again.', 
+          variant: 'destructive' 
+        });
       }
     };
     fetchOrgId();
@@ -71,19 +78,40 @@ export const MetadataImporter: React.FC<MetadataImporterProps> = ({ onImportSucc
       return;
     }
 
+    if (!input || input.trim().length === 0) {
+      toast({
+        title: 'Empty Search',
+        description: 'Please enter keywords, app name, or App Store URL to search.',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    const trimmedInput = input.trim();
+    console.log('🚀 [METADATA-IMPORTER] Starting import for:', trimmedInput);
+
     setIsImporting(true);
     setLastError(null);
-    console.log('🚀 [IMPORT] Starting intelligent import for:', input);
+
+    // Add to search history
+    setSearchHistory(prev => {
+      const newHistory = [trimmedInput, ...prev.filter(item => item !== trimmedInput)].slice(0, 5);
+      return newHistory;
+    });
 
     try {
-      const importedData = await appStoreService.importAppData(input, {
+      console.log('📤 [METADATA-IMPORTER] Calling appStoreService.importAppData...');
+      
+      const importedData = await appStoreService.importAppData(trimmedInput, {
         organizationId,
         validateData: true,
         includeCaching: true,
         debugMode: process.env.NODE_ENV === 'development'
       });
 
-      // Show enhanced success message with search context
+      console.log('✅ [METADATA-IMPORTER] Import successful:', importedData);
+
+      // Enhanced success message
       const searchContext = (importedData as any).searchContext;
       const asoIntelligence = (importedData as any).asoIntelligence;
       
@@ -113,34 +141,53 @@ export const MetadataImporter: React.FC<MetadataImporterProps> = ({ onImportSucc
       onImportSuccess(importedData, organizationId);
 
     } catch (error: any) {
-      console.error('❌ [IMPORT] Import failed:', error);
+      console.error('❌ [METADATA-IMPORTER] Import failed:', error);
       
       const errorMessage = error.message || 'An unknown error occurred during import.';
       setLastError(errorMessage);
       
-      // Enhanced error messages
+      // Enhanced error handling
       let title = 'Import Failed';
       let description = errorMessage;
+      let suggestions: string[] = [];
       
-      if (errorMessage.includes('No apps found for')) {
+      if (errorMessage.includes('No apps found') || errorMessage.includes('No results found')) {
         title = 'No Results Found';
-        description = 'Try different keywords, check spelling, or use more specific terms.';
-      } else if (errorMessage.includes('Rate limit exceeded')) {
+        description = 'No apps found for your search terms.';
+        suggestions = [
+          'Try different keywords',
+          'Check spelling and try again',
+          'Use more specific terms',
+          'Try searching for a brand name instead'
+        ];
+      } else if (errorMessage.includes('Rate limit')) {
         title = 'Rate Limit Exceeded';
-        description = 'You have made too many requests. Please wait a few minutes before trying again.';
-      } else if (errorMessage.includes('Invalid search input')) {
+        description = 'You have made too many requests.';
+        suggestions = ['Wait a few minutes before trying again'];
+      } else if (errorMessage.includes('Invalid') || errorMessage.includes('validation')) {
         title = 'Invalid Input';
-        description = 'Please enter valid keywords, app name, or App Store URL.';
-      } else if (errorMessage.includes('Search service unavailable')) {
+        description = 'The search input is not valid.';
+        suggestions = [
+          'Enter valid keywords or app names',
+          'For URLs, use complete App Store links',
+          'Avoid special characters'
+        ];
+      } else if (errorMessage.includes('unavailable') || errorMessage.includes('network')) {
         title = 'Service Temporarily Unavailable';
-        description = 'Our search service is experiencing issues. Please try again in a few minutes.';
+        description = 'Search service is experiencing issues.';
+        suggestions = ['Try again in a few minutes'];
+      } else if (errorMessage.includes('Authentication') || errorMessage.includes('unauthorized')) {
+        title = 'Authentication Required';
+        description = 'Please log in to use the search feature.';
+        suggestions = ['Log in and try again'];
       }
       
       toast({
         title,
-        description,
+        description: `${description}${suggestions.length > 0 ? ` Try: ${suggestions[0]}` : ''}`,
         variant: 'destructive',
       });
+
     } finally {
       setIsImporting(false);
     }
@@ -172,18 +219,22 @@ export const MetadataImporter: React.FC<MetadataImporterProps> = ({ onImportSucc
     }
   };
 
+  const handleQuickSearch = (searchTerm: string) => {
+    handleImport(searchTerm);
+  };
+
   return (
     <div className="max-w-2xl mx-auto space-y-4">
       {lastError && (
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
           <AlertDescription>
-            <strong>Last Error:</strong> {lastError}
+            <strong>Search Error:</strong> {lastError}
           </AlertDescription>
         </Alert>
       )}
 
-      {/* Enhanced Search Type Selector */}
+      {/* Search Type Selector */}
       <div className="mb-4">
         <label className="block text-sm font-medium text-zinc-300 mb-2">
           Search Type
@@ -214,14 +265,58 @@ export const MetadataImporter: React.FC<MetadataImporterProps> = ({ onImportSucc
         </p>
       </div>
       
+      {/* Main Search Interface */}
       <DataImporter
         title="ASO Intelligence Search"
         description="Discover apps, analyze competition, and get optimization insights"
         placeholder={getPlaceholderText()}
         onImport={handleImport}
         isLoading={isImporting || !organizationId}
-        icon={<Sparkles className="w-4 h-4 ml-2" />}
+        icon={isImporting ? <Loader2 className="w-4 h-4 ml-2 animate-spin" /> : <Sparkles className="w-4 h-4 ml-2" />}
       />
+
+      {/* Quick Search Suggestions */}
+      {!isImporting && searchHistory.length === 0 && (
+        <div className="space-y-3">
+          <h4 className="text-sm font-medium text-zinc-300">Quick Search Examples:</h4>
+          <div className="flex flex-wrap gap-2">
+            {[
+              'fitness apps',
+              'meditation',
+              'language learning',
+              'photo editor',
+              'Instagram',
+              'TikTok'
+            ].map((term) => (
+              <button
+                key={term}
+                onClick={() => handleQuickSearch(term)}
+                className="px-3 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs rounded-md transition-colors"
+              >
+                {term}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Search History */}
+      {searchHistory.length > 0 && (
+        <div className="space-y-2">
+          <h4 className="text-sm font-medium text-zinc-300">Recent Searches:</h4>
+          <div className="flex flex-wrap gap-2">
+            {searchHistory.map((term, index) => (
+              <button
+                key={`${term}-${index}`}
+                onClick={() => handleQuickSearch(term)}
+                className="px-3 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs rounded-md transition-colors"
+              >
+                {term}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Feature Highlights */}
       <div className="grid grid-cols-2 gap-4 mt-6">
@@ -239,15 +334,18 @@ export const MetadataImporter: React.FC<MetadataImporterProps> = ({ onImportSucc
         </div>
       </div>
       
+      {/* Development Debug Info */}
       {process.env.NODE_ENV === 'development' && (
         <div className="mt-4 bg-zinc-800/50 p-3 rounded text-xs text-zinc-300 space-y-1">
-          <div><strong>ASO Intelligence Platform v5.0</strong></div>
+          <div><strong>ASO Intelligence Platform v5.0.1-emergency-stabilized</strong></div>
           <div>Organization ID: {organizationId || 'Not loaded'}</div>
           <div>Search Type: {searchType}</div>
-          <div className="text-green-400">✅ Intelligent input detection</div>
-          <div className="text-green-400">✅ Multi-modal search engine</div>
-          <div className="text-green-400">✅ ASO intelligence generation</div>
-          <div className="text-green-400">✅ Enhanced competitor analysis</div>
+          <div>Is Importing: {isImporting ? 'Yes' : 'No'}</div>
+          <div className="text-green-400">✅ Emergency stabilization active</div>
+          <div className="text-green-400">✅ Enhanced error handling</div>
+          <div className="text-green-400">✅ Fallback search strategies</div>
+          <div className="text-green-400">✅ Comprehensive logging</div>
+          {lastError && <div className="text-red-400">❌ Last Error: {lastError}</div>}
         </div>
       )}
     </div>
