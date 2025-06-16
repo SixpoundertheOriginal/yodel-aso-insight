@@ -95,7 +95,7 @@ class AppStoreService {
         organizationId: config.organizationId,
         userId: (await supabase.auth.getUser()).data.user?.id || null,
         action: 'app_store_import_success',
-        resourceType: 'app_data',
+        resourceType: 'app-store-import',
         resourceId: response.data.appId,
         details: {
           appName: response.data.name,
@@ -117,7 +117,7 @@ class AppStoreService {
           organizationId: config.organizationId,
           userId: (await supabase.auth.getUser()).data.user?.id || null,
           action: 'app_store_import_failed',
-          resourceType: 'app_data',
+          resourceType: 'app-store-import',
           resourceId: null,
           details: {
             searchTerm: input,
