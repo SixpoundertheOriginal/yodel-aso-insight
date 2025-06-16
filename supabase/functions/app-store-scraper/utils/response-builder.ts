@@ -4,11 +4,7 @@ export class ResponseBuilder {
 
   success(data: any, additionalHeaders: Record<string, string> = {}): Response {
     return new Response(
-      JSON.stringify({
-        success: true,
-        data,
-        timestamp: new Date().toISOString()
-      }),
+      JSON.stringify(data),
       {
         status: 200,
         headers: {
@@ -17,31 +13,41 @@ export class ResponseBuilder {
           ...additionalHeaders
         }
       }
-    );
+    )
   }
 
-  error(message: string, statusCode: number = 400, additionalHeaders: Record<string, string> = {}): Response {
+  error(
+    message: string, 
+    status: number = 500, 
+    details?: {
+      code?: string;
+      details?: string;
+      requestId?: string;
+    }
+  ): Response {
+    const errorResponse = {
+      success: false,
+      error: message,
+      timestamp: new Date().toISOString(),
+      ...details
+    }
+
     return new Response(
-      JSON.stringify({
-        success: false,
-        error: message,
-        timestamp: new Date().toISOString()
-      }),
+      JSON.stringify(errorResponse),
       {
-        status: statusCode,
+        status,
         headers: {
           ...this.corsHeaders,
-          'Content-Type': 'application/json',
-          ...additionalHeaders
+          'Content-Type': 'application/json'
         }
       }
-    );
+    )
   }
 
   cors(): Response {
     return new Response(null, {
       status: 200,
       headers: this.corsHeaders
-    });
+    })
   }
 }

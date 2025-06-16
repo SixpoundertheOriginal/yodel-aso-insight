@@ -580,9 +580,22 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: string
       }
+      get_user_organization_with_fallback: {
+        Args: Record<PropertyKey, never>
+        Returns: string
+      }
       lock_platform_admin_creation: {
         Args: Record<PropertyKey, never>
         Returns: undefined
+      }
+      log_scraper_request: {
+        Args: {
+          p_organization_id: string
+          p_search_term: string
+          p_user_agent?: string
+          p_ip_address?: unknown
+        }
+        Returns: boolean
       }
       unlock_platform_admin_creation: {
         Args: Record<PropertyKey, never>

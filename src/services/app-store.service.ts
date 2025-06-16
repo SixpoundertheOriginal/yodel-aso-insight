@@ -1,60 +1,202 @@
-
 import { supabase } from '@/integrations/supabase/client';
 import { ScrapedMetadata, ValidationResult, ImportConfig } from '@/types/aso';
+import { securityService } from './security.service';
+
+interface AppStoreApiRequest {
+  searchTerm: string;
+  organizationId: string;
+  includeCompetitorAnalysis?: boolean;
+  securityContext?: {
+    country?: string;
+    userAgent?: string;
+    ipAddress?: string;
+  };
+}
+
+interface AppStoreApiResponse {
+  success: boolean;
+  data?: ScrapedMetadata;
+  error?: string;
+  requestId?: string;
+  processingTime?: string;
+}
 
 class AppStoreService {
-  private cache = new Map<string, { data: ScrapedMetadata; timestamp: number }>();
-  private readonly CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+  private readonly functionUrl = 'https://bkbcqocpjahewqjmlgvf.supabase.co/functions/v1/app-store-scraper';
 
   /**
-   * Enterprise-grade data validation with detailed error reporting
+   * Import app data from App Store URL or app name
    */
-  validateMetadata(data: any): ValidationResult {
+  async importAppData(input: string, config: ImportConfig): Promise<ScrapedMetadata> {
+    console.log('🚀 [APP-STORE-SERVICE] Starting import for:', input);
+
+    try {
+      // Validate and sanitize input
+      const searchTerm = this.normalizeSearchInput(input);
+      const securityValidation = securityService.validateAppStoreUrl(searchTerm);
+      
+      if (!securityValidation.success) {
+        throw new Error(`Invalid input: ${securityValidation.errors?.[0]?.message || 'Unknown validation error'}`);
+      }
+
+      // Check rate limits before making request
+      const rateLimitCheck = await securityService.checkRateLimit(config.organizationId, 'app_store_import');
+      if (!rateLimitCheck.success) {
+        throw new Error(`Rate limit exceeded: ${rateLimitCheck.errors?.[0]?.message || 'Too many requests'}`);
+      }
+
+      // Prepare request payload with correct contract
+      const requestPayload: AppStoreApiRequest = {
+        searchTerm: securityValidation.data || searchTerm,
+        organizationId: config.organizationId,
+        includeCompetitorAnalysis: true,
+        securityContext: {
+          country: 'us',
+          userAgent: navigator.userAgent,
+          ipAddress: 'client-side' // Will be detected server-side
+        }
+      };
+
+      console.log('📡 [APP-STORE-SERVICE] Calling edge function with payload:', requestPayload);
+
+      // Make the API call
+      const { data, error } = await supabase.functions.invoke('app-store-scraper', {
+        body: requestPayload,
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+
+      if (error) {
+        console.error('❌ [APP-STORE-SERVICE] Supabase function invocation error:', error);
+        throw new Error(`The import service is currently unavailable. Please try again later. (Details: ${error.message})`);
+      }
+
+      // Handle the response
+      const response = data as AppStoreApiResponse;
+      
+      if (!response.success || !response.data) {
+        console.error('❌ [APP-STORE-SERVICE] API returned error:', response.error);
+        throw new Error(response.error || 'Failed to import app data from the store');
+      }
+
+      // Validate the response data
+      const validationResult = this.validateScrapedData(response.data);
+      if (!validationResult.isValid) {
+        console.warn('⚠️ [APP-STORE-SERVICE] Data validation issues:', validationResult.issues);
+        // Use sanitized data but log warnings
+        return validationResult.sanitized;
+      }
+
+      console.log('✅ [APP-STORE-SERVICE] Successfully imported app data:', response.data.name);
+      
+      // Log successful import for audit
+      await securityService.logAuditEntry({
+        organizationId: config.organizationId,
+        userId: (await supabase.auth.getUser()).data.user?.id || null,
+        action: 'app_store_import_success',
+        resourceType: 'app_data',
+        resourceId: response.data.appId,
+        details: {
+          appName: response.data.name,
+          searchTerm: requestPayload.searchTerm,
+          processingTime: response.processingTime
+        },
+        ipAddress: null,
+        userAgent: navigator.userAgent
+      });
+
+      return response.data;
+
+    } catch (error: any) {
+      console.error('❌ [APP-STORE-SERVICE] Import failed:', error);
+      
+      // Log failed import for monitoring
+      try {
+        await securityService.logAuditEntry({
+          organizationId: config.organizationId,
+          userId: (await supabase.auth.getUser()).data.user?.id || null,
+          action: 'app_store_import_failed',
+          resourceType: 'app_data',
+          resourceId: null,
+          details: {
+            searchTerm: input,
+            errorMessage: error.message,
+            errorType: this.categorizeError(error)
+          },
+          ipAddress: null,
+          userAgent: navigator.userAgent
+        });
+      } catch (auditError) {
+        console.warn('⚠️ [APP-STORE-SERVICE] Failed to log audit entry:', auditError);
+      }
+
+      // Re-throw with user-friendly message
+      throw new Error(error.message || 'An unexpected error occurred during import');
+    }
+  }
+
+  /**
+   * Normalize search input to handle both URLs and app names
+   */
+  private normalizeSearchInput(input: string): string {
+    const trimmed = input.trim();
+    
+    // If it's already a URL, return as-is
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+      return trimmed;
+    }
+    
+    // If it looks like an app store URL without protocol
+    if (trimmed.includes('apps.apple.com')) {
+      return `https://${trimmed}`;
+    }
+    
+    // Otherwise, treat as app name/search term
+    return trimmed;
+  }
+
+  /**
+   * Validate scraped metadata for completeness and security
+   */
+  private validateScrapedData(data: any): ValidationResult {
     const issues: string[] = [];
-    
-    console.log('🔍 [VALIDATION] Raw data received:', JSON.stringify(data, null, 2));
-    
-    // Check required fields
-    if (!data.id) issues.push('Missing app ID');
-    if (!data.name) issues.push('Missing app name');
-    if (!data.url) issues.push('Missing app URL');
-    if (!data.title) issues.push('Missing app title');
-    
-    // Check data types and values
-    if (data.rating !== undefined && (typeof data.rating !== 'number' || isNaN(data.rating))) {
-      issues.push(`Invalid rating: ${data.rating} (type: ${typeof data.rating})`);
-    }
-    
-    if (data.reviews !== undefined && (typeof data.reviews !== 'number' || isNaN(data.reviews))) {
-      issues.push(`Invalid reviews count: ${data.reviews} (type: ${typeof data.reviews})`);
-    }
-    
-    // Check for missing visual elements
-    if (!data.icon) issues.push('Missing app icon URL');
-    if (!data.developer) issues.push('Missing developer name');
-    if (!data.subtitle) issues.push('Missing app subtitle');
-    
-    console.log('⚠️ [VALIDATION] Data validation issues:', issues);
-    
-    // Create sanitized version with enterprise-grade defaults
     const sanitized: ScrapedMetadata = {
-      appId: data.id || '',
-      name: data.name || 'Unknown App',
-      url: data.url || '',
-      title: data.title || data.name || 'App Title',
-      subtitle: data.subtitle || '',
-      description: data.description || 'No description available.',
-      applicationCategory: data.applicationCategory || 'App',
-      locale: data.locale || 'us',
-      icon: data.icon || undefined,
-      developer: data.developer || data.author || undefined,
-      rating: typeof data.rating === 'number' && !isNaN(data.rating) ? data.rating : 0,
-      reviews: typeof data.reviews === 'number' && !isNaN(data.reviews) ? data.reviews : 0,
-      price: data.price || 'Free',
+      name: '',
+      url: '',
+      appId: '',
+      title: '',
+      subtitle: '',
+      locale: 'en-US',
+      ...data
     };
-    
-    console.log('✅ [VALIDATION] Sanitized metadata:', JSON.stringify(sanitized, null, 2));
-    
+
+    // Required field validation
+    if (!data.name || typeof data.name !== 'string') {
+      issues.push('App name is missing or invalid');
+      sanitized.name = 'Unknown App';
+    }
+
+    if (!data.appId || typeof data.appId !== 'string') {
+      issues.push('App ID is missing or invalid');
+      sanitized.appId = `temp-${Date.now()}`;
+    }
+
+    if (!data.title || typeof data.title !== 'string') {
+      issues.push('App title is missing or invalid');
+      sanitized.title = sanitized.name;
+    }
+
+    if (!data.subtitle || typeof data.subtitle !== 'string') {
+      issues.push('App subtitle is missing');
+      sanitized.subtitle = '';
+    }
+
+    // Sanitize text fields
+    if (sanitized.description) {
+      sanitized.description = this.sanitizeText(sanitized.description);
+    }
+
     return {
       isValid: issues.length === 0,
       issues,
@@ -63,101 +205,44 @@ class AppStoreService {
   }
 
   /**
-   * Import app data with caching and organization context
+   * Sanitize text content to prevent XSS
    */
-  async importAppData(appStoreUrl: string, config: ImportConfig): Promise<ScrapedMetadata> {
-    const cacheKey = `${config.organizationId}-${appStoreUrl}`;
+  private sanitizeText(text: string): string {
+    return text
+      .replace(/[<>]/g, '')
+      .replace(/javascript:/gi, '')
+      .replace(/on\w+=/gi, '')
+      .trim()
+      .substring(0, 10000); // Reasonable length limit
+  }
+
+  /**
+   * Categorize errors for better monitoring and user feedback
+   */
+  private categorizeError(error: any): string {
+    const message = error.message?.toLowerCase() || '';
     
-    // Check cache first
-    if (config.includeCaching !== false) {
-      const cached = this.cache.get(cacheKey);
-      if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
-        console.log('📦 [CACHE] Using cached data for:', appStoreUrl);
-        return cached.data;
-      }
+    if (message.includes('rate limit') || message.includes('429')) {
+      return 'rate_limit';
     }
-
-    console.log('🚀 [IMPORT] Starting import process for:', appStoreUrl);
-    console.log('🏢 [IMPORT] Organization ID:', config.organizationId);
-
-    try {
-      console.log('📡 [IMPORT] Calling app-store-scraper function...');
-      const { data: responseData, error: invokeError } = await supabase.functions.invoke('app-store-scraper', {
-        body: { 
-          appStoreUrl, 
-          organizationId: config.organizationId 
-        },
-      });
-
-      console.log('📦 [IMPORT] Raw response from scraper:', JSON.stringify(responseData, null, 2));
-
-      if (invokeError) {
-        console.error('❌ [IMPORT] Supabase function invocation error:', invokeError);
-        throw new Error(`The import service is currently unavailable. Please try again later. (Details: ${invokeError.message})`);
-      }
-
-      if (responseData.error) {
-        console.error('❌ [IMPORT] App Store scraper application error:', responseData.error);
-        throw new Error(responseData.error);
-      }
-      
-      const validation = config.validateData !== false ? this.validateMetadata(responseData) : {
-        isValid: true,
-        issues: [],
-        sanitized: responseData as ScrapedMetadata
-      };
-      
-      if (!validation.sanitized.name || !validation.sanitized.url || !validation.sanitized.title) {
-        console.error('❌ [IMPORT] Critical data missing after validation:', validation.sanitized);
-        throw new Error('Received incomplete data from the import service. The App Store page might have a non-standard format.');
-      }
-
-      // Extract locale from URL for enhanced data
-      const urlParts = new URL(validation.sanitized.url).pathname.split('/');
-      const locale = urlParts[1] || 'us';
-      
-      const finalMetadata = {
-        ...validation.sanitized,
-        locale: locale,
-      };
-
-      // Cache the result
-      if (config.includeCaching !== false) {
-        this.cache.set(cacheKey, {
-          data: finalMetadata,
-          timestamp: Date.now()
-        });
-      }
-
-      console.log('🎯 [IMPORT] Final metadata processed:', JSON.stringify(finalMetadata, null, 2));
-      return finalMetadata;
-
-    } catch (error) {
-      console.error('❌ [IMPORT] Import failed:', error);
-      throw error;
+    
+    if (message.includes('not found') || message.includes('404')) {
+      return 'not_found';
     }
-  }
-
-  /**
-   * Clear cache for organization
-   */
-  clearCache(organizationId?: string): void {
-    if (organizationId) {
-      const keysToDelete = Array.from(this.cache.keys()).filter(key => key.startsWith(organizationId));
-      keysToDelete.forEach(key => this.cache.delete(key));
-    } else {
-      this.cache.clear();
+    
+    if (message.includes('unauthorized') || message.includes('403')) {
+      return 'unauthorized';
     }
-  }
-
-  /**
-   * Get cache statistics
-   */
-  getCacheStats() {
-    return {
-      size: this.cache.size,
-      entries: Array.from(this.cache.keys())
-    };
+    
+    if (message.includes('network') || message.includes('fetch')) {
+      return 'network';
+    }
+    
+    if (message.includes('validation') || message.includes('invalid')) {
+      return 'validation';
+    }
+    
+    return 'unknown';
   }
 }
 
