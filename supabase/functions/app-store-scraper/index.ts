@@ -1,7 +1,7 @@
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
-const VERSION = '7.1.0-emergency-debug'
+const VERSION = '7.2.0-emergency-body-fix'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -57,14 +57,14 @@ serve(async (req: Request) => {
       })
     }
 
-    // Health Check Endpoint - Phase 2: Minimal Connectivity Test
+    // Health Check Endpoint
     if (req.method === 'GET') {
       console.log(`🏥 [${correlationId}] Health check requested`)
       return new Response(JSON.stringify({
         status: 'ok',
         version: VERSION,
         timestamp: new Date().toISOString(),
-        mode: 'emergency-debug-enabled',
+        mode: 'emergency-body-fix',
         correlationId,
         message: 'Edge function is healthy and ready'
       }), {
@@ -86,45 +86,58 @@ serve(async (req: Request) => {
       })
     }
 
-    // EMERGENCY DEBUG: Enhanced body parsing with multiple strategies
-    let requestBody: SearchRequest
-    let rawBody: string = ''
+    // EMERGENCY FIX: Robust body parsing with multiple strategies
+    let requestData: any
+    const contentType = req.headers.get('content-type') || ''
     
+    console.log(`📋 [${correlationId}] PARSING REQUEST BODY:`, {
+      contentType,
+      hasBody: req.body !== null,
+      bodyLocked: req.bodyUsed
+    })
+
     try {
-      // Strategy 1: Get raw text first
-      rawBody = await req.text()
-      console.log(`📥 [${correlationId}] RAW BODY RECEIVED:`, {
-        length: rawBody.length,
-        contentType: req.headers.get('content-type'),
-        bodyPreview: rawBody.substring(0, 200),
-        isEmpty: rawBody.trim() === '',
-        isJson: rawBody.trim().startsWith('{')
-      })
-
-      // Strategy 2: Validate and parse JSON
-      if (!rawBody || rawBody.trim() === '') {
-        throw new Error('Request body is empty or undefined')
+      // Strategy 1: Try standard JSON parsing first
+      if (contentType.includes('application/json')) {
+        console.log(`📥 [${correlationId}] Using JSON parsing strategy`)
+        requestData = await req.json()
+        console.log(`✅ [${correlationId}] JSON parsing successful:`, requestData)
+      } else {
+        // Strategy 2: Get raw text and attempt JSON parse
+        console.log(`📥 [${correlationId}] Using text parsing strategy`)
+        const rawText = await req.text()
+        console.log(`📄 [${correlationId}] Raw body received:`, {
+          length: rawText.length,
+          content: rawText.substring(0, 500),
+          isEmpty: rawText.trim() === ''
+        })
+        
+        if (!rawText || rawText.trim() === '') {
+          throw new Error('Request body is completely empty')
+        }
+        
+        requestData = JSON.parse(rawText)
+        console.log(`✅ [${correlationId}] Text-to-JSON parsing successful:`, requestData)
       }
 
-      if (!rawBody.trim().startsWith('{')) {
-        throw new Error(`Request body is not valid JSON. Received: ${rawBody.substring(0, 100)}`)
+      // Strategy 3: Validate parsed data structure
+      if (!requestData || typeof requestData !== 'object') {
+        throw new Error(`Invalid request data structure: ${typeof requestData}`)
       }
 
-      requestBody = JSON.parse(rawBody)
-      console.log(`✅ [${correlationId}] PARSED REQUEST SUCCESSFULLY:`, {
-        searchTerm: requestBody.searchTerm,
-        searchType: requestBody.searchType,
-        organizationId: requestBody.organizationId,
-        hasOptionalParams: !!requestBody.searchParameters
+      console.log(`🎯 [${correlationId}] REQUEST DATA VALIDATED:`, {
+        hasSearchTerm: !!requestData.searchTerm,
+        hasOrgId: !!requestData.organizationId,
+        searchTermType: typeof requestData.searchTerm,
+        searchTermLength: requestData.searchTerm?.length || 0
       })
 
     } catch (parseError: any) {
-      console.error(`❌ [${correlationId}] BODY PARSING FAILED:`, {
+      console.error(`💥 [${correlationId}] BODY PARSING FAILED:`, {
         error: parseError.message,
-        rawBodyLength: rawBody.length,
-        rawBodySample: rawBody.substring(0, 200),
-        contentType: req.headers.get('content-type'),
-        userAgent: req.headers.get('user-agent')
+        stack: parseError.stack,
+        contentType,
+        receivedHeaders: Object.fromEntries(req.headers.entries())
       })
       
       return new Response(JSON.stringify({
@@ -133,31 +146,32 @@ serve(async (req: Request) => {
         correlationId,
         details: {
           parseError: parseError.message,
-          receivedBodyLength: rawBody.length,
-          receivedBodySample: rawBody.substring(0, 200),
+          contentType,
+          receivedHeaders: Object.fromEntries(req.headers.entries()),
           expectedFormat: '{"searchTerm": "string", "organizationId": "string"}'
-        }
+        },
+        version: VERSION
       }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
     }
 
-    // EMERGENCY DEBUG: Enhanced validation with detailed error reporting
+    // Enhanced validation with detailed error reporting
     const validationErrors: string[] = []
     
-    if (!requestBody.searchTerm || typeof requestBody.searchTerm !== 'string' || requestBody.searchTerm.trim().length === 0) {
-      validationErrors.push(`searchTerm is required and must be a non-empty string. Received: ${JSON.stringify(requestBody.searchTerm)}`)
+    if (!requestData.searchTerm || typeof requestData.searchTerm !== 'string' || requestData.searchTerm.trim().length === 0) {
+      validationErrors.push(`searchTerm is required and must be a non-empty string. Received: ${JSON.stringify(requestData.searchTerm)}`)
     }
 
-    if (!requestBody.organizationId || typeof requestBody.organizationId !== 'string') {
-      validationErrors.push(`organizationId is required and must be a string. Received: ${JSON.stringify(requestBody.organizationId)}`)
+    if (!requestData.organizationId || typeof requestData.organizationId !== 'string') {
+      validationErrors.push(`organizationId is required and must be a string. Received: ${JSON.stringify(requestData.organizationId)}`)
     }
 
     if (validationErrors.length > 0) {
       console.error(`❌ [${correlationId}] VALIDATION FAILED:`, {
         errors: validationErrors,
-        receivedRequest: requestBody
+        receivedRequest: requestData
       })
       
       return new Response(JSON.stringify({
@@ -165,16 +179,17 @@ serve(async (req: Request) => {
         error: 'Request validation failed',
         correlationId,
         validationErrors,
-        receivedRequest: requestBody,
-        requiredFields: ['searchTerm', 'organizationId']
+        receivedRequest: requestData,
+        requiredFields: ['searchTerm', 'organizationId'],
+        version: VERSION
       }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
     }
 
-    // If we reach here, validation passed
-    const { searchTerm, searchType = 'keyword', organizationId, includeCompetitorAnalysis = true, searchParameters = {} } = requestBody
+    // Extract validated request data
+    const { searchTerm, searchType = 'keyword', organizationId, includeCompetitorAnalysis = true, searchParameters = {} } = requestData
 
     console.log(`🚀 [${correlationId}] PROCESSING VALIDATED REQUEST:`, {
       searchTerm,
@@ -185,14 +200,13 @@ serve(async (req: Request) => {
       limit: searchParameters.limit || 25
     })
 
-    // For now, let's return a simple success response to test connectivity
-    // This will be replaced with actual scraping logic once we confirm the infrastructure is working
+    // For now, return a test response to confirm body parsing is working
     const testResponse = {
       name: `Test App for "${searchTerm}"`,
       appId: `test-${Date.now()}`,
       title: `Search Results: ${searchTerm}`,
-      subtitle: 'Infrastructure Test Response',
-      description: `This is a test response for search term: ${searchTerm}. Infrastructure is working correctly.`,
+      subtitle: 'Emergency Body Fix Test Response',
+      description: `This is a test response for search term: ${searchTerm}. Request body parsing is now working correctly.`,
       url: 'https://apps.apple.com/test',
       icon: '',
       rating: 4.5,
@@ -214,7 +228,8 @@ serve(async (req: Request) => {
     console.log(`✅ [${correlationId}] REQUEST COMPLETED SUCCESSFULLY:`, {
       processingTime: `${processingTime}ms`,
       searchTerm,
-      organizationId
+      organizationId,
+      bodyParsingFixed: true
     })
 
     return new Response(JSON.stringify({
@@ -224,7 +239,7 @@ serve(async (req: Request) => {
       processingTime: `${processingTime}ms`,
       version: VERSION,
       debugMode: true,
-      message: 'Infrastructure test successful - ready for real scraping'
+      message: 'Emergency body fix successful - request parsing working'
     }), {
       headers: {
         ...corsHeaders,
