@@ -16,13 +16,19 @@ class BypassPatternsService {
     'fitness', 'meditation', 'learning', 'education', 'music', 'photo', 'video',
     'health', 'workout', 'yoga', 'diet', 'recipe', 'cooking', 'finance', 'banking',
     'productivity', 'notes', 'calendar', 'weather', 'news', 'social', 'messaging',
-    'shopping', 'travel', 'games', 'puzzle', 'entertainment', 'streaming'
+    'shopping', 'travel', 'games', 'puzzle', 'entertainment', 'streaming',
+    // ASO Search Terms
+    'language', 'training', 'course', 'lesson', 'study', 'practice', 'fluent', 
+    'speak', 'learn', 'business', 'food'
   ]);
 
   private knownAppNames = new Set([
     'instagram', 'tiktok', 'facebook', 'twitter', 'youtube', 'spotify', 'netflix',
     'duolingo', 'headspace', 'calm', 'whatsapp', 'telegram', 'discord', 'slack',
-    'zoom', 'teams', 'gmail', 'outlook', 'dropbox', 'onedrive', 'uber', 'lyft'
+    'zoom', 'teams', 'gmail', 'outlook', 'dropbox', 'onedrive', 'uber', 'lyft',
+    // Language Learning Apps (Critical for ASO)
+    'pimsleur', 'babbel', 'rosetta stone', 'busuu', 'memrise', 'lingoda', 
+    'italki', 'hellotalk', 'tandem'
   ]);
 
   private simplePatterns = [
@@ -55,6 +61,30 @@ class BypassPatternsService {
         pattern: 'app-name',
         reason: `Known app name: ${cleanInput}`
       };
+    }
+
+    // Check for keyword containment (e.g., "pimsleur french" contains "pimsleur")
+    for (const appName of this.knownAppNames) {
+      if (cleanInput.includes(appName)) {
+        return {
+          shouldBypass: true,
+          confidence: 0.85,
+          pattern: 'app-name',
+          reason: `Contains known app name: ${appName}`
+        };
+      }
+    }
+
+    // Check for safe keyword containment
+    for (const keyword of this.safeKeywords) {
+      if (cleanInput.includes(keyword)) {
+        return {
+          shouldBypass: true,
+          confidence: 0.8,
+          pattern: 'safe-keyword',
+          reason: `Contains safe keyword: ${keyword}`
+        };
+      }
     }
 
     // Simple phrase pattern
