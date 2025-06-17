@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -31,55 +32,47 @@ export const SuggestedMetadataPanel: React.FC<SuggestedMetadataPanelProps> = ({ 
   const [cleanDescription, setCleanDescription] = useState(initialData.description);
   
   const [seedKeywords, setSeedKeywords] = useState<string[]>([]);
-  const [isSeeding, setIsSeeding] = useState(true);
+  const [isSeeding, setIsSeeding] = useState(false);
 
-  useEffect(() => {
-    const { competitors, cleanDescription: cleaned } = competitorAnalysisService.extractCompetitorData(
-      initialData.description || ''
-    );
-    
-    setCleanDescription(cleaned);
-    let analysis: CompetitorKeywordAnalysis[] = [];
-    if (competitors.length > 0) {
-      // Correctly call analyzeCompetitors from the metadataEngine
-      analysis = metadataEngine.analyzeCompetitors(competitors);
-      setCompetitorKeywords(analysis);
-      console.log(`📊 Analyzed competitor keywords:`, analysis);
-    }
-    
-    const generateSeedKeywords = async () => {
-      setIsSeeding(true);
-      const competitorInsight = competitorAnalysisService.generateCompetitorInsights(analysis);
-      const prompt = `Based on the following app details, generate a concise, comma-separated list of 15-20 highly relevant seed keywords for App Store Optimization. Focus on terms a user would search for.
+  const generateSeedKeywords = async () => {
+    setIsSeeding(true);
+    const competitorInsight = competitorAnalysisService.generateCompetitorInsights(competitorKeywords);
+    const prompt = `Based on the following app details, generate a concise, comma-separated list of 15-20 highly relevant seed keywords for App Store Optimization. Focus on terms a user would search for.
 
 App Name: ${initialData.title}
-Description Summary: ${cleaned?.substring(0, 250)}...
+Description Summary: ${cleanDescription?.substring(0, 250)}...
 Category: ${initialData.applicationCategory}
 Locale: ${initialData.locale}
 ${competitorInsight}
 
 Do not use formatting, just return a single line of comma-separated keywords. Example: keyword1,keyword2,keyword3`;
 
-      try {
-        const aiResponse = await sendMessage(prompt, 'metadata-copilot-seeder');
-        if (aiResponse) {
-          const keywords = aiResponse.split(',').map(k => k.trim()).filter(Boolean);
-          setSeedKeywords(keywords);
-           toast({
-            title: "Keywords Suggested!",
-            description: "AI has generated seed keywords to get you started.",
-          });
-        }
-      } catch (e) {
-        toast({ title: "Could not generate seed keywords.", variant: "destructive" });
-      } finally {
-        setIsSeeding(false);
+    try {
+      const aiResponse = await sendMessage(prompt, 'metadata-copilot-seeder');
+      if (aiResponse) {
+        const keywords = aiResponse.split(',').map(k => k.trim()).filter(Boolean);
+        setSeedKeywords(keywords);
+         toast({
+          title: "Keywords Suggested!",
+          description: "AI has generated seed keywords to get you started.",
+        });
       }
-    };
-    
-    generateSeedKeywords();
+    } catch (e) {
+      toast({ title: "Could not generate seed keywords.", variant: "destructive" });
+    } finally {
+      setIsSeeding(false);
+    }
+  };
 
-  }, [initialData, sendMessage, toast]);
+  useEffect(() => {
+    // Set clean description from initial data
+    setCleanDescription(initialData.description);
+    
+    // Only run seed keyword generation if we don't already have keywords and aren't currently seeding
+    if (initialData?.appId && !seedKeywords.length && !isSeeding) {
+      generateSeedKeywords();
+    }
+  }, [initialData?.appId, initialData?.description]);
 
   const parseAIResponse = (response: string): MetadataField | null => {
     try {
