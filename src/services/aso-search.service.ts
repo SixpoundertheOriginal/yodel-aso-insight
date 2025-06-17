@@ -1,6 +1,8 @@
-
 import { supabase } from '@/integrations/supabase/client';
 import { inputDetectionService, SearchParameters } from './input-detection.service';
+import { bypassPatternsService } from './bypass-patterns.service';
+import { correlationTracker } from './correlation-tracker.service';
+import { directItunesService } from './direct-itunes.service';
 import { ScrapedMetadata } from '@/types/aso';
 
 export interface SearchResult {
@@ -33,59 +35,130 @@ class AsoSearchService {
   private baseDelay = 1000;
 
   /**
-   * Simplified search with direct iTunes API integration
+   * EMERGENCY BYPASS: Smart search with fallback mechanisms
    */
   async search(input: string, config: SearchConfig): Promise<SearchResult> {
-    console.log('🚀 [ASO-SEARCH] Starting simplified search for:', input);
-    console.log('🔧 [ASO-SEARCH] Config:', config);
+    // Create correlation context for request tracing
+    const correlationContext = correlationTracker.createContext('aso-search', config.organizationId);
+    
+    correlationTracker.log('info', 'ASO search initiated', { input, config });
 
     try {
-      // Step 1: Analyze input
-      const analysis = inputDetectionService.analyzeInput(input);
-      if (!analysis.success) {
-        const errorMsg = analysis.errors?.[0]?.message || 'Invalid search input';
-        console.error('❌ [ASO-SEARCH] Input analysis failed:', errorMsg);
-        throw new Error(`Input validation failed: ${errorMsg}`);
-      }
+      // PHASE 1: Emergency bypass analysis
+      const bypassAnalysis = bypassPatternsService.analyzeForBypass(input);
+      correlationTracker.log('info', 'Bypass analysis completed', bypassAnalysis);
 
-      console.log('✅ [ASO-SEARCH] Input analysis successful:', analysis.data);
-
-      // Step 2: Create search parameters
-      const searchParams = inputDetectionService.createSearchParameters(input, analysis.data!);
-      console.log('📊 [ASO-SEARCH] Search parameters:', searchParams);
-
-      // Step 3: Execute search with retry logic
-      const searchResult = await this.executeSearchWithRetry(searchParams, config);
-
-      // Step 4: Add basic intelligence if requested
-      if (config.includeIntelligence && searchParams.type !== 'url') {
+      // BYPASS PATH: Direct iTunes API for safe inputs
+      if (bypassAnalysis.shouldBypass && bypassAnalysis.confidence > 0.8) {
+        correlationTracker.log('info', 'Taking bypass path', { reason: bypassAnalysis.reason });
+        
         try {
-          searchResult.intelligence = await this.generateBasicIntelligence(searchResult, searchParams);
-        } catch (intelligenceError) {
-          console.warn('⚠️ [ASO-SEARCH] Intelligence generation failed:', intelligenceError);
-          // Continue without intelligence
+          const directResult = await directItunesService.searchDirect(input, {
+            organizationId: config.organizationId,
+            country: 'us',
+            limit: 25,
+            bypassReason: bypassAnalysis.reason
+          });
+
+          return this.wrapDirectResult(directResult, input, bypassAnalysis.pattern);
+        } catch (bypassError) {
+          correlationTracker.log('warn', 'Bypass path failed, falling back to complex validation', {
+            error: bypassError.message
+          });
+          // Fall through to complex validation
         }
       }
 
-      console.log('✅ [ASO-SEARCH] Search completed successfully');
-      return searchResult;
+      // FALLBACK PATH 1: Simplified validation
+      correlationTracker.log('info', 'Using simplified validation path');
+      try {
+        return await this.searchWithSimplifiedValidation(input, config);
+      } catch (simplifiedError) {
+        correlationTracker.log('warn', 'Simplified validation failed, using full validation', {
+          error: simplifiedError.message
+        });
+      }
+
+      // FALLBACK PATH 2: Original complex validation
+      correlationTracker.log('info', 'Using complex validation path');
+      return await this.searchWithComplexValidation(input, config);
 
     } catch (error: any) {
-      console.error('❌ [ASO-SEARCH] Search failed:', error);
-      
-      // Try fallback search for keywords
-      if (input && typeof input === 'string' && input.length > 2) {
-        console.log('🔄 [ASO-SEARCH] Attempting fallback search...');
-        try {
-          return await this.fallbackSearch(input, config);
-        } catch (fallbackError) {
-          console.error('❌ [ASO-SEARCH] Fallback search also failed:', fallbackError);
-        }
-      }
-
-      // Throw user-friendly error
+      correlationTracker.log('error', 'All search paths failed', { error: error.message });
       throw new Error(this.getUserFriendlyError(error));
     }
+  }
+
+  /**
+   * Simplified validation path - bypass heavy input analysis
+   */
+  private async searchWithSimplifiedValidation(input: string, config: SearchConfig): Promise<SearchResult> {
+    // Simple input type detection
+    const isUrl = input.includes('apps.apple.com') || input.includes('play.google.com');
+    const searchParams: SearchParameters = {
+      term: input.trim(),
+      type: isUrl ? 'url' : 'keyword',
+      country: 'us',
+      limit: 25,
+      includeCompetitors: true
+    };
+
+    return await this.executeSearchWithRetry(searchParams, config);
+  }
+
+  /**
+   * Complex validation path - original logic
+   */
+  private async searchWithComplexValidation(input: string, config: SearchConfig): Promise<SearchResult> {
+    // Step 1: Analyze input
+    const analysis = inputDetectionService.analyzeInput(input);
+    if (!analysis.success) {
+      const errorMsg = analysis.errors?.[0]?.message || 'Invalid search input';
+      throw new Error(`Input validation failed: ${errorMsg}`);
+    }
+
+    console.log('✅ [ASO-SEARCH] Input analysis successful:', analysis.data);
+
+    // Step 2: Create search parameters
+    const searchParams = inputDetectionService.createSearchParameters(input, analysis.data!);
+    console.log('📊 [ASO-SEARCH] Search parameters:', searchParams);
+
+    // Step 3: Execute search with retry logic
+    const searchResult = await this.executeSearchWithRetry(searchParams, config);
+
+    // Step 4: Add basic intelligence if requested
+    if (config.includeIntelligence && searchParams.type !== 'url') {
+      try {
+        searchResult.intelligence = await this.generateBasicIntelligence(searchResult, searchParams);
+      } catch (intelligenceError) {
+        console.warn('⚠️ [ASO-SEARCH] Intelligence generation failed:', intelligenceError);
+        // Continue without intelligence
+      }
+    }
+
+    console.log('✅ [ASO-SEARCH] Search completed successfully');
+    return searchResult;
+
+  }
+
+  /**
+   * Wrap direct iTunes result in SearchResult format
+   */
+  private wrapDirectResult(result: ScrapedMetadata, query: string, pattern: string): SearchResult {
+    return {
+      targetApp: result,
+      competitors: [], // Direct bypass doesn't include competitors for speed
+      searchContext: {
+        query,
+        type: 'keyword',
+        totalResults: 1,
+        category: result.applicationCategory || 'Unknown',
+        country: 'us'
+      },
+      intelligence: {
+        opportunities: [`Direct bypass used (${pattern})`]
+      }
+    };
   }
 
   /**
@@ -93,7 +166,7 @@ class AsoSearchService {
    */
   private async executeSearchWithRetry(params: SearchParameters, config: SearchConfig, attempt = 1): Promise<SearchResult> {
     try {
-      console.log(`🔄 [ASO-SEARCH] Search attempt ${attempt}/${this.maxRetries + 1}`);
+      correlationTracker.log('info', `Search attempt ${attempt}/${this.maxRetries + 1}`, params);
       
       const requestBody = {
         searchTerm: params.term,
@@ -106,35 +179,24 @@ class AsoSearchService {
         }
       };
 
-      console.log('📤 [ASO-SEARCH] Sending request to simplified edge function:', requestBody);
-
       const { data, error } = await supabase.functions.invoke('app-store-scraper', {
         body: requestBody,
         headers: {
           'Content-Type': 'application/json',
+          'X-Correlation-ID': correlationTracker.getContext()?.id || 'unknown'
         }
       });
 
-      console.log('📥 [ASO-SEARCH] Edge function response:', { data, error });
-
       if (error) {
-        console.error('❌ [ASO-SEARCH] Edge function error:', error);
+        correlationTracker.log('error', 'Edge function error', error);
         throw new Error(`Search service error: ${error.message}`);
       }
 
-      if (!data) {
-        throw new Error('No response from search service');
+      if (!data || !data.success) {
+        throw new Error(data?.error || 'Search failed without specific error');
       }
 
-      if (!data.success) {
-        throw new Error(data.error || 'Search failed without specific error');
-      }
-
-      if (!data.data) {
-        throw new Error('No search results returned');
-      }
-
-      // Transform response to SearchResult format
+      // Transform response
       return {
         targetApp: data.data,
         competitors: data.data.competitors || [],
@@ -145,21 +207,16 @@ class AsoSearchService {
           category: data.data.applicationCategory || 'Unknown',
           country: params.country
         },
-        intelligence: {
-          opportunities: []
-        }
+        intelligence: { opportunities: [] }
       };
 
     } catch (error: any) {
-      console.error(`❌ [ASO-SEARCH] Attempt ${attempt} failed:`, error);
-      
       if (attempt <= this.maxRetries) {
         const delay = this.baseDelay * Math.pow(2, attempt - 1);
-        console.log(`⏳ [ASO-SEARCH] Retrying in ${delay}ms...`);
+        correlationTracker.log('warn', `Retrying in ${delay}ms`, { attempt, error: error.message });
         await new Promise(resolve => setTimeout(resolve, delay));
         return this.executeSearchWithRetry(params, config, attempt + 1);
       }
-      
       throw error;
     }
   }
@@ -168,9 +225,8 @@ class AsoSearchService {
    * Simplified fallback search strategy
    */
   private async fallbackSearch(input: string, config: SearchConfig): Promise<SearchResult> {
-    console.log('🆘 [ASO-SEARCH] Executing simplified fallback search for:', input);
+    correlationTracker.log('info', 'Executing fallback search', { input });
     
-    // Create a simple keyword search as fallback
     const fallbackParams: SearchParameters = {
       term: input.trim(),
       type: 'keyword',
@@ -182,9 +238,8 @@ class AsoSearchService {
     try {
       return await this.executeSearchWithRetry(fallbackParams, config);
     } catch (fallbackError) {
-      console.error('❌ [ASO-SEARCH] Fallback search failed:', fallbackError);
+      correlationTracker.log('error', 'Fallback search failed', { error: fallbackError.message });
       
-      // Return minimal result to prevent total failure
       return {
         targetApp: {
           name: `Search results for "${input}"`,
@@ -217,7 +272,7 @@ class AsoSearchService {
     const opportunities: string[] = [];
     
     const competitorCount = searchResult.competitors.length;
-    const marketSaturation = Math.min((competitorCount / 20) * 100, 100); // Simplified calculation
+    const marketSaturation = Math.min((competitorCount / 20) * 100, 100);
     
     const avgRating = searchResult.competitors.reduce((sum, app) => sum + (app.rating || 0), 0) / competitorCount;
     const keywordDifficulty = Math.min((avgRating / 5) * 100, 100);
@@ -235,7 +290,7 @@ class AsoSearchService {
     return {
       keywordDifficulty: Math.round(keywordDifficulty),
       marketSaturation: Math.round(marketSaturation),
-      trendingScore: Math.round(Math.random() * 100), // Simplified trending score
+      trendingScore: Math.round(Math.random() * 100),
       opportunities
     };
   }
