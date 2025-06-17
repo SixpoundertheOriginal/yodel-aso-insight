@@ -103,6 +103,31 @@ class AsoSearchService {
   }
 
   /**
+   * Wrap direct iTunes result into SearchResult format
+   */
+  private wrapDirectResult(app: ScrapedMetadata, input: string, pattern: string): SearchResult {
+    correlationTracker.log('info', 'Wrapping direct iTunes result', {
+      appName: app.name,
+      pattern
+    });
+
+    return {
+      targetApp: app,
+      competitors: [], // Direct results don't include competitors
+      searchContext: {
+        query: input,
+        type: pattern.includes('brand') ? 'brand' : 'keyword',
+        totalResults: 1,
+        category: app.applicationCategory || 'Unknown',
+        country: 'us'
+      },
+      intelligence: {
+        opportunities: [`Direct match found for "${input}"`]
+      }
+    };
+  }
+
+  /**
    * EMERGENCY: Enhanced edge function call with comprehensive debugging
    */
   private async searchWithEmergencyDebugging(input: string, config: SearchConfig): Promise<SearchResult> {
