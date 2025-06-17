@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { CurrentMetadataPanel } from './CurrentMetadataPanel';
 import { SuggestedMetadataPanel } from './SuggestedMetadataPanel';
@@ -12,8 +13,20 @@ interface MetadataWorkspaceProps {
   organizationId: string;
 }
 
-export const MetadataWorkspace: React.FC<MetadataWorkspaceProps> = ({ initialData, organizationId }) => {
-  console.log('🏗️ [WORKSPACE] Initializing workspace with data:', JSON.stringify(initialData, null, 2));
+export const MetadataWorkspace: React.FC<MetadataWorkspaceProps> = React.memo(({ initialData, organizationId }) => {
+  // Memoize debug data to prevent JSON.stringify on every render
+  const debugData = React.useMemo(() => {
+    return {
+      appId: initialData.appId,
+      name: initialData.name,
+      hasDescription: !!initialData.description,
+      organizationId
+    };
+  }, [initialData.appId, initialData.name, initialData.description, organizationId]);
+  
+  React.useEffect(() => {
+    console.log('🏗️ [WORKSPACE] Initializing workspace with data:', debugData);
+  }, [debugData]);
   
   return (
     <div className="space-y-6">
@@ -32,4 +45,13 @@ export const MetadataWorkspace: React.FC<MetadataWorkspaceProps> = ({ initialDat
       </div>
     </div>
   );
-};
+}, (prevProps, nextProps) => {
+  // Custom comparison to prevent unnecessary re-renders
+  return (
+    prevProps.organizationId === nextProps.organizationId &&
+    prevProps.initialData.appId === nextProps.initialData.appId &&
+    prevProps.initialData.name === nextProps.initialData.name &&
+    prevProps.initialData.description === nextProps.initialData.description
+  );
+});
+

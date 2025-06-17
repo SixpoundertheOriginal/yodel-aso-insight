@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -11,22 +12,42 @@ interface MetadataPreviewProps {
   appName?: string;
 }
 
-export const MetadataPreview: React.FC<MetadataPreviewProps> = ({
+export const MetadataPreview: React.FC<MetadataPreviewProps> = React.memo(({
   metadata,
   score,
   appName = 'Your App'
 }) => {
-  const getScoreColor = (value: number) => {
+  const getScoreColor = React.useCallback((value: number) => {
     if (value >= 80) return 'text-green-400';
     if (value >= 60) return 'text-yellow-400';
     return 'text-red-400';
-  };
+  }, []);
 
-  const getScoreBadgeColor = (value: number) => {
+  const getScoreBadgeColor = React.useCallback((value: number) => {
     if (value >= 80) return 'bg-green-500/20 text-green-400 border-green-500/30';
     if (value >= 60) return 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30';
     return 'bg-red-500/20 text-red-400 border-red-500/30';
-  };
+  }, []);
+
+  // Memoize character counts to prevent recalculation
+  const characterCounts = React.useMemo(() => {
+    return {
+      title: metadata.title.length,
+      subtitle: metadata.subtitle.length,
+      keywords: metadata.keywords.length
+    };
+  }, [metadata.title, metadata.subtitle, metadata.keywords]);
+
+  // Memoize score calculations
+  const scoreData = React.useMemo(() => {
+    if (!score) return null;
+    return {
+      overall: Math.round(score.overall),
+      title: Math.round(score.title),
+      subtitle: Math.round(score.subtitle),
+      keywords: Math.round(score.keywords)
+    };
+  }, [score]);
 
   return (
     <div className="space-y-6">
@@ -87,17 +108,17 @@ export const MetadataPreview: React.FC<MetadataPreviewProps> = ({
         </CardHeader>
         <CardContent className="space-y-4">
           <CharacterCounter
-            current={metadata.title.length}
+            current={characterCounts.title}
             limit={30}
             label="Title"
           />
           <CharacterCounter
-            current={metadata.subtitle.length}
+            current={characterCounts.subtitle}
             limit={30}
             label="Subtitle"
           />
           <CharacterCounter
-            current={metadata.keywords.length}
+            current={characterCounts.keywords}
             limit={100}
             label="Keywords"
           />
@@ -105,7 +126,7 @@ export const MetadataPreview: React.FC<MetadataPreviewProps> = ({
       </Card>
 
       {/* Metadata Score */}
-      {score && (
+      {scoreData && (
         <Card className="bg-zinc-900/50 border-zinc-800">
           <CardHeader>
             <CardTitle className="text-white">Metadata Quality Score</CardTitle>
@@ -114,27 +135,27 @@ export const MetadataPreview: React.FC<MetadataPreviewProps> = ({
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <span className="text-lg font-semibold text-white">Overall Score</span>
-                <Badge variant="outline" className={getScoreBadgeColor(score.overall)}>
-                  {Math.round(score.overall)}%
+                <Badge variant="outline" className={getScoreBadgeColor(scoreData.overall)}>
+                  {scoreData.overall}%
                 </Badge>
               </div>
               
               <div className="grid grid-cols-3 gap-4">
                 <div className="text-center">
-                  <div className={`text-2xl font-bold ${getScoreColor(score.title)}`}>
-                    {Math.round(score.title)}%
+                  <div className={`text-2xl font-bold ${getScoreColor(scoreData.title)}`}>
+                    {scoreData.title}%
                   </div>
                   <div className="text-sm text-zinc-400">Title Quality</div>
                 </div>
                 <div className="text-center">
-                  <div className={`text-2xl font-bold ${getScoreColor(score.subtitle)}`}>
-                    {Math.round(score.subtitle)}%
+                  <div className={`text-2xl font-bold ${getScoreColor(scoreData.subtitle)}`}>
+                    {scoreData.subtitle}%
                   </div>
                   <div className="text-sm text-zinc-400">Subtitle Quality</div>
                 </div>
                 <div className="text-center">
-                  <div className={`text-2xl font-bold ${getScoreColor(score.keywords)}`}>
-                    {Math.round(score.keywords)}%
+                  <div className={`text-2xl font-bold ${getScoreColor(scoreData.keywords)}`}>
+                    {scoreData.keywords}%
                   </div>
                   <div className="text-sm text-zinc-400">Keyword Quality</div>
                 </div>
@@ -159,4 +180,21 @@ export const MetadataPreview: React.FC<MetadataPreviewProps> = ({
       </Card>
     </div>
   );
-};
+}, (prevProps, nextProps) => {
+  // Custom comparison for MetadataPreview
+  const metadataEqual = (
+    prevProps.metadata.title === nextProps.metadata.title &&
+    prevProps.metadata.subtitle === nextProps.metadata.subtitle &&
+    prevProps.metadata.keywords === nextProps.metadata.keywords
+  );
+  
+  const scoreEqual = (!prevProps.score && !nextProps.score) || (
+    prevProps.score?.overall === nextProps.score?.overall &&
+    prevProps.score?.title === nextProps.score?.title &&
+    prevProps.score?.subtitle === nextProps.score?.subtitle &&
+    prevProps.score?.keywords === nextProps.score?.keywords
+  );
+  
+  return metadataEqual && scoreEqual && prevProps.appName === nextProps.appName;
+});
+

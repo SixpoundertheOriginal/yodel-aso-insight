@@ -10,14 +10,14 @@ interface CurrentMetadataPanelProps {
   metadata: ScrapedMetadata;
 }
 
-const RatingStars = ({ rating = 0, reviews = 0 }: { rating?: number; reviews?: number }) => {
-  console.log('⭐ [RATING] Rendering stars with rating:', rating, 'reviews:', reviews);
-  
+const RatingStars = React.memo(({ rating = 0, reviews = 0 }: { rating?: number; reviews?: number }) => {
   // Enterprise-grade rating validation
   const validRating = typeof rating === 'number' && !isNaN(rating) && rating >= 0 && rating <= 5 ? rating : 0;
   const validReviews = typeof reviews === 'number' && !isNaN(reviews) && reviews >= 0 ? reviews : 0;
   
-  const formattedReviews = validReviews > 1000 ? `${(validReviews / 1000).toFixed(1)}K` : validReviews.toString();
+  const formattedReviews = React.useMemo(() => {
+    return validReviews > 1000 ? `${(validReviews / 1000).toFixed(1)}K` : validReviews.toString();
+  }, [validReviews]);
   
   return (
     <div className="flex items-center space-x-2">
@@ -39,24 +39,20 @@ const RatingStars = ({ rating = 0, reviews = 0 }: { rating?: number; reviews?: n
       )}
     </div>
   );
-};
+});
 
-const AppIcon = ({ src, alt, name }: { src?: string; alt: string; name: string }) => {
+const AppIcon = React.memo(({ src, alt, name }: { src?: string; alt: string; name: string }) => {
   const [imageError, setImageError] = React.useState(false);
   const [isLoading, setIsLoading] = React.useState(true);
   
-  console.log('🖼️ [ICON] Rendering icon with src:', src);
-  
-  const handleImageLoad = () => {
-    console.log('✅ [ICON] Image loaded successfully');
+  const handleImageLoad = React.useCallback(() => {
     setIsLoading(false);
-  };
+  }, []);
   
-  const handleImageError = () => {
-    console.warn('⚠️ [ICON] Image failed to load, using fallback');
+  const handleImageError = React.useCallback(() => {
     setImageError(true);
     setIsLoading(false);
-  };
+  }, []);
   
   if (!src || imageError) {
     return (
@@ -81,13 +77,33 @@ const AppIcon = ({ src, alt, name }: { src?: string; alt: string; name: string }
       />
     </div>
   );
-};
+});
 
-export const CurrentMetadataPanel: React.FC<CurrentMetadataPanelProps> = ({ metadata }) => {
-  console.log('🎯 [PANEL] Rendering CurrentMetadataPanel with metadata:', JSON.stringify(metadata, null, 2));
+export const CurrentMetadataPanel: React.FC<CurrentMetadataPanelProps> = React.memo(({ metadata }) => {
+  // Memoize debug info to prevent recalculation
+  const debugInfo = React.useMemo(() => {
+    return {
+      icon: metadata.icon ? '✅ Present' : '❌ Missing',
+      developer: metadata.developer ? '✅ Present' : '❌ Missing',
+      rating: metadata.rating ? `✅ ${metadata.rating}` : '❌ Missing/Zero',
+      reviews: metadata.reviews ? `✅ ${metadata.reviews}` : '❌ Missing/Zero',
+      subtitle: metadata.subtitle ? '✅ Present' : '❌ Missing'
+    };
+  }, [metadata.icon, metadata.developer, metadata.rating, metadata.reviews, metadata.subtitle]);
   
   // Enterprise debugging in development
   const showDebug = process.env.NODE_ENV === 'development';
+  
+  React.useEffect(() => {
+    if (showDebug) {
+      console.log('🎯 [PANEL] CurrentMetadataPanel rendered with metadata:', {
+        appId: metadata.appId,
+        name: metadata.name,
+        hasIcon: !!metadata.icon,
+        hasDescription: !!metadata.description
+      });
+    }
+  }, [metadata.appId, metadata.name, showDebug]);
   
   return (
     <Card className="bg-zinc-900/50 border-zinc-800">
@@ -100,11 +116,11 @@ export const CurrentMetadataPanel: React.FC<CurrentMetadataPanelProps> = ({ meta
           <div className="bg-red-900/20 border border-red-700/50 rounded p-3">
             <h4 className="text-red-300 font-semibold mb-2 text-xs">Debug Info</h4>
             <div className="text-xs text-red-200 space-y-1">
-              <div>Icon: {metadata.icon ? '✅ Present' : '❌ Missing'}</div>
-              <div>Developer: {metadata.developer ? '✅ Present' : '❌ Missing'}</div>
-              <div>Rating: {metadata.rating ? `✅ ${metadata.rating}` : '❌ Missing/Zero'}</div>
-              <div>Reviews: {metadata.reviews ? `✅ ${metadata.reviews}` : '❌ Missing/Zero'}</div>
-              <div>Subtitle: {metadata.subtitle ? '✅ Present' : '❌ Missing'}</div>
+              <div>Icon: {debugInfo.icon}</div>
+              <div>Developer: {debugInfo.developer}</div>
+              <div>Rating: {debugInfo.rating}</div>
+              <div>Reviews: {debugInfo.reviews}</div>
+              <div>Subtitle: {debugInfo.subtitle}</div>
             </div>
           </div>
         )}
@@ -177,4 +193,17 @@ export const CurrentMetadataPanel: React.FC<CurrentMetadataPanelProps> = ({ meta
       </CardContent>
     </Card>
   );
-};
+}, (prevProps, nextProps) => {
+  // Custom comparison for ScrapedMetadata
+  return (
+    prevProps.metadata.appId === nextProps.metadata.appId &&
+    prevProps.metadata.name === nextProps.metadata.name &&
+    prevProps.metadata.title === nextProps.metadata.title &&
+    prevProps.metadata.description === nextProps.metadata.description &&
+    prevProps.metadata.icon === nextProps.metadata.icon &&
+    prevProps.metadata.developer === nextProps.metadata.developer &&
+    prevProps.metadata.rating === nextProps.metadata.rating &&
+    prevProps.metadata.reviews === nextProps.metadata.reviews
+  );
+});
+
