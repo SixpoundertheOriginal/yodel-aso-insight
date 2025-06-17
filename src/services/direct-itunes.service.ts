@@ -1,4 +1,3 @@
-
 /**
  * Direct iTunes API Service
  * Bypass service for direct iTunes Search API calls
@@ -12,6 +11,12 @@ export interface DirectSearchConfig {
   country?: string;
   limit?: number;
   bypassReason: string;
+}
+
+export interface SearchResultsResponse {
+  isAmbiguous: boolean;
+  results: ScrapedMetadata[];
+  searchTerm: string;
 }
 
 class DirectItunesService {
@@ -66,6 +71,69 @@ class DirectItunesService {
         term
       });
       throw new Error(`Direct search failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Enhanced search with ambiguity detection
+   */
+  async searchWithAmbiguityDetection(term: string, config: DirectSearchConfig): Promise<SearchResultsResponse> {
+    const correlationId = correlationTracker.getContext()?.id || 'ambiguity-search';
+    
+    correlationTracker.log('info', `Ambiguity detection search initiated`, {
+      term,
+      config
+    });
+
+    try {
+      const searchUrl = this.buildSearchUrl(term, { ...config, limit: 25 });
+      
+      const response = await fetch(searchUrl, {
+        headers: {
+          'User-Agent': 'ASO-Insights-Platform/Ambiguity-Detection'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`iTunes API error: ${response.status} ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      
+      if (!data.results || data.results.length === 0) {
+        throw new Error(`No results found for "${term}"`);
+      }
+
+      const transformedResults = data.results
+        .slice(0, 15) // Limit to 15 for processing
+        .map((app: any) => this.transformItunesResult(app));
+
+      // Ambiguity detection logic
+      const highQualityResults = transformedResults.filter((app: ScrapedMetadata) => 
+        app.rating && app.rating >= 3.5 && app.reviews && app.reviews >= 50
+      );
+
+      const isAmbiguous = transformedResults.length >= 3 && highQualityResults.length >= 2;
+
+      correlationTracker.log('info', `Ambiguity analysis completed`, {
+        totalResults: transformedResults.length,
+        highQualityResults: highQualityResults.length,
+        isAmbiguous,
+        term
+      });
+
+      return {
+        isAmbiguous,
+        results: isAmbiguous ? highQualityResults.slice(0, 10) : transformedResults.slice(0, 1),
+        searchTerm: term
+      };
+
+    } catch (error: any) {
+      correlationTracker.log('error', `Ambiguity detection search failed`, {
+        error: error.message,
+        term
+      });
+      throw new Error(`Ambiguity detection search failed: ${error.message}`);
     }
   }
 

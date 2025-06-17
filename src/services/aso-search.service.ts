@@ -2,7 +2,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { inputDetectionService, SearchParameters } from './input-detection.service';
 import { bypassPatternsService } from './bypass-patterns.service';
 import { correlationTracker } from './correlation-tracker.service';
-import { directItunesService } from './direct-itunes.service';
+import { directItunesService, SearchResultsResponse } from './direct-itunes.service';
+import { AmbiguousSearchError } from '@/types/search-errors';
 import { ScrapedMetadata } from '@/types/aso';
 
 export interface SearchResult {
@@ -48,22 +49,39 @@ class AsoSearchService {
       const bypassAnalysis = bypassPatternsService.analyzeForBypass(input);
       correlationTracker.log('info', 'Bypass analysis completed', bypassAnalysis);
 
-      // BYPASS PATH: Direct iTunes API for safe inputs
+      // ENHANCED BYPASS PATH: Check for ambiguity first
       if (bypassAnalysis.shouldBypass && bypassAnalysis.confidence > 0.8) {
-        correlationTracker.log('info', 'Taking bypass path', { reason: bypassAnalysis.reason });
+        correlationTracker.log('info', 'Taking enhanced bypass path with ambiguity detection', { reason: bypassAnalysis.reason });
         
         try {
-          const directResult = await directItunesService.searchDirect(input, {
+          const ambiguityResult: SearchResultsResponse = await directItunesService.searchWithAmbiguityDetection(input, {
             organizationId: config.organizationId,
             country: 'us',
             limit: 25,
             bypassReason: bypassAnalysis.reason
           });
 
-          return this.wrapDirectResult(directResult, input, bypassAnalysis.pattern);
-        } catch (bypassError) {
-          correlationTracker.log('warn', 'Bypass path failed, falling back to edge function', {
-            error: bypassError.message
+          // If ambiguous, throw error with candidates for modal selection
+          if (ambiguityResult.isAmbiguous) {
+            correlationTracker.log('info', 'Ambiguous search detected, throwing selection error', {
+              candidateCount: ambiguityResult.results.length,
+              searchTerm: ambiguityResult.searchTerm
+            });
+            
+            throw new AmbiguousSearchError(ambiguityResult.results, ambiguityResult.searchTerm);
+          }
+
+          // Single result - proceed normally
+          return this.wrapDirectResult(ambiguityResult.results[0], input, bypassAnalysis.pattern);
+
+        } catch (error) {
+          // If it's an AmbiguousSearchError, re-throw it
+          if (error instanceof AmbiguousSearchError) {
+            throw error;
+          }
+          
+          correlationTracker.log('warn', 'Enhanced bypass path failed, falling back to edge function', {
+            error: error.message
           });
           // Fall through to edge function
         }
@@ -74,6 +92,11 @@ class AsoSearchService {
       return await this.searchWithEmergencyDebugging(input, config);
 
     } catch (error: any) {
+      // Re-throw AmbiguousSearchError without modification
+      if (error instanceof AmbiguousSearchError) {
+        throw error;
+      }
+      
       correlationTracker.log('error', 'All search paths failed', { error: error.message });
       throw new Error(this.getUserFriendlyError(error));
     }
@@ -163,78 +186,6 @@ class AsoSearchService {
       });
       throw error;
     }
-  }
-
-  /**
-   * Simplified validation path - bypass heavy input analysis
-   */
-  private async searchWithSimplifiedValidation(input: string, config: SearchConfig): Promise<SearchResult> {
-    // Simple input type detection
-    const isUrl = input.includes('apps.apple.com') || input.includes('play.google.com');
-    const searchParams: SearchParameters = {
-      term: input.trim(),
-      type: isUrl ? 'url' : 'keyword',
-      country: 'us',
-      limit: 25,
-      includeCompetitors: true
-    };
-
-    return await this.executeSearchWithRetry(searchParams, config);
-  }
-
-  /**
-   * Complex validation path - original logic
-   */
-  private async searchWithComplexValidation(input: string, config: SearchConfig): Promise<SearchResult> {
-    // Step 1: Analyze input
-    const analysis = inputDetectionService.analyzeInput(input);
-    if (!analysis.success) {
-      const errorMsg = analysis.errors?.[0]?.message || 'Invalid search input';
-      throw new Error(`Input validation failed: ${errorMsg}`);
-    }
-
-    console.log('✅ [ASO-SEARCH] Input analysis successful:', analysis.data);
-
-    // Step 2: Create search parameters
-    const searchParams = inputDetectionService.createSearchParameters(input, analysis.data!);
-    console.log('📊 [ASO-SEARCH] Search parameters:', searchParams);
-
-    // Step 3: Execute search with retry logic
-    const searchResult = await this.executeSearchWithRetry(searchParams, config);
-
-    // Step 4: Add basic intelligence if requested
-    if (config.includeIntelligence && searchParams.type !== 'url') {
-      try {
-        searchResult.intelligence = await this.generateBasicIntelligence(searchResult, searchParams);
-      } catch (intelligenceError) {
-        console.warn('⚠️ [ASO-SEARCH] Intelligence generation failed:', intelligenceError);
-        // Continue without intelligence
-      }
-    }
-
-    console.log('✅ [ASO-SEARCH] Search completed successfully');
-    return searchResult;
-
-  }
-
-  /**
-   * Wrap direct iTunes result in SearchResult format
-   */
-  private wrapDirectResult(result: ScrapedMetadata, query: string, pattern: string): SearchResult {
-    return {
-      targetApp: result,
-      competitors: [], // Direct bypass doesn't include competitors for speed
-      searchContext: {
-        query,
-        type: 'keyword',
-        totalResults: 1,
-        category: result.applicationCategory || 'Unknown',
-        country: 'us'
-      },
-      intelligence: {
-        opportunities: [`Direct bypass used (${pattern})`]
-      }
-    };
   }
 
   /**
