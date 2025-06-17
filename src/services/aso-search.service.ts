@@ -35,13 +35,13 @@ class AsoSearchService {
   private baseDelay = 1000;
 
   /**
-   * EMERGENCY BYPASS: Smart search with fallback mechanisms
+   * EMERGENCY BYPASS: Smart search with comprehensive debugging
    */
   async search(input: string, config: SearchConfig): Promise<SearchResult> {
     // Create correlation context for request tracing
     const correlationContext = correlationTracker.createContext('aso-search', config.organizationId);
     
-    correlationTracker.log('info', 'ASO search initiated', { input, config });
+    correlationTracker.log('info', 'ASO search initiated with emergency debugging', { input, config });
 
     try {
       // PHASE 1: Emergency bypass analysis
@@ -62,30 +62,106 @@ class AsoSearchService {
 
           return this.wrapDirectResult(directResult, input, bypassAnalysis.pattern);
         } catch (bypassError) {
-          correlationTracker.log('warn', 'Bypass path failed, falling back to complex validation', {
+          correlationTracker.log('warn', 'Bypass path failed, falling back to edge function', {
             error: bypassError.message
           });
-          // Fall through to complex validation
+          // Fall through to edge function
         }
       }
 
-      // FALLBACK PATH 1: Simplified validation
-      correlationTracker.log('info', 'Using simplified validation path');
-      try {
-        return await this.searchWithSimplifiedValidation(input, config);
-      } catch (simplifiedError) {
-        correlationTracker.log('warn', 'Simplified validation failed, using full validation', {
-          error: simplifiedError.message
-        });
-      }
-
-      // FALLBACK PATH 2: Original complex validation
-      correlationTracker.log('info', 'Using complex validation path');
-      return await this.searchWithComplexValidation(input, config);
+      // EMERGENCY PATH: Use edge function with enhanced debugging
+      correlationTracker.log('info', 'Using edge function with emergency debugging');
+      return await this.searchWithEmergencyDebugging(input, config);
 
     } catch (error: any) {
       correlationTracker.log('error', 'All search paths failed', { error: error.message });
       throw new Error(this.getUserFriendlyError(error));
+    }
+  }
+
+  /**
+   * EMERGENCY: Enhanced edge function call with comprehensive debugging
+   */
+  private async searchWithEmergencyDebugging(input: string, config: SearchConfig): Promise<SearchResult> {
+    const requestBody = {
+      searchTerm: input.trim(),
+      searchType: 'keyword' as const,
+      organizationId: config.organizationId,
+      includeCompetitorAnalysis: true,
+      searchParameters: {
+        country: 'us',
+        limit: 25
+      }
+    };
+
+    // EMERGENCY DEBUG: Log frontend request details
+    console.log('🔍 [FRONTEND] Preparing edge function request:', {
+      requestBody,
+      bodySize: JSON.stringify(requestBody).length,
+      correlationId: correlationTracker.getContext()?.id
+    });
+
+    // EMERGENCY DEBUG: Validate request before sending
+    if (!requestBody.searchTerm || requestBody.searchTerm.trim() === '') {
+      throw new Error('Frontend validation failed: searchTerm is empty');
+    }
+
+    if (!requestBody.organizationId) {
+      throw new Error('Frontend validation failed: organizationId is missing');
+    }
+
+    console.log('✅ [FRONTEND] Request validation passed, calling edge function');
+
+    try {
+      const { data, error } = await supabase.functions.invoke('app-store-scraper', {
+        body: requestBody,
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Correlation-ID': correlationTracker.getContext()?.id || 'unknown'
+        }
+      });
+
+      console.log('📥 [FRONTEND] Edge function response received:', {
+        hasData: !!data,
+        hasError: !!error,
+        dataSuccess: data?.success,
+        errorMessage: error?.message
+      });
+
+      if (error) {
+        console.error('❌ [FRONTEND] Edge function error:', error);
+        throw new Error(`Edge function error: ${error.message}`);
+      }
+
+      if (!data || !data.success) {
+        console.error('❌ [FRONTEND] Edge function returned unsuccessful response:', data);
+        throw new Error(data?.error || 'Edge function returned unsuccessful response');
+      }
+
+      console.log('✅ [FRONTEND] Edge function call successful');
+
+      // Transform response
+      return {
+        targetApp: data.data,
+        competitors: data.data.competitors || [],
+        searchContext: {
+          query: input,
+          type: 'keyword',
+          totalResults: (data.data.competitors?.length || 0) + 1,
+          category: data.data.applicationCategory || 'Unknown',
+          country: 'us'
+        },
+        intelligence: { 
+          opportunities: data.debugMode ? ['Emergency debug mode active'] : [] 
+        }
+      };
+
+    } catch (error: any) {
+      console.error('💥 [FRONTEND] Edge function call failed:', {
+        error: error.message,
+        stack: error.stack
+      });
+      throw error;
     }
   }
 

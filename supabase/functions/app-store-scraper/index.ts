@@ -1,7 +1,7 @@
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
-const VERSION = '7.0.0-emergency-bypass'
+const VERSION = '7.1.0-emergency-debug'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -39,174 +39,222 @@ serve(async (req: Request) => {
   const startTime = Date.now()
   const correlationId = req.headers.get('x-correlation-id') || crypto.randomUUID()
 
+  // EMERGENCY DEBUG: Log all request details
+  console.log(`🔍 [${correlationId}] REQUEST RECEIVED:`, {
+    method: req.method,
+    url: req.url,
+    headers: Object.fromEntries(req.headers.entries()),
+    timestamp: new Date().toISOString()
+  })
+
   try {
     // Handle CORS preflight requests
     if (req.method === 'OPTIONS') {
-      console.log(`[${correlationId}] CORS preflight request`)
-      return new Response(null, { headers: corsHeaders })
+      console.log(`✅ [${correlationId}] CORS preflight request`)
+      return new Response(null, { 
+        headers: corsHeaders,
+        status: 200 
+      })
     }
 
-    // Health Check Endpoint
+    // Health Check Endpoint - Phase 2: Minimal Connectivity Test
     if (req.method === 'GET') {
-      console.log(`[${correlationId}] Health check requested`)
+      console.log(`🏥 [${correlationId}] Health check requested`)
       return new Response(JSON.stringify({
         status: 'ok',
         version: VERSION,
         timestamp: new Date().toISOString(),
-        mode: 'emergency-bypass-enabled',
-        correlationId
+        mode: 'emergency-debug-enabled',
+        correlationId,
+        message: 'Edge function is healthy and ready'
       }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 200
       })
     }
 
     if (req.method !== 'POST') {
-      console.warn(`[${correlationId}] Invalid method: ${req.method}`)
+      console.warn(`❌ [${correlationId}] Invalid method: ${req.method}`)
       return new Response(JSON.stringify({
         success: false,
         error: 'Method Not Allowed',
-        correlationId
+        correlationId,
+        allowedMethods: ['GET', 'POST', 'OPTIONS']
       }), {
         status: 405,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
     }
 
-    // Parse request body with enhanced logging
+    // EMERGENCY DEBUG: Enhanced body parsing with multiple strategies
     let requestBody: SearchRequest
+    let rawBody: string = ''
+    
     try {
-      const bodyText = await req.text()
-      console.log(`[${correlationId}] Request body received:`, bodyText)
-      
-      if (!bodyText || bodyText.trim() === '') {
-        throw new Error('Request body is empty')
+      // Strategy 1: Get raw text first
+      rawBody = await req.text()
+      console.log(`📥 [${correlationId}] RAW BODY RECEIVED:`, {
+        length: rawBody.length,
+        contentType: req.headers.get('content-type'),
+        bodyPreview: rawBody.substring(0, 200),
+        isEmpty: rawBody.trim() === '',
+        isJson: rawBody.trim().startsWith('{')
+      })
+
+      // Strategy 2: Validate and parse JSON
+      if (!rawBody || rawBody.trim() === '') {
+        throw new Error('Request body is empty or undefined')
       }
-      requestBody = JSON.parse(bodyText)
-      console.log(`[${correlationId}] Parsed request:`, requestBody)
-    } catch (parseError) {
-      console.error(`[${correlationId}] Failed to parse request:`, parseError)
+
+      if (!rawBody.trim().startsWith('{')) {
+        throw new Error(`Request body is not valid JSON. Received: ${rawBody.substring(0, 100)}`)
+      }
+
+      requestBody = JSON.parse(rawBody)
+      console.log(`✅ [${correlationId}] PARSED REQUEST SUCCESSFULLY:`, {
+        searchTerm: requestBody.searchTerm,
+        searchType: requestBody.searchType,
+        organizationId: requestBody.organizationId,
+        hasOptionalParams: !!requestBody.searchParameters
+      })
+
+    } catch (parseError: any) {
+      console.error(`❌ [${correlationId}] BODY PARSING FAILED:`, {
+        error: parseError.message,
+        rawBodyLength: rawBody.length,
+        rawBodySample: rawBody.substring(0, 200),
+        contentType: req.headers.get('content-type'),
+        userAgent: req.headers.get('user-agent')
+      })
+      
       return new Response(JSON.stringify({
         success: false,
-        error: 'Invalid JSON in request body',
+        error: 'Request body parsing failed',
         correlationId,
-        details: parseError.message
+        details: {
+          parseError: parseError.message,
+          receivedBodyLength: rawBody.length,
+          receivedBodySample: rawBody.substring(0, 200),
+          expectedFormat: '{"searchTerm": "string", "organizationId": "string"}'
+        }
       }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
     }
 
+    // EMERGENCY DEBUG: Enhanced validation with detailed error reporting
+    const validationErrors: string[] = []
+    
+    if (!requestBody.searchTerm || typeof requestBody.searchTerm !== 'string' || requestBody.searchTerm.trim().length === 0) {
+      validationErrors.push(`searchTerm is required and must be a non-empty string. Received: ${JSON.stringify(requestBody.searchTerm)}`)
+    }
+
+    if (!requestBody.organizationId || typeof requestBody.organizationId !== 'string') {
+      validationErrors.push(`organizationId is required and must be a string. Received: ${JSON.stringify(requestBody.organizationId)}`)
+    }
+
+    if (validationErrors.length > 0) {
+      console.error(`❌ [${correlationId}] VALIDATION FAILED:`, {
+        errors: validationErrors,
+        receivedRequest: requestBody
+      })
+      
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'Request validation failed',
+        correlationId,
+        validationErrors,
+        receivedRequest: requestBody,
+        requiredFields: ['searchTerm', 'organizationId']
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      })
+    }
+
+    // If we reach here, validation passed
     const { searchTerm, searchType = 'keyword', organizationId, includeCompetitorAnalysis = true, searchParameters = {} } = requestBody
 
-    // Enhanced validation with specific error messages
-    if (!searchTerm || typeof searchTerm !== 'string' || searchTerm.trim().length === 0) {
-      console.error(`[${correlationId}] Invalid searchTerm:`, searchTerm)
-      return new Response(JSON.stringify({
-        success: false,
-        error: 'Search term is required and must be a non-empty string',
-        correlationId,
-        field: 'searchTerm',
-        received: searchTerm
-      }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      })
-    }
+    console.log(`🚀 [${correlationId}] PROCESSING VALIDATED REQUEST:`, {
+      searchTerm,
+      searchType,
+      organizationId,
+      includeCompetitorAnalysis,
+      country: searchParameters.country || 'us',
+      limit: searchParameters.limit || 25
+    })
 
-    if (!organizationId || typeof organizationId !== 'string') {
-      console.error(`[${correlationId}] Invalid organizationId:`, organizationId)
-      return new Response(JSON.stringify({
-        success: false,
-        error: 'Organization ID is required',
-        correlationId,
-        field: 'organizationId',
-        received: organizationId
-      }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      })
-    }
-
-    console.log(`[${correlationId}] Processing ${searchType} search: "${searchTerm}" (org: ${organizationId})`)
-
-    // Emergency bypass for simple cases - reduce validation overhead
-    let searchResult: AppData
-    let competitors: AppData[] = []
-
-    if (searchType === 'url' && isAppStoreUrl(searchTerm)) {
-      console.log(`[${correlationId}] URL search path`)
-      searchResult = await scrapeAppStoreUrl(searchTerm, correlationId)
-    } else {
-      console.log(`[${correlationId}] iTunes API search path`)
-      const searchResponse = await searchItunesApi(
-        searchTerm, 
-        searchParameters.country || 'us', 
-        searchParameters.limit || 25, 
-        correlationId
-      )
-      
-      if (!searchResponse || searchResponse.length === 0) {
-        console.error(`[${correlationId}] No results found for: ${searchTerm}`)
-        return new Response(JSON.stringify({
-          success: false,
-          error: `No apps found for "${searchTerm}". Try different keywords or check spelling.`,
-          correlationId,
-          searchTerm,
-          suggestions: ['Check spelling', 'Try different keywords', 'Use more specific terms']
-        }), {
-          status: 404,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        })
-      }
-
-      searchResult = searchResponse[0]
-      
-      if (includeCompetitorAnalysis && searchResponse.length > 1) {
-        competitors = searchResponse.slice(1, 6)
-      }
-    }
-
-    // Build enhanced response
-    const finalResult = {
-      ...searchResult,
-      competitors: competitors,
+    // For now, let's return a simple success response to test connectivity
+    // This will be replaced with actual scraping logic once we confirm the infrastructure is working
+    const testResponse = {
+      name: `Test App for "${searchTerm}"`,
+      appId: `test-${Date.now()}`,
+      title: `Search Results: ${searchTerm}`,
+      subtitle: 'Infrastructure Test Response',
+      description: `This is a test response for search term: ${searchTerm}. Infrastructure is working correctly.`,
+      url: 'https://apps.apple.com/test',
+      icon: '',
+      rating: 4.5,
+      reviews: 1000,
+      developer: 'Test Developer',
+      applicationCategory: 'Utilities',
+      locale: 'en-US',
+      competitors: [],
       searchContext: {
         query: searchTerm,
         type: searchType,
-        totalResults: competitors.length + 1,
-        category: searchResult.applicationCategory || 'Unknown',
+        totalResults: 1,
+        category: 'Test',
         country: searchParameters.country || 'us'
       }
     }
 
     const processingTime = Date.now() - startTime
-    console.log(`[${correlationId}] Search completed successfully in ${processingTime}ms`)
+    console.log(`✅ [${correlationId}] REQUEST COMPLETED SUCCESSFULLY:`, {
+      processingTime: `${processingTime}ms`,
+      searchTerm,
+      organizationId
+    })
 
     return new Response(JSON.stringify({
       success: true,
-      data: finalResult,
+      data: testResponse,
       correlationId,
       processingTime: `${processingTime}ms`,
       version: VERSION,
-      bypassEnabled: true
+      debugMode: true,
+      message: 'Infrastructure test successful - ready for real scraping'
     }), {
       headers: {
         ...corsHeaders,
         'Content-Type': 'application/json',
         'X-Processing-Time': `${processingTime}ms`,
-        'X-Correlation-ID': correlationId
-      }
+        'X-Correlation-ID': correlationId,
+        'X-Debug-Mode': 'enabled'
+      },
+      status: 200
     })
 
-  } catch (error) {
-    console.error(`[${correlationId}] Critical error:`, error)
+  } catch (error: any) {
+    const processingTime = Date.now() - startTime
+    console.error(`💥 [${correlationId}] CRITICAL ERROR:`, {
+      error: error.message,
+      stack: error.stack,
+      processingTime: `${processingTime}ms`,
+      timestamp: new Date().toISOString()
+    })
     
     return new Response(JSON.stringify({
       success: false,
-      error: 'Search service temporarily unavailable. Please try again.',
+      error: 'Internal server error',
       correlationId,
+      details: {
+        message: error.message,
+        stack: error.stack,
+        processingTime: `${processingTime}ms`
+      },
       version: VERSION,
-      details: error.message,
       timestamp: new Date().toISOString()
     }), {
       status: 500,
@@ -215,107 +263,12 @@ serve(async (req: Request) => {
   }
 })
 
-// Helper function to check if input is an App Store URL
+// Utility functions for when we restore full functionality
 function isAppStoreUrl(input: string): boolean {
   try {
     const url = new URL(input.startsWith('http') ? input : `https://${input}`)
     return url.hostname.includes('apps.apple.com') || url.hostname.includes('play.google.com')
   } catch {
     return false
-  }
-}
-
-async function searchItunesApi(term: string, country: string, limit: number, correlationId: string): Promise<AppData[]> {
-  try {
-    console.log(`[${correlationId}] Searching iTunes API: term="${term}", country="${country}", limit="${limit}"`)
-    
-    const encodedTerm = encodeURIComponent(term)
-    const url = `https://itunes.apple.com/search?term=${encodedTerm}&country=${country}&entity=software&limit=${limit}`
-    
-    console.log(`[${correlationId}] iTunes API URL: ${url}`)
-    
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'ASO-Insights-Platform/7.0.0-emergency-bypass'
-      }
-    })
-
-    if (!response.ok) {
-      throw new Error(`iTunes API responded with status: ${response.status}`)
-    }
-
-    const data = await response.json()
-    console.log(`[${correlationId}] iTunes API returned ${data.results?.length || 0} results`)
-
-    if (!data.results || data.results.length === 0) {
-      return []
-    }
-
-    return data.results.map((app: any) => ({
-      name: app.trackName || 'Unknown App',
-      appId: app.trackId?.toString() || `itunes-${Date.now()}`,
-      title: app.trackName || 'Unknown App',
-      subtitle: app.trackCensoredName || '',
-      description: app.description || '',
-      url: app.trackViewUrl || '',
-      icon: app.artworkUrl512 || app.artworkUrl100 || '',
-      rating: app.averageUserRating || 0,
-      reviews: app.userRatingCount || 0,
-      developer: app.artistName || 'Unknown Developer',
-      applicationCategory: app.primaryGenreName || 'Unknown',
-      locale: 'en-US'
-    }))
-
-  } catch (error) {
-    console.error(`[${correlationId}] iTunes API search failed:`, error)
-    throw new Error(`iTunes search failed: ${error.message}`)
-  }
-}
-
-async function scrapeAppStoreUrl(url: string, correlationId: string): Promise<AppData> {
-  try {
-    console.log(`[${correlationId}] Scraping App Store URL: ${url}`)
-    
-    const appIdMatch = url.match(/id(\d+)/)
-    if (!appIdMatch) {
-      throw new Error('Could not extract app ID from URL')
-    }
-    
-    const appId = appIdMatch[1]
-    const lookupUrl = `https://itunes.apple.com/lookup?id=${appId}`
-    console.log(`[${correlationId}] iTunes Lookup URL: ${lookupUrl}`)
-    
-    const response = await fetch(lookupUrl)
-    
-    if (!response.ok) {
-      throw new Error(`iTunes Lookup API responded with status: ${response.status}`)
-    }
-
-    const data = await response.json()
-    
-    if (!data.results || data.results.length === 0) {
-      throw new Error('App not found')
-    }
-
-    const app = data.results[0]
-    
-    return {
-      name: app.trackName || 'Unknown App',
-      appId: app.trackId?.toString() || appId,
-      title: app.trackName || 'Unknown App',
-      subtitle: app.trackCensoredName || '',
-      description: app.description || '',
-      url: app.trackViewUrl || url,
-      icon: app.artworkUrl512 || app.artworkUrl100 || '',
-      rating: app.averageUserRating || 0,
-      reviews: app.userRatingCount || 0,
-      developer: app.artistName || 'Unknown Developer',
-      applicationCategory: app.primaryGenreName || 'Unknown',
-      locale: 'en-US'
-    }
-
-  } catch (error) {
-    console.error(`[${correlationId}] App Store URL scraping failed:`, error)
-    throw new Error(`Failed to scrape app data: ${error.message}`)
   }
 }
