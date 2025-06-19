@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
@@ -170,7 +169,7 @@ serve(async (req) => {
         impressions,
         downloads, 
         product_page_views
-      FROM \`${projectId}.analytics.aso_metrics\`
+      FROM \`${projectId}.client_reports.aso_all_apple\`
       WHERE client = @organizationId
       ${body.dateRange ? 'AND date BETWEEN @dateFrom AND @dateTo' : ''}
       ORDER BY date DESC
