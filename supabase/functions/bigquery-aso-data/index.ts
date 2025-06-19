@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
@@ -38,12 +37,55 @@ serve(async (req) => {
   try {
     console.log('🔍 BigQuery ASO Data request received');
 
-    // Get environment variables
+    // Enhanced credential diagnostics
+    const credentialString = Deno.env.get('BIGQUERY_CREDENTIALS');
     const projectId = Deno.env.get('BIGQUERY_PROJECT_ID');
-    const credentialsJson = Deno.env.get('BIGQUERY_CREDENTIALS');
+    
+    console.log('📋 Environment Variable Diagnostics:');
+    console.log('- Credential string exists:', !!credentialString);
+    console.log('- Credential string length:', credentialString?.length || 0);
+    console.log('- Project ID exists:', !!projectId);
+    console.log('- Project ID value:', projectId);
+    
+    if (credentialString) {
+      console.log('- First 50 chars:', credentialString.substring(0, 50));
+      console.log('- Last 50 chars:', credentialString.substring(credentialString.length - 50));
+      console.log('- Contains opening brace:', credentialString.includes('{'));
+      console.log('- Contains closing brace:', credentialString.includes('}'));
+      
+      // Check for common formatting issues
+      const trimmedCreds = credentialString.trim();
+      console.log('- Length after trim:', trimmedCreds.length);
+      console.log('- Starts with {:', trimmedCreds.startsWith('{'));
+      console.log('- Ends with }:', trimmedCreds.endsWith('}'));
+    }
 
-    if (!projectId || !credentialsJson) {
-      throw new Error('Missing BigQuery configuration: BIGQUERY_PROJECT_ID or BIGQUERY_CREDENTIALS');
+    // List available environment variables (for debugging)
+    const availableVars = Object.keys(Deno.env.toObject());
+    console.log('- Available env vars:', availableVars.filter(key => 
+      key.includes('BIGQUERY') || key.includes('SUPABASE')
+    ));
+
+    if (!projectId || !credentialString) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'Missing BigQuery configuration',
+          details: {
+            hasProjectId: !!projectId,
+            hasCredentials: !!credentialString,
+            credentialLength: credentialString?.length || 0,
+            availableVars: availableVars.filter(key => key.includes('BIGQUERY'))
+          }
+        }),
+        {
+          status: 500,
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
     }
 
     // Parse request body
@@ -55,12 +97,61 @@ serve(async (req) => {
       throw new Error('organizationId is required');
     }
 
-    // Parse BigQuery credentials
+    // Parse BigQuery credentials with enhanced error handling
     let credentials: BigQueryCredentials;
     try {
-      credentials = JSON.parse(credentialsJson);
-    } catch (error) {
-      throw new Error('Invalid BIGQUERY_CREDENTIALS JSON format');
+      console.log('🔐 Attempting to parse credentials...');
+      
+      // Try parsing the original string first
+      credentials = JSON.parse(credentialString);
+      console.log('✅ Successfully parsed credentials');
+      console.log('- Credential type:', credentials.type);
+      console.log('- Project ID from creds:', credentials.project_id);
+      console.log('- Client email:', credentials.client_email?.substring(0, 20) + '...');
+      
+    } catch (parseError) {
+      console.error('❌ JSON parse error:', parseError.message);
+      
+      // Try parsing trimmed version
+      try {
+        console.log('🔄 Trying trimmed credentials...');
+        credentials = JSON.parse(credentialString.trim());
+        console.log('✅ Successfully parsed trimmed credentials');
+      } catch (trimmedError) {
+        console.error('❌ Trimmed parse error:', trimmedError.message);
+        
+        // Try removing potential BOM or hidden characters
+        try {
+          console.log('🔄 Trying cleaned credentials...');
+          const cleanedCreds = credentialString.replace(/^\uFEFF/, '').replace(/[^\x20-\x7E\{\}\[\]\,\:\"\\\n\r\t]/g, '');
+          credentials = JSON.parse(cleanedCreds);
+          console.log('✅ Successfully parsed cleaned credentials');
+        } catch (cleanedError) {
+          console.error('❌ Cleaned parse error:', cleanedError.message);
+          
+          return new Response(
+            JSON.stringify({
+              success: false,
+              error: 'Invalid BIGQUERY_CREDENTIALS JSON format',
+              details: {
+                originalError: parseError.message,
+                trimmedError: trimmedError.message,
+                cleanedError: cleanedError.message,
+                credentialLength: credentialString.length,
+                firstChars: credentialString.substring(0, 100),
+                lastChars: credentialString.substring(credentialString.length - 100)
+              }
+            }),
+            {
+              status: 500,
+              headers: {
+                ...corsHeaders,
+                'Content-Type': 'application/json',
+              },
+            }
+          );
+        }
+      }
     }
 
     // Get Google OAuth token
@@ -180,12 +271,14 @@ serve(async (req) => {
 
   } catch (error: any) {
     console.error('💥 BigQuery function error:', error.message);
+    console.error('💥 Error stack:', error.stack);
     
     return new Response(
       JSON.stringify({
         success: false,
         error: error.message,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        stack: error.stack
       }),
       {
         status: 500,
