@@ -159,21 +159,18 @@ serve(async (req) => {
     const tokenResponse = await getGoogleOAuthToken(credentials);
     const accessToken = tokenResponse.access_token;
 
-    // Build BigQuery SQL query
+    // Build BigQuery SQL query with correct schema
     const limit = body.limit || 10;
     const query = `
       SELECT 
         date,
+        client as organization_id,
+        traffic_source,
         impressions,
-        downloads,
-        product_page_views,
-        conversion_rate,
-        revenue,
-        sessions,
-        country,
-        data_source
-      FROM \`${projectId}.aso_dataset.aso_metrics\`
-      WHERE organization_id = @organizationId
+        downloads, 
+        product_page_views
+      FROM \`${projectId}.analytics.aso_metrics\`
+      WHERE client = @organizationId
       ${body.dateRange ? 'AND date BETWEEN @dateFrom AND @dateTo' : ''}
       ORDER BY date DESC
       LIMIT ${limit}
@@ -238,14 +235,17 @@ serve(async (req) => {
       const fields = row.f;
       return {
         date: fields[0]?.v || null,
-        impressions: parseInt(fields[1]?.v || '0'),
-        downloads: parseInt(fields[2]?.v || '0'),
-        product_page_views: parseInt(fields[3]?.v || '0'),
-        conversion_rate: parseFloat(fields[4]?.v || '0'),
-        revenue: parseFloat(fields[5]?.v || '0'),
-        sessions: parseInt(fields[6]?.v || '0'),
-        country: fields[7]?.v || 'US',
-        data_source: fields[8]?.v || 'bigquery'
+        organization_id: fields[1]?.v || body.organizationId,
+        traffic_source: fields[2]?.v || 'organic',
+        impressions: parseInt(fields[3]?.v || '0'),
+        downloads: parseInt(fields[4]?.v || '0'),
+        product_page_views: parseInt(fields[5]?.v || '0'),
+        conversion_rate: fields[4]?.v && fields[5]?.v ? 
+          (parseInt(fields[4].v) / parseInt(fields[5].v) * 100) : 0,
+        revenue: 0, // Not available in current schema
+        sessions: parseInt(fields[5]?.v || '0'), // Use product_page_views as sessions
+        country: 'US', // Default since not in schema
+        data_source: 'bigquery'
       };
     });
 
