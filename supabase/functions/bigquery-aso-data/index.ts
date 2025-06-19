@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
@@ -200,6 +201,22 @@ serve(async (req) => {
       );
     }
 
+    // Prepare BigQuery request
+    const requestBody = {
+      query,
+      parameterMode: 'NAMED',
+      queryParameters: queryParams,
+      useLegacySql: false,
+      maxResults: limit
+    };
+
+    // Add detailed logging before the BigQuery request
+    console.log('🔍 BigQuery request URL:', `https://bigquery.googleapis.com/bigquery/v2/projects/${projectId}/queries`);
+    console.log('🔍 BigQuery request body:', JSON.stringify(requestBody, null, 2));
+    console.log('🔍 Authorization header length:', accessToken?.length);
+    console.log('🔍 Query parameters count:', queryParams.length);
+    console.log('🔍 Query preview:', query.replace(/\s+/g, ' ').trim());
+
     // Execute BigQuery request
     console.log('🔍 Executing BigQuery query...');
     const bigQueryResponse = await fetch(
@@ -210,13 +227,7 @@ serve(async (req) => {
           'Authorization': `Bearer ${accessToken}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          query,
-          parameterMode: 'NAMED',
-          queryParameters: queryParams,
-          useLegacySql: false,
-          maxResults: limit
-        })
+        body: JSON.stringify(requestBody)
       }
     );
 
