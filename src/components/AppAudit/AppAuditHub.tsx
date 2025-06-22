@@ -124,9 +124,9 @@ export const AppAuditHub: React.FC<AppAuditHubProps> = ({ organizationId }) => {
       {/* Header with App Info */}
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-4">
-          {importedMetadata.iconUrl && (
+          {importedMetadata.icon && (
             <img 
-              src={importedMetadata.iconUrl} 
+              src={importedMetadata.icon} 
               alt={importedMetadata.name}
               className="w-16 h-16 rounded-xl"
             />
@@ -134,7 +134,7 @@ export const AppAuditHub: React.FC<AppAuditHubProps> = ({ organizationId }) => {
           <div>
             <h1 className="text-2xl font-bold text-white">{importedMetadata.name}</h1>
             <p className="text-zinc-400">
-              {importedMetadata.category} • {importedMetadata.locale}
+              {importedMetadata.applicationCategory} • {importedMetadata.locale}
               {lastUpdated && (
                 <span className="ml-2 text-zinc-500 text-sm">
                   • Last updated: {lastUpdated.toLocaleTimeString()}

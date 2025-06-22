@@ -85,7 +85,7 @@ class EnhancedKeywordAnalyticsService {
       const { data, error } = await supabase.rpc('get_keyword_trends', {
         p_organization_id: organizationId,
         p_app_id: appId,
-        p_days_back: daysBack.toString() // Convert to string
+        p_days_back: daysBack.toString()
       });
 
       if (error) {
