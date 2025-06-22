@@ -3,7 +3,6 @@ import { useQuery } from '@tanstack/react-query';
 import { enhancedKeywordAnalyticsService, KeywordTrend, RankDistribution, KeywordAnalytics, UsageStats, KeywordPool } from '@/services/enhanced-keyword-analytics.service';
 import { rankingDataValidatorService } from '@/services/ranking-data-validator.service';
 import { toast } from 'sonner';
-import { import } from 'node:module';
 
 interface UseEnhancedKeywordAnalyticsProps {
   organizationId: string;
