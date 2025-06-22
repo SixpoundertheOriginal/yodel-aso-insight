@@ -1,5 +1,4 @@
-
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 
 export interface CopilotData {
   id: string;
@@ -112,6 +111,31 @@ export const AsoAiHubProvider: React.FC<{ children: ReactNode }> = ({ children }
   const [copilots, setCopilots] = useState<CopilotData[]>(initialCopilots);
   const [activeCopilot, setActiveCopilot] = useState<string | null>(null);
   const [currentSession, setCurrentSession] = useState<CopilotSession | null>(null);
+
+  // Listen for workflow transfers
+  useEffect(() => {
+    const handleWorkflowTransfer = (event: CustomEvent) => {
+      const { targetCopilotId, data } = event.detail;
+      console.log(`🔄 [AI-HUB] Workflow transfer to: ${targetCopilotId}`, data);
+      
+      // Switch to target copilot
+      handleSetActiveCopilot(targetCopilotId);
+      
+      // Add context message about the transfer
+      setTimeout(() => {
+        if (currentSession) {
+          const transferMessage = `🔄 Workflow Transfer: I've received data from the previous step. Let me help you continue with the next phase of your ASO optimization.`;
+          addMessage(transferMessage, 'assistant');
+        }
+      }, 500);
+    };
+
+    window.addEventListener('workflow-transfer', handleWorkflowTransfer as EventListener);
+    
+    return () => {
+      window.removeEventListener('workflow-transfer', handleWorkflowTransfer as EventListener);
+    };
+  }, [currentSession]);
 
   const handleSetActiveCopilot = (id: string | null) => {
     setActiveCopilot(id);

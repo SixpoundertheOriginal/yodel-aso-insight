@@ -8,3 +8,6 @@ export * from './useBigQueryData';
 export * from './useAsoDataWithFallback';
 export * from './useAsoInsights';
 export * from './useFeaturingValidation';
+
+// Re-export workflow context for convenience
+export { useWorkflow, WorkflowProvider } from '@/context/WorkflowContext';
