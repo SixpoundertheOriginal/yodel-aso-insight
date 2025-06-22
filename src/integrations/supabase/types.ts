@@ -224,6 +224,51 @@ export type Database = {
           },
         ]
       }
+      competitor_keywords: {
+        Row: {
+          analyzed_at: string
+          competitor_app_id: string
+          competitor_rank: number | null
+          created_at: string
+          gap_opportunity: string | null
+          id: string
+          keyword: string
+          keyword_difficulty: number | null
+          organization_id: string
+          search_volume: number | null
+          target_app_id: string
+          target_rank: number | null
+        }
+        Insert: {
+          analyzed_at?: string
+          competitor_app_id: string
+          competitor_rank?: number | null
+          created_at?: string
+          gap_opportunity?: string | null
+          id?: string
+          keyword: string
+          keyword_difficulty?: number | null
+          organization_id: string
+          search_volume?: number | null
+          target_app_id: string
+          target_rank?: number | null
+        }
+        Update: {
+          analyzed_at?: string
+          competitor_app_id?: string
+          competitor_rank?: number | null
+          created_at?: string
+          gap_opportunity?: string | null
+          id?: string
+          keyword?: string
+          keyword_difficulty?: number | null
+          organization_id?: string
+          search_volume?: number | null
+          target_app_id?: string
+          target_rank?: number | null
+        }
+        Relationships: []
+      }
       data_cache: {
         Row: {
           cache_key: string
@@ -306,6 +351,90 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      keyword_clusters: {
+        Row: {
+          avg_difficulty: number | null
+          cluster_name: string
+          cluster_type: string | null
+          created_at: string
+          id: string
+          opportunity_score: number | null
+          organization_id: string
+          primary_keyword: string
+          related_keywords: string[]
+          total_search_volume: number | null
+          updated_at: string
+        }
+        Insert: {
+          avg_difficulty?: number | null
+          cluster_name: string
+          cluster_type?: string | null
+          created_at?: string
+          id?: string
+          opportunity_score?: number | null
+          organization_id: string
+          primary_keyword: string
+          related_keywords: string[]
+          total_search_volume?: number | null
+          updated_at?: string
+        }
+        Update: {
+          avg_difficulty?: number | null
+          cluster_name?: string
+          cluster_type?: string | null
+          created_at?: string
+          id?: string
+          opportunity_score?: number | null
+          organization_id?: string
+          primary_keyword?: string
+          related_keywords?: string[]
+          total_search_volume?: number | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      keyword_difficulty_scores: {
+        Row: {
+          calculated_at: string
+          calculation_method: string | null
+          competition_level: string | null
+          country: string
+          difficulty_score: number
+          expires_at: string
+          id: string
+          keyword: string
+          organization_id: string
+          search_volume: number | null
+          top_apps_strength: number | null
+        }
+        Insert: {
+          calculated_at?: string
+          calculation_method?: string | null
+          competition_level?: string | null
+          country?: string
+          difficulty_score: number
+          expires_at?: string
+          id?: string
+          keyword: string
+          organization_id: string
+          search_volume?: number | null
+          top_apps_strength?: number | null
+        }
+        Update: {
+          calculated_at?: string
+          calculation_method?: string | null
+          competition_level?: string | null
+          country?: string
+          difficulty_score?: number
+          expires_at?: string
+          id?: string
+          keyword?: string
+          organization_id?: string
+          search_volume?: number | null
+          top_apps_strength?: number | null
+        }
+        Relationships: []
       }
       keyword_ranking_history: {
         Row: {
@@ -457,6 +586,45 @@ export type Database = {
           organization_id?: string
           recorded_at?: string
           tags?: Json | null
+        }
+        Relationships: []
+      }
+      keyword_volume_history: {
+        Row: {
+          country: string
+          created_at: string
+          data_source: string | null
+          id: string
+          keyword: string
+          organization_id: string
+          popularity_score: number | null
+          recorded_date: string
+          search_volume: number | null
+          search_volume_trend: string | null
+        }
+        Insert: {
+          country?: string
+          created_at?: string
+          data_source?: string | null
+          id?: string
+          keyword: string
+          organization_id: string
+          popularity_score?: number | null
+          recorded_date?: string
+          search_volume?: number | null
+          search_volume_trend?: string | null
+        }
+        Update: {
+          country?: string
+          created_at?: string
+          data_source?: string | null
+          id?: string
+          keyword?: string
+          organization_id?: string
+          popularity_score?: number | null
+          recorded_date?: string
+          search_volume?: number | null
+          search_volume_trend?: string | null
         }
         Relationships: []
       }
@@ -847,6 +1015,10 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: undefined
       }
+      cleanup_expired_keyword_data: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
       cleanup_old_keyword_metrics: {
         Args: Record<PropertyKey, never>
         Returns: undefined
@@ -862,6 +1034,34 @@ export type Database = {
       get_current_user_role: {
         Args: Record<PropertyKey, never>
         Returns: string
+      }
+      get_keyword_gap_analysis: {
+        Args: {
+          p_organization_id: string
+          p_target_app_id: string
+          p_limit?: number
+        }
+        Returns: {
+          keyword: string
+          target_rank: number
+          best_competitor_rank: number
+          gap_opportunity: string
+          search_volume: number
+          difficulty_score: number
+        }[]
+      }
+      get_keyword_volume_trends: {
+        Args: {
+          p_organization_id: string
+          p_keyword: string
+          p_days_back?: number
+        }
+        Returns: {
+          recorded_date: string
+          search_volume: number
+          popularity_score: number
+          trend_direction: string
+        }[]
       }
       get_user_organization_with_fallback: {
         Args: Record<PropertyKey, never>

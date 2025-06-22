@@ -35,3 +35,15 @@ export { keywordJobProcessorService } from './keyword-job-processor.service';
 // Re-export new types
 export type { KeywordRankingHistory, ServiceMetric } from './keyword-persistence.service';
 export type { KeywordJob, BatchAnalysisInput, CompetitorResearchInput } from './keyword-job-processor.service';
+
+// Add new advanced keyword intelligence services
+export { competitorKeywordAnalysisService } from './competitor-keyword-analysis.service';
+
+// Re-export new types
+export type { 
+  KeywordVolumeHistory, 
+  CompetitorKeyword, 
+  KeywordDifficultyScore, 
+  KeywordCluster, 
+  KeywordGapAnalysis 
+} from './competitor-keyword-analysis.service';
