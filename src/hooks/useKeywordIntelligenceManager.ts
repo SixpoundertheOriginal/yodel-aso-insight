@@ -3,8 +3,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAdvancedKeywordIntelligence } from './useAdvancedKeywordIntelligence';
 import { useEnhancedKeywordAnalytics } from './useEnhancedKeywordAnalytics';
-import { enhancedKeywordAnalyticsService } from '@/services/enhanced-keyword-analytics.service';
-import { keywordDataPipelineService } from '@/services/keyword-data-pipeline.service';
+import { enhancedKeywordDataPipelineService } from '@/services/enhanced-keyword-data-pipeline.service';
 import { toast } from 'sonner';
 
 interface KeywordIntelligenceState {
@@ -49,20 +48,10 @@ export const useKeywordIntelligenceManager = ({
     enabled: !!targetAppId && !state.isTransitioning
   });
 
-  // Clear stuck transitions
-  const clearStuckTransition = useCallback(() => {
-    console.log('🔧 [KI-MANAGER] Clearing stuck transition');
-    setState(prev => ({
-      ...prev,
-      isTransitioning: false,
-      errorCount: Math.min(prev.errorCount + 1, 5)
-    }));
-  }, []);
-
   // Handle app transitions with timeout protection
   useEffect(() => {
     if (targetAppId && !state.isInitialized) {
-      console.log('🚀 [KI-MANAGER] Initializing for app:', targetAppId);
+      console.log('🚀 [KI-MANAGER] Initializing enhanced intelligence for app:', targetAppId);
       
       setState(prev => ({ ...prev, isTransitioning: true }));
       
@@ -74,10 +63,14 @@ export const useKeywordIntelligenceManager = ({
       // Set transition timeout to prevent stuck states
       transitionTimeoutRef.current = setTimeout(() => {
         console.warn('⚠️ [KI-MANAGER] Transition timeout, forcing completion');
-        clearStuckTransition();
-      }, 5000);
+        setState(prev => ({
+          ...prev,
+          isTransitioning: false,
+          errorCount: Math.min(prev.errorCount + 1, 5)
+        }));
+      }, 8000); // Longer timeout for enhanced processing
       
-      // Mark as initialized after a brief delay
+      // Mark as initialized after processing
       setTimeout(() => {
         setState(prev => ({
           ...prev,
@@ -89,9 +82,9 @@ export const useKeywordIntelligenceManager = ({
         if (transitionTimeoutRef.current) {
           clearTimeout(transitionTimeoutRef.current);
         }
-      }, 500);
+      }, 1000); // Slightly longer for enhanced processing
     }
-  }, [targetAppId, state.isInitialized, clearStuckTransition]);
+  }, [targetAppId, state.isInitialized]);
 
   // Monitor for errors and enable fallback mode
   useEffect(() => {
@@ -109,23 +102,23 @@ export const useKeywordIntelligenceManager = ({
     }
   }, [advancedKI.hasErrors, enhancedAnalytics.rankDistribution, enhancedAnalytics.keywordTrends.length, enhancedAnalytics.isLoading]);
 
-  // Unified refresh function
+  // Enhanced refresh function
   const refreshAllData = useCallback(async () => {
     if (!targetAppId || state.isTransitioning) return;
     
-    console.log('🔄 [KI-MANAGER] Refreshing all keyword data');
+    console.log('🔄 [KI-MANAGER] Refreshing all enhanced keyword data');
     setState(prev => ({ ...prev, isTransitioning: true }));
     
     try {
+      // Clear enhanced pipeline cache
+      enhancedKeywordDataPipelineService.clearCache(targetAppId);
+      
       // Start background collection job if not in fallback mode
       if (!state.fallbackMode) {
-        await enhancedAnalytics.createCollectionJob('incremental');
+        await enhancedAnalytics.createCollectionJob('enhanced_discovery');
       }
       
-      // Clear pipeline cache
-      keywordDataPipelineService.clearCache(organizationId, targetAppId);
-      
-      // Refresh both systems
+      // Refresh both systems with enhanced data
       await Promise.all([
         advancedKI.refreshKeywordData(),
         enhancedAnalytics.refetchRankDist(),
@@ -141,23 +134,23 @@ export const useKeywordIntelligenceManager = ({
       }));
       
       errorCountRef.current = 0;
-      toast.success('Keyword data refreshed successfully');
+      toast.success('Enhanced keyword data refreshed successfully');
       
     } catch (error) {
-      console.error('❌ [KI-MANAGER] Refresh failed:', error);
+      console.error('❌ [KI-MANAGER] Enhanced refresh failed:', error);
       setState(prev => ({ ...prev, isTransitioning: false }));
-      toast.error('Failed to refresh keyword data');
+      toast.error('Failed to refresh enhanced keyword data');
     }
-  }, [targetAppId, state.isTransitioning, state.fallbackMode, organizationId, advancedKI, enhancedAnalytics]);
+  }, [targetAppId, state.isTransitioning, state.fallbackMode, advancedKI, enhancedAnalytics]);
 
-  // Generate unified keyword data
+  // Generate unified enhanced keyword data
   const unifiedKeywordData = useCallback(() => {
     if (state.fallbackMode || !advancedKI.keywordData.length) {
-      // Generate mock data when in fallback mode
-      return keywordDataPipelineService.generateFallbackKeywords(targetAppId || 'unknown');
+      console.log('🔄 [KI-MANAGER] Using fallback mode');
+      return enhancedKeywordDataPipelineService.generateGenericFallback();
     }
     return advancedKI.keywordData;
-  }, [state.fallbackMode, advancedKI.keywordData, targetAppId]);
+  }, [state.fallbackMode, advancedKI.keywordData]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -169,13 +162,13 @@ export const useKeywordIntelligenceManager = ({
   }, []);
 
   return {
-    // Unified state
+    // Enhanced unified state
     isLoading: state.isTransitioning || advancedKI.isLoading || enhancedAnalytics.isLoading,
     isInitialized: state.isInitialized,
     fallbackMode: state.fallbackMode,
     lastSuccessfulLoad: state.lastSuccessfulLoad,
     
-    // Unified data
+    // Enhanced unified data
     keywordData: unifiedKeywordData(),
     clusters: advancedKI.clusters,
     stats: advancedKI.stats,
@@ -186,9 +179,9 @@ export const useKeywordIntelligenceManager = ({
     keywordTrends: enhancedAnalytics.keywordTrends,
     analytics: enhancedAnalytics.analytics,
     
-    // Actions
+    // Enhanced actions
     refreshAllData,
-    clearStuckTransition,
+    clearStuckTransition: () => setState(prev => ({ ...prev, isTransitioning: false })),
     
     // Individual hook access for advanced use
     advancedKI,

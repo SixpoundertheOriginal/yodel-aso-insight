@@ -1,31 +1,27 @@
 
-import { useState, useEffect, useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
-import { useAppSelection } from './useAppSelection';
+import { useState, useEffect, useCallback } from 'react';
+import { enhancedKeywordDataPipelineService } from '@/services/enhanced-keyword-data-pipeline.service';
 import { useEnhancedQueries } from './useEnhancedQueries';
-import { keywordDataPipelineService } from '@/services/keyword-data-pipeline.service';
-import { queryKeys } from '@/services/query-key.service';
-import { KeywordVolumeHistory } from '@/services/competitor-keyword-analysis.service';
-import { competitorKeywordAnalysisService } from '@/services/competitor-keyword-analysis.service';
 
-export interface AdvancedKeywordData {
+interface KeywordData {
   keyword: string;
-  rank: number | null;
-  searchVolume: number | null;
-  difficulty: number | null;
-  trend: 'up' | 'down' | 'stable' | null;
-  opportunity: 'high' | 'medium' | 'low' | null;
-  competitorRank: number | null;
-  volumeHistory: KeywordVolumeHistory[];
+  rank: number;
+  searchVolume: number;
+  difficulty: number;
+  trend: 'up' | 'down' | 'stable';
+  opportunity: 'high' | 'medium' | 'low';
+  competitorRank: number;
+  volumeHistory: any[];
+  source: string;
+  contextualReason?: string;
+  relevanceScore?: number;
 }
 
-export interface KeywordIntelligenceStats {
+interface KeywordStats {
   totalKeywords: number;
   highOpportunityKeywords: number;
   avgDifficulty: number;
   totalSearchVolume: number;
-  improvableKeywords: number;
 }
 
 interface UseAdvancedKeywordIntelligenceProps {
@@ -39,149 +35,107 @@ export const useAdvancedKeywordIntelligence = ({
   targetAppId,
   enabled = true
 }: UseAdvancedKeywordIntelligenceProps) => {
-  const [selectedKeyword, setSelectedKeyword] = useState<string | null>(null);
-  const [filters, setFilters] = useState({
-    minVolume: 0,
-    maxDifficulty: 10,
-    trend: 'all' as 'all' | 'up' | 'down' | 'stable',
-    opportunity: 'all' as 'all' | 'high' | 'medium' | 'low'
-  });
+  const [keywordData, setKeywordData] = useState<KeywordData[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [hasErrors, setHasErrors] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
-  // Use centralized app selection
-  const appSelection = useAppSelection({
-    organizationId,
-    onAppChange: (appId) => {
-      console.log('🎯 [KEYWORD-INTELLIGENCE] App changed to:', appId);
-      setSelectedKeyword(null); // Clear selected keyword on app change
-    }
-  });
-
-  // Sync target app with selection state
-  useEffect(() => {
-    if (targetAppId && targetAppId !== appSelection.selectedAppId) {
-      appSelection.selectApp(targetAppId);
-    }
-  }, [targetAppId, appSelection]);
-
-  // Get current user's organization ID if not provided
-  const { data: currentOrgId } = useQuery({
-    queryKey: ['current-organization'],
-    queryFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return null;
-
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('organization_id')
-        .eq('id', user.id)
-        .single();
-
-      return profile?.organization_id || null;
-    },
-    enabled: !organizationId,
-  });
-
-  const effectiveOrgId = organizationId || currentOrgId;
-  const effectiveAppId = appSelection.selectedAppId || targetAppId;
-
-  // Enhanced queries with proper error handling
+  // Get app data from enhanced queries
   const {
     selectedApp,
-    gapAnalysis,
     clusters,
-    isLoading: isLoadingQueries,
-    hasErrors,
-    invalidateAppData
+    isLoadingApp,
+    appError
   } = useEnhancedQueries({
-    organizationId: effectiveOrgId || '',
-    appId: effectiveAppId,
-    enabled: enabled && !!effectiveOrgId && !!effectiveAppId && !appSelection.isTransitioning
+    organizationId,
+    appId: targetAppId,
+    enabled
   });
 
-  // Volume trends for selected keyword
-  const { data: volumeTrends = [], isLoading: isLoadingTrends } = useQuery({
-    queryKey: queryKeys.keywordIntelligence.volumeTrends(effectiveOrgId || '', selectedKeyword || ''),
-    queryFn: () => selectedKeyword && effectiveOrgId
-      ? competitorKeywordAnalysisService.getKeywordVolumeTrends(effectiveOrgId, selectedKeyword)
-      : Promise.resolve([]),
-    enabled: enabled && !!selectedKeyword && !!effectiveOrgId,
-    staleTime: 1000 * 60 * 10,
-  });
-
-  // Generate keyword data using pipeline service
-  const keywordData = useMemo(() => {
-    if (!selectedApp || appSelection.isTransitioning || !effectiveOrgId) {
-      console.log('🔄 [KEYWORD-INTELLIGENCE] Waiting for app data or transitioning');
-      return [];
+  // Generate enhanced keyword data when app changes
+  useEffect(() => {
+    if (!enabled || !targetAppId || !selectedApp || isLoadingApp) {
+      console.log('🔄 [ADVANCED-KI] Waiting for app data or disabled');
+      return;
     }
 
-    const appMetadata = {
-      id: selectedApp.id,
-      app_name: selectedApp.app_name,
-      category: selectedApp.category,
-      organizationId: effectiveOrgId
-    };
+    generateKeywordData();
+  }, [targetAppId, selectedApp, organizationId, enabled, isLoadingApp]);
 
-    const pipelineData = keywordDataPipelineService.getKeywordData(
-      appMetadata,
-      gapAnalysis,
-      clusters,
-      { maxKeywords: 50 }
-    );
+  const generateKeywordData = useCallback(async () => {
+    if (!targetAppId || !selectedApp) return;
 
-    console.log('🎯 [KEYWORD-INTELLIGENCE] Pipeline generated', pipelineData.keywords.length, 'keywords');
-    return pipelineData.keywords;
-  }, [selectedApp, gapAnalysis, clusters, appSelection.isTransitioning, effectiveOrgId]);
+    try {
+      setIsLoading(true);
+      setHasErrors(false);
 
-  // Apply filters
-  const filteredKeywords = useMemo(() => {
-    return keywordData.filter(kw => {
-      if (kw.searchVolume && kw.searchVolume < filters.minVolume) return false;
-      if (kw.difficulty && kw.difficulty > filters.maxDifficulty) return false;
-      if (filters.trend !== 'all' && kw.trend !== filters.trend) return false;
-      if (filters.opportunity !== 'all' && kw.opportunity !== filters.opportunity) return false;
-      return true;
-    });
-  }, [keywordData, filters]);
+      console.log('🎯 [ADVANCED-KI] Generating enhanced keywords for:', selectedApp.app_name);
 
-  // Calculate stats
-  const stats: KeywordIntelligenceStats = useMemo(() => {
-    return {
-      totalKeywords: keywordData.length,
-      highOpportunityKeywords: keywordData.filter(kw => kw.opportunity === 'high').length,
-      avgDifficulty: keywordData.length > 0 ? 
-        keywordData.reduce((sum, kw) => sum + (kw.difficulty || 0), 0) / keywordData.length : 0,
-      totalSearchVolume: keywordData.reduce((sum, kw) => sum + (kw.searchVolume || 0), 0),
-      improvableKeywords: keywordData.filter(kw => 
-        kw.rank && kw.rank > 20 && kw.opportunity !== 'low'
-      ).length
-    };
-  }, [keywordData]);
+      const enhancedKeywords = await enhancedKeywordDataPipelineService
+        .getEnhancedKeywordData(organizationId, targetAppId, selectedApp);
 
-  const refreshKeywordData = () => {
-    if (effectiveAppId && effectiveOrgId) {
-      keywordDataPipelineService.clearCache(effectiveOrgId, effectiveAppId);
-      invalidateAppData(effectiveAppId);
+      setKeywordData(enhancedKeywords);
+      setLastUpdated(new Date());
+      setHasErrors(false);
+
+      console.log('✅ [ADVANCED-KI] Enhanced keywords loaded:', enhancedKeywords.length);
+
+    } catch (error) {
+      console.error('❌ [ADVANCED-KI] Error generating keywords:', error);
+      setHasErrors(true);
+      
+      // Set fallback data on error
+      setKeywordData([
+        {
+          keyword: 'mobile application',
+          rank: 20,
+          searchVolume: 1000,
+          difficulty: 5.0,
+          trend: 'stable',
+          opportunity: 'medium',
+          competitorRank: 15,
+          volumeHistory: [],
+          source: 'error_fallback',
+          contextualReason: 'Fallback due to generation error'
+        }
+      ]);
+    } finally {
+      setIsLoading(false);
     }
+  }, [targetAppId, selectedApp, organizationId]);
+
+  const refreshKeywordData = useCallback(async () => {
+    if (!targetAppId) return;
+    
+    // Clear cache and regenerate
+    enhancedKeywordDataPipelineService.clearCache(targetAppId);
+    await generateKeywordData();
+  }, [targetAppId, generateKeywordData]);
+
+  // Calculate stats from current keyword data
+  const stats: KeywordStats = {
+    totalKeywords: keywordData.length,
+    highOpportunityKeywords: keywordData.filter(k => k.opportunity === 'high').length,
+    avgDifficulty: keywordData.length > 0 
+      ? keywordData.reduce((sum, k) => sum + k.difficulty, 0) / keywordData.length 
+      : 0,
+    totalSearchVolume: keywordData.reduce((sum, k) => sum + k.searchVolume, 0)
   };
 
   return {
-    keywordData: filteredKeywords,
-    clusters,
-    volumeTrends,
-    stats,
-    selectedKeyword,
-    setSelectedKeyword,
-    filters,
-    setFilters,
-    isLoading: isLoadingQueries || appSelection.isTransitioning,
-    isLoadingTrends,
-    gapAnalysis,
-    effectiveOrgId,
-    hasErrors,
+    // Data
+    keywordData,
+    clusters: clusters || [],
     selectedApp,
+    stats,
+    lastUpdated,
+    
+    // States
+    isLoading: isLoading || isLoadingApp,
+    hasErrors: hasErrors || !!appError,
+    
+    // Actions
     refreshKeywordData,
-    isTransitioning: appSelection.isTransitioning,
-    transitionError: appSelection.transitionError
+    generateKeywordData
   };
 };
