@@ -17,8 +17,8 @@ import {
   Download, 
   Eye, 
   Mail, 
-  FileHtml, 
-  FilePdf 
+  File, 
+  FilePdf2 
 } from 'lucide-react';
 import { FeaturingContent } from '@/types/featuring';
 
@@ -175,7 +175,7 @@ Featuring Strategy Toolkit
             variant="outline"
             className="flex items-center space-x-2"
           >
-            <FileHtml className="w-4 h-4" />
+            <File className="w-4 h-4" />
             <span>HTML Snapshot</span>
           </Button>
 
@@ -185,7 +185,7 @@ Featuring Strategy Toolkit
             variant="outline"
             className="flex items-center space-x-2"
           >
-            <FilePdf className="w-4 h-4" />
+            <FileText className="w-4 h-4" />
             <span>PDF Summary</span>
           </Button>
 
