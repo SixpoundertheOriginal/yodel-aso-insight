@@ -1,3 +1,4 @@
+
 import { supabase } from '@/integrations/supabase/client';
 import { keywordPersistenceService } from './keyword-persistence.service';
 
@@ -187,8 +188,8 @@ class EnhancedKeywordAnalyticsService {
         organization_id: organizationId,
         app_id: appId, // Keep as string
         keyword: item.keyword,
-        rank_position: item.rank,
-        search_volume: item.volume,
+        rank_position: item.rank, // This should be number for the database
+        search_volume: item.volume, // This should be number for the database
         difficulty_score: Math.random() * 10 + 1,
         volume_trend: (['up', 'down', 'stable'] as const)[Math.floor(Math.random() * 3)],
         snapshot_date: new Date().toISOString().split('T')[0]
