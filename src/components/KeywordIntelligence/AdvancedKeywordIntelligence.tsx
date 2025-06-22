@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -7,7 +6,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
 import { Label } from '@/components/ui/label';
-import { TrendingUp, TrendingDown, Minus, Search, Filter, Target, BarChart3, Loader2, RefreshCw } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { TrendingUp, TrendingDown, Minus, Search, Filter, Target, BarChart3, Loader2, RefreshCw, AlertCircle } from 'lucide-react';
 import { useAdvancedKeywordIntelligence } from '@/hooks/useAdvancedKeywordIntelligence';
 import { KeywordVolumeChart } from './KeywordVolumeChart';
 import { KeywordClustersPanel } from './KeywordClustersPanel';
@@ -19,7 +19,7 @@ interface AdvancedKeywordIntelligenceProps {
 
 export const AdvancedKeywordIntelligence: React.FC<AdvancedKeywordIntelligenceProps> = ({
   organizationId,
-  targetAppId = 'demo-app-123'
+  targetAppId
 }) => {
   const {
     keywordData,
@@ -34,7 +34,9 @@ export const AdvancedKeywordIntelligence: React.FC<AdvancedKeywordIntelligencePr
     isLoadingTrends,
     selectedApp,
     refreshKeywordData,
-    isTransitioning
+    isTransitioning,
+    transitionError,
+    hasErrors
   } = useAdvancedKeywordIntelligence({
     organizationId,
     targetAppId
@@ -69,7 +71,10 @@ export const AdvancedKeywordIntelligence: React.FC<AdvancedKeywordIntelligencePr
           <div className="flex items-center space-x-2">
             <Loader2 className="h-6 w-6 animate-spin text-yodel-orange" />
             <div className="text-zinc-400">
-              {isTransitioning ? `Loading keywords for ${selectedApp?.app_name || 'app'}...` : 'Loading keyword intelligence...'}
+              {isTransitioning 
+                ? `Loading keywords for ${selectedApp?.app_name || 'app'}...` 
+                : 'Loading keyword intelligence...'
+              }
             </div>
           </div>
         </div>
@@ -79,6 +84,25 @@ export const AdvancedKeywordIntelligence: React.FC<AdvancedKeywordIntelligencePr
 
   return (
     <div className="space-y-6">
+      {/* Error Alert */}
+      {transitionError && (
+        <Alert className="border-red-500/20 bg-red-500/10">
+          <AlertCircle className="h-4 w-4 text-red-400" />
+          <AlertDescription className="text-red-400">
+            App transition error: {transitionError}
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {hasErrors && (
+        <Alert className="border-yellow-500/20 bg-yellow-500/10">
+          <AlertCircle className="h-4 w-4 text-yellow-400" />
+          <AlertDescription className="text-yellow-400">
+            Some data couldn't be loaded. Showing available information with fallback data.
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* Header with refresh button */}
       <div className="flex items-center justify-between">
         <div>
@@ -94,7 +118,7 @@ export const AdvancedKeywordIntelligence: React.FC<AdvancedKeywordIntelligencePr
           variant="outline"
           size="sm"
           className="border-zinc-700 hover:bg-zinc-800"
-          disabled={isLoading}
+          disabled={isLoading || isTransitioning}
         >
           <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
           Refresh Data

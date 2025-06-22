@@ -19,3 +19,7 @@ export type { AdvancedKeywordData, KeywordIntelligenceStats } from './useAdvance
 // Add new user management hooks
 export { usePermissions } from './usePermissions';
 export { useUserProfile } from './useUserProfile';
+
+// Add new architecture hooks
+export { useAppSelection } from './useAppSelection';
+export { useEnhancedQueries } from './useEnhancedQueries';
