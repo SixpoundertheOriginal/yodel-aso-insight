@@ -1,8 +1,9 @@
-import { MetadataField, MetadataScore, CompetitorKeywordAnalysis, KeywordData, CompetitorData } from '@/types/aso';
+import { MetadataField, MetadataScore, CompetitorKeywordAnalysis, KeywordData, CompetitorData, ValidationResult } from '@/types/aso';
 
 interface ValidationResult {
   isValid: boolean;
-  errors: string[];
+  issues: string[];
+  sanitized: any;
 }
 
 class MetadataEngine {
@@ -10,27 +11,27 @@ class MetadataEngine {
    * Validate metadata against App Store requirements
    */
   validateMetadata(metadata: MetadataField): ValidationResult {
-    const errors: string[] = [];
+    const issues: string[] = [];
 
     // Title validation
     if (!metadata.title) {
-      errors.push('Title is required');
+      issues.push('Title is required');
     } else if (metadata.title.length > 30) {
-      errors.push(`Title exceeds 30 characters (${metadata.title.length})`);
+      issues.push(`Title exceeds 30 characters (${metadata.title.length})`);
     }
 
     // Subtitle validation
     if (!metadata.subtitle) {
-      errors.push('Subtitle is required');
+      issues.push('Subtitle is required');
     } else if (metadata.subtitle.length > 30) {
-      errors.push(`Subtitle exceeds 30 characters (${metadata.subtitle.length})`);
+      issues.push(`Subtitle exceeds 30 characters (${metadata.subtitle.length})`);
     }
 
     // Keywords validation
     if (!metadata.keywords) {
-      errors.push('Keywords are required');
+      issues.push('Keywords are required');
     } else if (metadata.keywords.length > 100) {
-      errors.push(`Keywords exceed 100 characters (${metadata.keywords.length})`);
+      issues.push(`Keywords exceed 100 characters (${metadata.keywords.length})`);
     }
 
     // Check for keyword duplication between title and keywords
@@ -43,13 +44,14 @@ class MetadataEngine {
       );
       
       if (duplicates.length > 0) {
-        errors.push(`Avoid repeating title words in keywords: ${duplicates.join(', ')}`);
+        issues.push(`Avoid repeating title words in keywords: ${duplicates.join(', ')}`);
       }
     }
 
     return {
-      isValid: errors.length === 0,
-      errors
+      isValid: issues.length === 0,
+      issues,
+      sanitized: metadata as any // Cast for now since we're validating metadata, not full scraped data
     };
   }
 
