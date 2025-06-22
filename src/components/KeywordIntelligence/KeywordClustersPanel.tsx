@@ -8,13 +8,36 @@ import { KeywordCluster } from '@/services/competitor-keyword-analysis.service';
 
 interface KeywordClustersPanelProps {
   clusters: KeywordCluster[];
-  onClusterSelect: (cluster: KeywordCluster) => void;
+  onClusterSelect?: (cluster: KeywordCluster) => void;
+  isLoading?: boolean;
+  detailed?: boolean;
 }
 
 export const KeywordClustersPanel: React.FC<KeywordClustersPanelProps> = ({
   clusters,
-  onClusterSelect
+  onClusterSelect,
+  isLoading = false,
+  detailed = false
 }) => {
+  if (isLoading) {
+    return (
+      <Card className="bg-zinc-900/50 border-zinc-800">
+        <CardHeader>
+          <CardTitle className="text-white flex items-center space-x-2">
+            <Network className="w-5 h-5 text-blue-400" />
+            <span>Keyword Clusters</span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="animate-pulse space-y-4">
+            <div className="h-4 bg-zinc-700 rounded w-3/4"></div>
+            <div className="h-32 bg-zinc-700 rounded"></div>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
   const getClusterTypeIcon = (type: string | null) => {
     switch (type) {
       case 'semantic': return <Network className="w-4 h-4" />;
@@ -169,13 +192,15 @@ export const KeywordClustersPanel: React.FC<KeywordClustersPanelProps> = ({
                       </div>
                     </div>
 
-                    <Button
-                      onClick={() => onClusterSelect(cluster)}
-                      size="sm"
-                      className="w-full bg-blue-600 hover:bg-blue-700"
-                    >
-                      Analyze Cluster
-                    </Button>
+                    {onClusterSelect && (
+                      <Button
+                        onClick={() => onClusterSelect(cluster)}
+                        size="sm"
+                        className="w-full bg-blue-600 hover:bg-blue-700"
+                      >
+                        Analyze Cluster
+                      </Button>
+                    )}
                   </div>
                 </CardContent>
               </Card>

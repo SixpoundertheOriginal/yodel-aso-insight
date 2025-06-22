@@ -69,6 +69,27 @@ export interface UsageStats {
   overage_keywords: number;
 }
 
+// Type guard functions for runtime validation
+const isValidTrendDirection = (value: string): value is 'up' | 'down' | 'stable' | 'new' => {
+  return ['up', 'down', 'stable', 'new'].includes(value);
+};
+
+const isValidPoolType = (value: string): value is 'category' | 'competitor' | 'trending' | 'custom' => {
+  return ['category', 'competitor', 'trending', 'custom'].includes(value);
+};
+
+const isValidJobType = (value: string): value is 'full_refresh' | 'incremental' | 'competitor_analysis' => {
+  return ['full_refresh', 'incremental', 'competitor_analysis'].includes(value);
+};
+
+const isValidJobStatus = (value: string): value is 'pending' | 'running' | 'completed' | 'failed' => {
+  return ['pending', 'running', 'completed', 'failed'].includes(value);
+};
+
+const isValidVolumeTrend = (value: string): value is 'up' | 'down' | 'stable' => {
+  return ['up', 'down', 'stable'].includes(value);
+};
+
 class EnhancedKeywordAnalyticsService {
   /**
    * Get rank distribution analysis for an app
@@ -127,8 +148,19 @@ class EnhancedKeywordAnalyticsService {
         throw error;
       }
 
-      console.log('✅ [ANALYTICS] Keyword trends loaded:', data?.length || 0);
-      return data || [];
+      // Transform and validate the data
+      const trends: KeywordTrend[] = (data || []).map((row: any) => ({
+        keyword: row.keyword,
+        current_rank: row.current_rank,
+        previous_rank: row.previous_rank,
+        rank_change: row.rank_change,
+        current_volume: row.current_volume,
+        volume_change_pct: row.volume_change_pct,
+        trend_direction: isValidTrendDirection(row.trend_direction) ? row.trend_direction : 'stable'
+      }));
+
+      console.log('✅ [ANALYTICS] Keyword trends loaded:', trends.length);
+      return trends;
     } catch (error) {
       console.error('❌ [ANALYTICS] Exception in getKeywordTrends:', error);
       return [];
@@ -214,8 +246,20 @@ class EnhancedKeywordAnalyticsService {
         throw error;
       }
 
-      console.log('✅ [ANALYTICS] Keyword pools loaded:', data?.length || 0);
-      return data || [];
+      // Transform and validate the data
+      const pools: KeywordPool[] = (data || []).map((row: any) => ({
+        id: row.id,
+        pool_name: row.pool_name,
+        pool_type: isValidPoolType(row.pool_type) ? row.pool_type : 'custom',
+        keywords: row.keywords || [],
+        metadata: (row.metadata as Record<string, any>) || {},
+        total_keywords: row.total_keywords || 0,
+        created_at: row.created_at,
+        updated_at: row.updated_at
+      }));
+
+      console.log('✅ [ANALYTICS] Keyword pools loaded:', pools.length);
+      return pools;
     } catch (error) {
       console.error('❌ [ANALYTICS] Exception in getKeywordPools:', error);
       return [];
@@ -298,8 +342,21 @@ class EnhancedKeywordAnalyticsService {
         throw error;
       }
 
-      console.log('✅ [ANALYTICS] Collection job created:', data.id);
-      return data as CollectionJob;
+      // Transform and validate the response
+      const job: CollectionJob = {
+        id: data.id,
+        app_id: data.app_id,
+        job_type: isValidJobType(data.job_type) ? data.job_type : 'full_refresh',
+        status: isValidJobStatus(data.status) ? data.status : 'pending',
+        progress: (data.progress as { current: number; total: number }) || { current: 0, total: 0 },
+        keywords_collected: data.keywords_collected || 0,
+        started_at: data.started_at,
+        completed_at: data.completed_at,
+        error_message: data.error_message
+      };
+
+      console.log('✅ [ANALYTICS] Collection job created:', job.id);
+      return job;
     } catch (error) {
       console.error('❌ [ANALYTICS] Exception in createCollectionJob:', error);
       return null;
@@ -333,8 +390,21 @@ class EnhancedKeywordAnalyticsService {
         throw error;
       }
 
-      console.log('✅ [ANALYTICS] Collection jobs loaded:', data?.length || 0);
-      return data || [];
+      // Transform and validate the data
+      const jobs: CollectionJob[] = (data || []).map((row: any) => ({
+        id: row.id,
+        app_id: row.app_id,
+        job_type: isValidJobType(row.job_type) ? row.job_type : 'full_refresh',
+        status: isValidJobStatus(row.status) ? row.status : 'pending',
+        progress: (row.progress as { current: number; total: number }) || { current: 0, total: 0 },
+        keywords_collected: row.keywords_collected || 0,
+        started_at: row.started_at,
+        completed_at: row.completed_at,
+        error_message: row.error_message
+      }));
+
+      console.log('✅ [ANALYTICS] Collection jobs loaded:', jobs.length);
+      return jobs;
     } catch (error) {
       console.error('❌ [ANALYTICS] Exception in getCollectionJobs:', error);
       return [];
@@ -424,8 +494,22 @@ class EnhancedKeywordAnalyticsService {
         throw error;
       }
 
-      console.log('✅ [ANALYTICS] Keyword history loaded:', data?.length || 0);
-      return data || [];
+      // Transform and validate the data
+      const snapshots: KeywordSnapshot[] = (data || []).map((row: any) => ({
+        id: row.id,
+        keyword: row.keyword,
+        rank_position: row.rank_position,
+        search_volume: row.search_volume,
+        difficulty_score: row.difficulty_score,
+        volume_trend: row.volume_trend && isValidVolumeTrend(row.volume_trend) ? row.volume_trend : null,
+        rank_change: row.rank_change,
+        volume_change: row.volume_change,
+        snapshot_date: row.snapshot_date,
+        data_source: row.data_source
+      }));
+
+      console.log('✅ [ANALYTICS] Keyword history loaded:', snapshots.length);
+      return snapshots;
     } catch (error) {
       console.error('❌ [ANALYTICS] Exception in getKeywordHistory:', error);
       return [];
