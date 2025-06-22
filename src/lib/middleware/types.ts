@@ -1,8 +1,15 @@
 
-import { NextApiRequest, NextApiResponse } from 'next';
 import { User, Session } from '@supabase/supabase-js';
 
-export interface ApiRequest extends NextApiRequest {
+export interface ApiRequest {
+  headers: Record<string, string | string[] | undefined>;
+  method?: string;
+  url?: string;
+  body?: any;
+  query?: Record<string, any>;
+  connection?: {
+    remoteAddress?: string;
+  };
   user?: User;
   session?: Session;
   organizationId?: string;
@@ -14,8 +21,10 @@ export interface ApiRequest extends NextApiRequest {
   startTime?: number;
 }
 
-export interface ApiResponse extends NextApiResponse {
-  // Extended response object
+export interface ApiResponse {
+  status: (code: number) => ApiResponse;
+  json: (data: any) => ApiResponse;
+  headersSent: boolean;
 }
 
 export type MiddlewareFunction = (

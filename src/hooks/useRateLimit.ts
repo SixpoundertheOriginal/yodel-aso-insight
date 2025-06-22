@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/context/AuthContext';
+import { apiClient } from '@/lib/api/client';
 
 interface RateLimitInfo {
   tier: 'free' | 'pro' | 'enterprise';
@@ -54,6 +55,7 @@ export function useRateLimit() {
       setLoading(true);
       setError(null);
 
+      // Try to get rate limit data from database
       const { data, error: fetchError } = await supabase
         .from('rate_limits')
         .select('*')
@@ -61,6 +63,7 @@ export function useRateLimit() {
         .single();
 
       if (fetchError && fetchError.code !== 'PGRST116') {
+        // If it's not a "not found" error, throw it
         throw fetchError;
       }
 
@@ -84,6 +87,19 @@ export function useRateLimit() {
     } catch (err: any) {
       console.error('Failed to fetch rate limit info:', err);
       setError(err.message || 'Failed to load rate limit information');
+      
+      // Set default data if there's an error
+      setRateLimitInfo({
+        tier: 'free',
+        limits: TIER_LIMITS.free,
+        usage: { hourly: 0, daily: 0, monthly: 0 },
+        remaining: TIER_LIMITS.free,
+        resetTimes: {
+          hourly: new Date(Date.now() + 60 * 60 * 1000),
+          daily: new Date(Date.now() + 24 * 60 * 60 * 1000),
+          monthly: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+        }
+      });
     } finally {
       setLoading(false);
     }
@@ -91,7 +107,7 @@ export function useRateLimit() {
 
   const transformRateLimitData = (data: any): RateLimitInfo => {
     const tier = data.user_tier as keyof typeof TIER_LIMITS;
-    const limits = TIER_LIMITS[tier];
+    const limits = TIER_LIMITS[tier] || TIER_LIMITS.free;
     
     const usage = {
       hourly: data.hourly_ai_calls || 0,

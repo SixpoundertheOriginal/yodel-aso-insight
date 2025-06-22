@@ -1,9 +1,8 @@
 
-import { NextApiHandler } from 'next';
 import { MiddlewareFunction, ApiRequest, ApiResponse } from './types';
 
-export function withMiddleware(middlewares: MiddlewareFunction[]): (handler: NextApiHandler) => NextApiHandler {
-  return (handler: NextApiHandler) => {
+export function withMiddleware(middlewares: MiddlewareFunction[]): (handler: Function) => Function {
+  return (handler: Function) => {
     return async (req: ApiRequest, res: ApiResponse) => {
       let currentIndex = 0;
 
