@@ -5,24 +5,27 @@ import { MiddlewareFunction, ApiRequest, ApiResponse } from './types';
 export const withAuth: MiddlewareFunction = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
+    const authHeaderValue = Array.isArray(authHeader) ? authHeader[0] : authHeader;
     
-    if (!authHeader?.startsWith('Bearer ')) {
-      return res.status(401).json({
+    if (!authHeaderValue?.startsWith('Bearer ')) {
+      res.status(401).json({
         error: 'Authentication required',
         code: 'AUTH_MISSING'
       });
+      return;
     }
 
-    const token = authHeader.substring(7);
+    const token = authHeaderValue.substring(7);
     
     // Verify the JWT token
     const { data: { user }, error } = await supabase.auth.getUser(token);
     
     if (error || !user) {
-      return res.status(401).json({
+      res.status(401).json({
         error: 'Invalid authentication token',
         code: 'AUTH_INVALID'
       });
+      return;
     }
 
     // Get user profile and organization
@@ -33,10 +36,11 @@ export const withAuth: MiddlewareFunction = async (req, res, next) => {
       .single();
 
     if (profileError || !profile) {
-      return res.status(401).json({
+      res.status(401).json({
         error: 'User profile not found',
         code: 'PROFILE_NOT_FOUND'
       });
+      return;
     }
 
     // Attach user data to request
@@ -46,7 +50,7 @@ export const withAuth: MiddlewareFunction = async (req, res, next) => {
     await next();
   } catch (error) {
     console.error('Auth middleware error:', error);
-    return res.status(500).json({
+    res.status(500).json({
       error: 'Authentication verification failed',
       code: 'AUTH_ERROR'
     });

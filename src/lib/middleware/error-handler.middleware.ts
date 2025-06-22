@@ -26,6 +26,12 @@ export const withErrorHandler: MiddlewareFunction = async (req, res, next) => {
 
 async function logError(req: ApiRequest, error: any) {
   try {
+    // Helper function to ensure string values
+    const ensureString = (value: string | string[] | undefined): string => {
+      if (Array.isArray(value)) return value[0] || '';
+      return value || '';
+    };
+
     const errorData = {
       user_id: req.user?.id || null,
       organization_id: req.organizationId || null,
@@ -38,8 +44,8 @@ async function logError(req: ApiRequest, error: any) {
         body: req.body,
         query: req.query
       },
-      user_agent: req.headers['user-agent'] || null,
-      ip_address: req.headers['x-forwarded-for'] || req.connection.remoteAddress || null,
+      user_agent: ensureString(req.headers['user-agent']),
+      ip_address: ensureString(req.headers['x-forwarded-for']) || ensureString(req.connection?.remoteAddress),
       context: {
         timestamp: new Date().toISOString(),
         stack: error.stack

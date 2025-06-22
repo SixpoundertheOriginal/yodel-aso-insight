@@ -40,11 +40,12 @@ export function withValidation(schema: z.ZodSchema): MiddlewareFunction {
           code: err.code
         }));
 
-        return res.status(400).json({
+        res.status(400).json({
           error: 'Validation failed',
           code: 'VALIDATION_ERROR',
           details: errors
         });
+        return;
       }
 
       // Sanitize validated data
@@ -53,7 +54,7 @@ export function withValidation(schema: z.ZodSchema): MiddlewareFunction {
       await next();
     } catch (error) {
       console.error('Validation middleware error:', error);
-      return res.status(500).json({
+      res.status(500).json({
         error: 'Validation processing failed',
         code: 'VALIDATION_PROCESSING_ERROR'
       });

@@ -20,10 +20,11 @@ const RATE_LIMITS: Record<string, RateLimitConfig> = {
 export function withRateLimit(actionType: string): MiddlewareFunction {
   return async (req, res, next) => {
     if (!req.user) {
-      return res.status(401).json({
+      res.status(401).json({
         error: 'Authentication required for rate limiting',
         code: 'AUTH_REQUIRED'
       });
+      return;
     }
 
     try {
@@ -36,10 +37,11 @@ export function withRateLimit(actionType: string): MiddlewareFunction {
 
       if (error && error.code !== 'PGRST116') { // Not found error is ok
         console.error('Rate limit check error:', error);
-        return res.status(500).json({
+        res.status(500).json({
           error: 'Rate limit check failed',
           code: 'RATE_LIMIT_ERROR'
         });
+        return;
       }
 
       // Initialize rate limits if not found
@@ -56,10 +58,11 @@ export function withRateLimit(actionType: string): MiddlewareFunction {
 
         if (insertError) {
           console.error('Rate limit initialization error:', insertError);
-          return res.status(500).json({
+          res.status(500).json({
             error: 'Rate limit initialization failed',
             code: 'RATE_LIMIT_INIT_ERROR'
           });
+          return;
         }
       }
 
@@ -75,21 +78,23 @@ export function withRateLimit(actionType: string): MiddlewareFunction {
       // Check limits based on action type
       if (actionType.includes('ai') || actionType.includes('generation')) {
         if (currentLimits.hourly_ai_calls >= tierLimits.limits.hourly) {
-          return res.status(429).json({
+          res.status(429).json({
             error: `Hourly rate limit exceeded. Limit: ${tierLimits.limits.hourly}`,
             code: 'RATE_LIMIT_HOURLY',
             resetTime: new Date(Date.now() + 60 * 60 * 1000), // Next hour
             tier: tierLimits.tier
           });
+          return;
         }
 
         if (currentLimits.daily_ai_calls >= tierLimits.limits.daily) {
-          return res.status(429).json({
+          res.status(429).json({
             error: `Daily rate limit exceeded. Limit: ${tierLimits.limits.daily}`,
             code: 'RATE_LIMIT_DAILY',
             resetTime: new Date(new Date().setHours(24, 0, 0, 0)), // Next day
             tier: tierLimits.tier
           });
+          return;
         }
       }
 
@@ -103,7 +108,7 @@ export function withRateLimit(actionType: string): MiddlewareFunction {
       await next();
     } catch (error) {
       console.error('Rate limiting error:', error);
-      return res.status(500).json({
+      res.status(500).json({
         error: 'Rate limiting check failed',
         code: 'RATE_LIMIT_ERROR'
       });
