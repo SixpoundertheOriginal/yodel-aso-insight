@@ -1,3 +1,4 @@
+
 import { supabase } from '@/integrations/supabase/client';
 import { keywordPersistenceService } from './keyword-persistence.service';
 
@@ -80,7 +81,7 @@ class EnhancedKeywordAnalyticsService {
     try {
       console.log('📈 [ANALYTICS] Fetching keyword trends for app:', appId);
       
-      // Try database function first - ensure all parameters are properly typed
+      // Try database function first - RPC functions need string parameters
       const { data, error } = await supabase.rpc('get_keyword_trends', {
         p_organization_id: organizationId,
         p_app_id: appId,
@@ -123,10 +124,10 @@ class EnhancedKeywordAnalyticsService {
       
       const analysisDateStr = analysisDate?.toISOString().split('T')[0] || new Date().toISOString().split('T')[0];
       
-      // Fix: Ensure appId is passed as string, not converted to number
+      // RPC function requires string parameters
       const { data, error } = await supabase.rpc('calculate_rank_distribution', {
         p_organization_id: organizationId,
-        p_app_id: appId, // Keep as string
+        p_app_id: appId,
         p_analysis_date: analysisDateStr
       });
 
@@ -183,12 +184,13 @@ class EnhancedKeywordAnalyticsService {
         { keyword: 'language course', rank: 35, volume: 5200 }
       ];
 
+      // Database expects numbers for rank_position and search_volume
       const snapshots = sampleKeywords.map(item => ({
         organization_id: organizationId,
-        app_id: appId, // Keep as string
+        app_id: appId,
         keyword: item.keyword,
-        rank_position: String(item.rank), // Explicit conversion to string
-        search_volume: String(item.volume), // Explicit conversion to string
+        rank_position: item.rank, // Keep as number for database
+        search_volume: item.volume, // Keep as number for database
         difficulty_score: Math.random() * 10 + 1,
         volume_trend: (['up', 'down', 'stable'] as const)[Math.floor(Math.random() * 3)],
         snapshot_date: new Date().toISOString().split('T')[0]
@@ -394,12 +396,13 @@ class EnhancedKeywordAnalyticsService {
     }>
   ): Promise<{ success: boolean; saved: number }> {
     try {
+      // Database expects numbers for rank_position and search_volume
       const snapshotData = snapshots.map(snapshot => ({
         organization_id: organizationId,
         app_id: appId,
         keyword: snapshot.keyword,
-        rank_position: String(snapshot.rank_position), // Explicit conversion to string
-        search_volume: String(snapshot.search_volume), // Explicit conversion to string
+        rank_position: snapshot.rank_position, // Keep as number for database
+        search_volume: snapshot.search_volume, // Keep as number for database
         difficulty_score: snapshot.difficulty_score,
         volume_trend: snapshot.volume_trend,
         snapshot_date: new Date().toISOString().split('T')[0]
