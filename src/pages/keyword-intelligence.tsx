@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Search, TrendingUp, Target, Crown, AlertCircle } from 'lucide-react';
 import { MetadataImporter } from '@/components/AsoAiHub/MetadataCopilot/MetadataImporter';
+import { keywordRankingService } from '@/services/keyword-ranking.service';
 import { ScrapedMetadata } from '@/types/aso';
 import { useToast } from '@/hooks/use-toast';
 
@@ -17,26 +18,30 @@ const KeywordIntelligencePage: React.FC = () => {
   const [keywordRankings, setKeywordRankings] = useState<any[]>([]);
   const { toast } = useToast();
 
-  const handleAppImport = async (appData: ScrapedMetadata) => {
+  const handleAppImport = async (appData: ScrapedMetadata, organizationId: string) => {
     setSelectedApp(appData);
     setIsAnalyzing(true);
     
     try {
-      // TODO: Implement keyword ranking analysis
-      // This will be enhanced in subsequent weeks
-      setTimeout(() => {
-        setKeywordRankings([
-          { keyword: 'language learning', position: 3, volume: 'High', trend: 'up' },
-          { keyword: 'learn spanish', position: 7, volume: 'Medium', trend: 'stable' },
-          { keyword: 'language app', position: 12, volume: 'High', trend: 'down' },
-        ]);
-        setIsAnalyzing(false);
-        toast({
-          title: "Analysis Complete",
-          description: `Found ranking data for ${appData.name}`,
-        });
-      }, 2000);
+      console.log('🎯 [KEYWORD-INTELLIGENCE] Starting keyword analysis for:', appData.name);
+      
+      // Use the keyword ranking service for actual analysis
+      const rankings = await keywordRankingService.getAppKeywordRankings(appData, {
+        organizationId,
+        maxKeywords: 20,
+        includeCompetitors: true,
+        debugMode: process.env.NODE_ENV === 'development'
+      });
+      
+      setKeywordRankings(rankings);
+      setIsAnalyzing(false);
+      
+      toast({
+        title: "Analysis Complete",
+        description: `Found ${rankings.length} keyword rankings for ${appData.name}`,
+      });
     } catch (error) {
+      console.error('❌ [KEYWORD-INTELLIGENCE] Analysis failed:', error);
       setIsAnalyzing(false);
       toast({
         title: "Analysis Failed",
@@ -93,12 +98,6 @@ const KeywordIntelligencePage: React.FC = () => {
             <CardContent>
               <MetadataImporter
                 onImportSuccess={handleAppImport}
-                organizationId="default" // TODO: Get from auth context
-                config={{
-                  includeCompetitors: true,
-                  maxCompetitors: 10,
-                  includeKeywordAnalysis: true
-                }}
               />
             </CardContent>
           </Card>
