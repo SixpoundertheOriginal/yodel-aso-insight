@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { enhancedKeywordAnalyticsService, KeywordTrend, RankDistribution, KeywordAnalytics, UsageStats, KeywordPool } from '@/services/enhanced-keyword-analytics.service';
 import { rankingDataValidatorService } from '@/services/ranking-data-validator.service';
 import { toast } from 'sonner';
+import { import } from 'node:module';
 
 interface UseEnhancedKeywordAnalyticsProps {
   organizationId: string;
@@ -147,7 +148,7 @@ export const useEnhancedKeywordAnalytics = ({
     usageStats
   );
 
-  // Enhanced save keyword snapshots function with validation
+  // Enhanced save keyword snapshots function with real keyword discovery
   const saveKeywordSnapshots = async (snapshots: Array<{
     keyword: string;
     rank_position: number;
@@ -207,6 +208,54 @@ export const useEnhancedKeywordAnalytics = ({
       console.error('❌ [HOOK] Exception saving snapshots:', error);
       toast.error('An error occurred while saving keyword snapshots');
       return { success: false, saved: 0 };
+    }
+  };
+
+  // NEW: Discover real keywords from App Store
+  const discoverRealKeywords = async (config?: {
+    seedKeywords?: string[];
+    competitorApps?: string[];
+    maxKeywords?: number;
+  }) => {
+    if (!appId) return { success: false, discovered: 0, saved: 0 };
+
+    try {
+      console.log('🌱 [HOOK] Starting real keyword discovery for app:', appId);
+      toast.info('Discovering keywords from App Store...');
+
+      // Use the keyword discovery integration service
+      const { keywordDiscoveryIntegrationService } = await import('@/services/keyword-discovery-integration.service');
+      
+      const result = await keywordDiscoveryIntegrationService.discoverAndSaveKeywords({
+        organizationId,
+        appId,
+        seedKeywords: config?.seedKeywords,
+        competitorApps: config?.competitorApps,
+        maxKeywords: config?.maxKeywords || 100
+      });
+
+      if (result.success) {
+        toast.success(`Discovered ${result.keywordsDiscovered} keywords, saved ${result.keywordsSaved} to database`);
+        
+        // Refresh all data after successful discovery
+        refetchTrends();
+        refetchRankDist();
+        refetchJobs();
+        
+        return { 
+          success: true, 
+          discovered: result.keywordsDiscovered, 
+          saved: result.keywordsSaved 
+        };
+      } else {
+        toast.error('Failed to discover keywords from App Store');
+        return { success: false, discovered: 0, saved: 0 };
+      }
+
+    } catch (error) {
+      console.error('❌ [HOOK] Exception during keyword discovery:', error);
+      toast.error('An error occurred during keyword discovery');
+      return { success: false, discovered: 0, saved: 0 };
     }
   };
 
@@ -310,6 +359,7 @@ export const useEnhancedKeywordAnalytics = ({
     createCollectionJob,
     saveKeywordSnapshots,
     saveKeywordPool,
+    discoverRealKeywords, // NEW: Real keyword discovery action
     refetchTrends,
     refetchRankDist,
     refetchJobs,
