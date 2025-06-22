@@ -1,7 +1,5 @@
-
 import { supabase } from '@/integrations/supabase/client';
 import { enhancedKeywordAnalyticsService } from './enhanced-keyword-analytics.service';
-import { competitorKeywordAnalysisService } from './competitor-keyword-analysis.service';
 
 export interface KeywordDiscoveryJob {
   id: string;
@@ -169,15 +167,11 @@ class KeywordDiscoveryService {
       ];
     }
     
-    // Simulate competitor keyword analysis
+    // Simulate competitor keyword analysis using mock gap analysis
     const competitorKeywords: string[] = [];
     
     for (const competitorId of competitorIds) {
-      const gaps = await competitorKeywordAnalysisService.analyzeKeywordGaps(
-        organizationId,
-        appId,
-        competitorId
-      );
+      const gaps = await this.mockAnalyzeKeywordGaps(organizationId, appId, competitorId);
       
       gaps.forEach(gap => {
         if (gap.gapOpportunity === 'high' && !competitorKeywords.includes(gap.keyword)) {
@@ -187,6 +181,35 @@ class KeywordDiscoveryService {
     }
     
     return competitorKeywords.slice(0, 20); // Limit to top 20
+  }
+
+  /**
+   * Mock implementation of keyword gap analysis
+   */
+  private async mockAnalyzeKeywordGaps(
+    organizationId: string,
+    appId: string,
+    competitorId: string
+  ): Promise<Array<{
+    keyword: string;
+    gapOpportunity: 'high' | 'medium' | 'low';
+    competitorRank: number;
+    yourRank: number | null;
+    searchVolume: number;
+  }>> {
+    // Generate mock keyword gaps
+    const mockKeywords = [
+      'productivity app', 'task manager', 'project tool', 'team workspace',
+      'workflow builder', 'time tracker', 'goal planner', 'habit tracker'
+    ];
+    
+    return mockKeywords.map(keyword => ({
+      keyword,
+      gapOpportunity: (['high', 'medium', 'low'] as const)[Math.floor(Math.random() * 3)],
+      competitorRank: Math.floor(Math.random() * 50) + 1,
+      yourRank: Math.random() > 0.5 ? Math.floor(Math.random() * 100) + 1 : null,
+      searchVolume: Math.floor(Math.random() * 10000) + 1000
+    }));
   }
 
   /**

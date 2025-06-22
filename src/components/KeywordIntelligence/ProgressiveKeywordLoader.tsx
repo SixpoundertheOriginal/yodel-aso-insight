@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -28,6 +27,7 @@ export const ProgressiveKeywordLoader: React.FC<ProgressiveKeywordLoaderProps> =
     keywordsFound: number;
   }>>([]);
   const [totalProgress, setTotalProgress] = useState(0);
+  const [allKeywords, setAllKeywords] = useState<any[]>([]);
 
   // Start progressive loading
   useEffect(() => {
@@ -43,6 +43,7 @@ export const ProgressiveKeywordLoader: React.FC<ProgressiveKeywordLoaderProps> =
       // Simulate loading cached keywords
       setTimeout(() => {
         const cachedKeywords = generateMockKeywords('cached', 10);
+        setAllKeywords(cachedKeywords);
         onKeywordsLoaded(cachedKeywords);
         
         // Stage 2: Start background discovery jobs
@@ -114,7 +115,11 @@ export const ProgressiveKeywordLoader: React.FC<ProgressiveKeywordLoaderProps> =
           
           // Load fresh keywords for this job
           const freshKeywords = generateMockKeywords(job.type, Math.floor(Math.random() * 10) + 5);
-          onKeywordsLoaded(prev => [...prev, ...freshKeywords]);
+          setAllKeywords(prev => {
+            const updated = [...prev, ...freshKeywords];
+            onKeywordsLoaded(updated);
+            return updated;
+          });
           
           // Check if all jobs are complete
           setTimeout(() => {
