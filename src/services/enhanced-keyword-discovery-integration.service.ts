@@ -96,9 +96,21 @@ class EnhancedKeywordDiscoveryIntegrationService {
 
       if (!appData) return null;
 
+      // Convert database app data to RealAppMetadata format
+      let enhancedData: RealAppMetadata = {
+        app_name: appData.app_name,
+        app_store_id: appData.app_store_id || undefined,
+        category: appData.category || undefined,
+        developer_name: appData.developer_name || undefined,
+        // Database doesn't have description/subtitle fields yet, so we'll generate them
+        description: this.generateContextualDescription(appData.app_name),
+        subtitle: undefined,
+        currentKeywords: [],
+        reviews: undefined,
+        rating: undefined
+      };
+
       // Try to get fresh metadata from App Store scraper if we have app store ID
-      let enhancedData = { ...appData };
-      
       if (appData.app_store_id) {
         try {
           console.log('🔍 [ENHANCED-DISCOVERY] Fetching fresh App Store metadata...');
@@ -112,9 +124,9 @@ class EnhancedKeywordDiscoveryIntegrationService {
 
           if (scrapedData?.success && scrapedData.data) {
             enhancedData = {
-              ...appData,
-              description: scrapedData.data.description || this.generateContextualDescription(appData.app_name),
-              subtitle: scrapedData.data.subtitle || '',
+              ...enhancedData,
+              description: scrapedData.data.description || enhancedData.description,
+              subtitle: scrapedData.data.subtitle || undefined,
               currentKeywords: this.extractCurrentKeywords(scrapedData.data),
               reviews: scrapedData.data.userRatingCount,
               rating: scrapedData.data.averageUserRating
@@ -124,11 +136,6 @@ class EnhancedKeywordDiscoveryIntegrationService {
         } catch (scrapingError) {
           console.warn('⚠️ [ENHANCED-DISCOVERY] App Store scraping failed, using database data');
         }
-      }
-
-      // Enhance with intelligent description if missing
-      if (!enhancedData.description) {
-        enhancedData.description = this.generateContextualDescription(enhancedData.app_name);
       }
 
       return enhancedData;

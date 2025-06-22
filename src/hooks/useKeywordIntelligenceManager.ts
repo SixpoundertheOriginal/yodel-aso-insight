@@ -115,7 +115,7 @@ export const useKeywordIntelligenceManager = ({
       
       // Start background collection job if not in fallback mode
       if (!state.fallbackMode) {
-        await enhancedAnalytics.createCollectionJob('enhanced_discovery');
+        await enhancedAnalytics.createCollectionJob('full_refresh');
       }
       
       // Refresh both systems with enhanced data

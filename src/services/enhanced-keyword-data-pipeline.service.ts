@@ -206,7 +206,10 @@ class EnhancedKeywordDataPipelineService {
     }));
   }
 
-  private generateGenericFallback(): EnhancedKeywordData[] {
+  /**
+   * Generate generic fallback keywords - now public
+   */
+  public generateGenericFallback(): EnhancedKeywordData[] {
     return [
       {
         keyword: 'mobile application',

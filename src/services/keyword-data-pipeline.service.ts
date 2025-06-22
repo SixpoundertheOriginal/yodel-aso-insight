@@ -1,11 +1,22 @@
+
 import { KeywordGapAnalysis, KeywordCluster } from '@/services/competitor-keyword-analysis.service';
-import { AdvancedKeywordData } from '@/hooks/useAdvancedKeywordIntelligence';
 
 export interface AppMetadata {
   id: string;
   app_name: string;
   category?: string;
   organizationId: string;
+}
+
+export interface AdvancedKeywordData {
+  keyword: string;
+  rank: number;
+  searchVolume: number;
+  difficulty: number;
+  trend: 'up' | 'down' | 'stable';
+  opportunity: 'high' | 'medium' | 'low';
+  competitorRank: number;
+  volumeHistory: any[];
 }
 
 export interface KeywordDataState {
