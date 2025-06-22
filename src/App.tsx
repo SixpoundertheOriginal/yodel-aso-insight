@@ -17,6 +17,9 @@ import OverviewPage from "./pages/overview";
 import AsoAiHubPage from "./pages/aso-ai-hub";
 import FeaturingToolkitPage from './pages/featuring-toolkit';
 import KeywordIntelligencePage from './pages/keyword-intelligence';
+import ProfilePage from './pages/profile';
+import SettingsPage from './pages/settings';
+import AdminPage from './pages/admin';
 import NotFound from "./pages/NotFound";
 import { withAuth } from "./components/Auth/withAuth";
 
@@ -37,6 +40,9 @@ const ProtectedOverviewPage = withAuth(OverviewPage);
 const ProtectedAsoAiHubPage = withAuth(AsoAiHubPage);
 const ProtectedFeaturingToolkitPage = withAuth(FeaturingToolkitPage);
 const ProtectedKeywordIntelligencePage = withAuth(KeywordIntelligencePage);
+const ProtectedProfilePage = withAuth(ProfilePage);
+const ProtectedSettingsPage = withAuth(SettingsPage);
+const ProtectedAdminPage = withAuth(AdminPage);
 
 const App: React.FC = () => {
   return (
@@ -57,6 +63,9 @@ const App: React.FC = () => {
                   <Route path="/aso-ai-hub" element={<ProtectedAsoAiHubPage />} />
                   <Route path="/featuring-toolkit" element={<ProtectedFeaturingToolkitPage />} />
                   <Route path="/keyword-intelligence" element={<ProtectedKeywordIntelligencePage />} />
+                  <Route path="/profile" element={<ProtectedProfilePage />} />
+                  <Route path="/settings" element={<ProtectedSettingsPage />} />
+                  <Route path="/admin" element={<ProtectedAdminPage />} />
                   <Route path="*" element={<NotFound />} />
                 </Routes>
               </div>

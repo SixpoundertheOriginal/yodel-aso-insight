@@ -1,3 +1,4 @@
+
 export * from './useTheme';
 export * from './useMockAsoData';
 export * from './useSourceFiltering';
@@ -14,3 +15,7 @@ export { useWorkflow, WorkflowProvider } from '@/context/WorkflowContext';
 // Add new advanced keyword intelligence hook
 export { useAdvancedKeywordIntelligence } from './useAdvancedKeywordIntelligence';
 export type { AdvancedKeywordData, KeywordIntelligenceStats } from './useAdvancedKeywordIntelligence';
+
+// Add new user management hooks
+export { usePermissions } from './usePermissions';
+export { useUserProfile } from './useUserProfile';

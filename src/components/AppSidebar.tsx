@@ -7,7 +7,10 @@ import {
   Target, 
   Bot, 
   Home,
-  Search
+  Search,
+  Shield,
+  User,
+  Settings as SettingsIcon
 } from "lucide-react";
 import {
   Sidebar,
@@ -22,6 +25,7 @@ import {
   SidebarMenuItem,
   SidebarRail,
 } from "@/components/ui/sidebar";
+import { usePermissions } from "@/hooks/usePermissions";
 
 const navigationItems = [
   {
@@ -61,8 +65,22 @@ const navigationItems = [
   },
 ];
 
+const userItems = [
+  {
+    title: "Profile",
+    url: "/profile",
+    icon: User,
+  },
+  {
+    title: "Settings",
+    url: "/settings",
+    icon: SettingsIcon,
+  },
+];
+
 export function AppSidebar() {
   const location = useLocation();
+  const { isSuperAdmin } = usePermissions();
 
   return (
     <Sidebar collapsible="icon" className="border-r border-zinc-700">
@@ -108,6 +126,61 @@ export function AppSidebar() {
             </SidebarGroupContent>
           </SidebarGroup>
         ))}
+
+        {/* Admin Section - only visible to super admins */}
+        {isSuperAdmin && (
+          <SidebarGroup>
+            <SidebarGroupLabel className="px-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
+              Administration
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={location.pathname === '/admin'}
+                    tooltip="Admin Panel"
+                    className="h-10 data-[active=true]:bg-yodel-orange data-[active=true]:text-white hover:bg-zinc-800 hover:text-white"
+                  >
+                    <Link to="/admin" className="flex items-center gap-3">
+                      <Shield className="h-4 w-4 shrink-0" />
+                      <span className="truncate">Admin Panel</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
+
+        {/* User Section */}
+        <SidebarGroup>
+          <SidebarGroupLabel className="px-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
+            Account
+          </SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {userItems.map((item) => {
+                const isActive = location.pathname === item.url;
+                return (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton
+                      asChild
+                      isActive={isActive}
+                      tooltip={item.title}
+                      className="h-10 data-[active=true]:bg-yodel-orange data-[active=true]:text-white hover:bg-zinc-800 hover:text-white"
+                    >
+                      <Link to={item.url} className="flex items-center gap-3">
+                        <item.icon className="h-4 w-4 shrink-0" />
+                        <span className="truncate">{item.title}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                );
+              })}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
       </SidebarContent>
 
       <SidebarFooter className="border-t border-zinc-700 p-4">

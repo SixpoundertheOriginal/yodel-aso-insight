@@ -4,6 +4,7 @@ import { useLocation } from "react-router-dom";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import DatePicker from "./DatePicker";
 import ResetButton from "./ResetButton";
+import { UserMenu } from "./UserMenu";
 import { Heading3 } from "./ui/design-system";
 
 const TopBar: React.FC = React.memo(() => {
@@ -19,6 +20,14 @@ const TopBar: React.FC = React.memo(() => {
         return 'Conversion Analysis';
       case '/aso-ai-hub':
         return 'ASO AI Hub';
+      case '/keyword-intelligence':
+        return 'Keyword Intelligence';
+      case '/profile':
+        return 'Profile';
+      case '/settings':
+        return 'Settings';
+      case '/admin':
+        return 'Admin Panel';
       default:
         return 'Dashboard';
     }
@@ -39,14 +48,17 @@ const TopBar: React.FC = React.memo(() => {
           </div>
         </div>
         
-        {showDateControls && (
-          <div className="flex items-center gap-2 sm:gap-4">
-            <div className="hidden sm:block">
-              <DatePicker />
+        <div className="flex items-center gap-4">
+          {showDateControls && (
+            <div className="flex items-center gap-2 sm:gap-4">
+              <div className="hidden sm:block">
+                <DatePicker />
+              </div>
+              <ResetButton />
             </div>
-            <ResetButton />
-          </div>
-        )}
+          )}
+          <UserMenu />
+        </div>
       </div>
       
       {/* Mobile date controls - show below header on mobile when needed */}
