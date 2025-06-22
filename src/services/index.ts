@@ -1,3 +1,4 @@
+
 export { appStoreService } from './app-store.service';
 export { competitorAnalysisService } from './competitor-analysis.service';
 export { competitiveIntelligenceService } from './competitive-intelligence.service';
@@ -10,8 +11,10 @@ export { bypassPatternsService } from './bypass-patterns.service';
 export { correlationTracker } from './correlation-tracker.service';
 export { directItunesService } from './direct-itunes.service';
 export { asoSearchService } from './aso-search.service';
+export { keywordRankingService } from './keyword-ranking.service';
 
 // Re-export types for convenience
 export type { SearchResult, SearchConfig } from './aso-search.service';
 export type { SearchParameters } from './input-detection.service';
 export type { SearchResultsResponse } from './direct-itunes.service';
+export type { KeywordRanking, KeywordAnalysisConfig } from './keyword-ranking.service';

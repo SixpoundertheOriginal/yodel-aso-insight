@@ -6,7 +6,8 @@ import {
   TrendingUp, 
   Target, 
   Bot, 
-  Home
+  Home,
+  Search
 } from "lucide-react";
 import {
   Sidebar,
@@ -50,6 +51,11 @@ const navigationItems = [
         title: "ASO AI Hub",
         url: "/aso-ai-hub",
         icon: Bot,
+      },
+      {
+        title: "Keyword Intelligence",
+        url: "/keyword-intelligence",
+        icon: Search,
       },
     ],
   },
