@@ -1,4 +1,5 @@
 
+
 export interface ScrapedMetadata {
   name: string;
   url: string;
@@ -54,6 +55,7 @@ export interface CompetitorData {
   category: string;
   rating?: number;
   reviews?: number;
+  reviewCount?: number; // Added missing property
   icon?: string;
   developer?: string;
 }
@@ -94,6 +96,10 @@ export interface ImportConfig {
   validateData?: boolean;
   includeCaching?: boolean;
   debugMode?: boolean;
+  // Enhanced competitive intelligence options
+  includeCompetitors?: boolean; // Added missing property
+  maxCompetitors?: number;
+  includeKeywordAnalysis?: boolean;
 }
 
 export interface ExportFormat {
@@ -136,3 +142,4 @@ export interface SearchContext {
 
 // Re-export CPP types for convenience
 export type { ScreenshotAnalysis, CppTheme, CompetitorScreenshot, CppStrategyData, CppConfig } from './cpp';
+
