@@ -106,6 +106,13 @@ export type Database = {
             foreignKeyName: "apps_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
+            referencedRelation: "organization_app_usage"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "apps_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
@@ -172,6 +179,13 @@ export type Database = {
             foreignKeyName: "aso_metrics_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
+            referencedRelation: "organization_app_usage"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "aso_metrics_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
@@ -215,6 +229,13 @@ export type Database = {
           user_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "audit_logs_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organization_app_usage"
+            referencedColumns: ["organization_id"]
+          },
           {
             foreignKeyName: "audit_logs_organization_id_fkey"
             columns: ["organization_id"]
@@ -343,6 +364,13 @@ export type Database = {
           user_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "error_logs_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organization_app_usage"
+            referencedColumns: ["organization_id"]
+          },
           {
             foreignKeyName: "error_logs_organization_id_fkey"
             columns: ["organization_id"]
@@ -673,6 +701,8 @@ export type Database = {
       organizations: {
         Row: {
           api_limits: Json | null
+          app_limit: number | null
+          app_limit_enforced: boolean | null
           billing_email: string | null
           created_at: string
           features: Json | null
@@ -686,6 +716,8 @@ export type Database = {
         }
         Insert: {
           api_limits?: Json | null
+          app_limit?: number | null
+          app_limit_enforced?: boolean | null
           billing_email?: string | null
           created_at?: string
           features?: Json | null
@@ -699,6 +731,8 @@ export type Database = {
         }
         Update: {
           api_limits?: Json | null
+          app_limit?: number | null
+          app_limit_enforced?: boolean | null
           billing_email?: string | null
           created_at?: string
           features?: Json | null
@@ -766,6 +800,13 @@ export type Database = {
             foreignKeyName: "profiles_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
+            referencedRelation: "organization_app_usage"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "profiles_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
@@ -812,6 +853,13 @@ export type Database = {
           user_tier?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "rate_limits_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organization_app_usage"
+            referencedColumns: ["organization_id"]
+          },
           {
             foreignKeyName: "rate_limits_organization_id_fkey"
             columns: ["organization_id"]
@@ -883,6 +931,13 @@ export type Database = {
             foreignKeyName: "scrape_cache_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
+            referencedRelation: "organization_app_usage"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "scrape_cache_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
@@ -935,6 +990,13 @@ export type Database = {
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "user_roles_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organization_app_usage"
+            referencedColumns: ["organization_id"]
+          },
           {
             foreignKeyName: "user_roles_organization_id_fkey"
             columns: ["organization_id"]
@@ -993,6 +1055,13 @@ export type Database = {
             foreignKeyName: "user_usage_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
+            referencedRelation: "organization_app_usage"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "user_usage_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
@@ -1000,12 +1069,30 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      organization_app_usage: {
+        Row: {
+          active_apps: number | null
+          app_limit: number | null
+          app_limit_enforced: boolean | null
+          current_app_count: number | null
+          inactive_apps: number | null
+          organization_id: string | null
+          organization_name: string | null
+          remaining_apps: number | null
+          subscription_tier: string | null
+          usage_percentage: number | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       assign_super_admin_role: {
         Args: { target_user_id: string }
         Returns: undefined
+      }
+      can_add_app: {
+        Args: { org_id: string }
+        Returns: boolean
       }
       check_user_permission: {
         Args: { permission_to_check: string; target_organization_id?: string }
