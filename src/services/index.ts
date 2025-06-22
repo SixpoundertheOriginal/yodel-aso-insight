@@ -1,7 +1,17 @@
-
 export { appStoreService } from './app-store.service';
 export { competitorAnalysisService } from './competitor-analysis.service';
-export { dataValidationService } from './data-validation.service';
+export { competitiveIntelligenceService } from './competitive-intelligence.service';
 export { exportService } from './export.service';
-export { cppStrategyService } from './cpp-strategy.service';
 export { securityService } from './security.service';
+export { dataValidationService } from './data-validation.service';
+export { cppStrategyService } from './cpp-strategy.service';
+export { inputDetectionService } from './input-detection.service';
+export { bypassPatternsService } from './bypass-patterns.service';
+export { correlationTracker } from './correlation-tracker.service';
+export { directItunesService } from './direct-itunes.service';
+export { asoSearchService } from './aso-search.service';
+
+// Re-export types for convenience
+export type { SearchResult, SearchConfig } from './aso-search.service';
+export type { SearchParameters } from './input-detection.service';
+export type { SearchResultsResponse } from './direct-itunes.service';

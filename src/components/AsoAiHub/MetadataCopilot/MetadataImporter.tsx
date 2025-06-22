@@ -6,7 +6,9 @@ import { ScrapedMetadata } from '@/types/aso';
 import { AmbiguousSearchError } from '@/types/search-errors';
 import { DataImporter } from '@/components/shared/DataImporter';
 import { AppSearchResultsModal } from './AppSearchResultsModal';
-import { Sparkles, AlertCircle, Search, Zap, Loader2 } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Sparkles, AlertCircle, Search, Zap, Loader2, Users, Target } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 
@@ -20,6 +22,11 @@ export const MetadataImporter: React.FC<MetadataImporterProps> = ({ onImportSucc
   const [lastError, setLastError] = useState<string | null>(null);
   const [searchType, setSearchType] = useState<'auto' | 'keyword' | 'brand' | 'url'>('auto');
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
+  
+  // Enhanced competitive intelligence options
+  const [enableCompetitorDiscovery, setEnableCompetitorDiscovery] = useState(true);
+  const [competitorLimit, setCompetitorLimit] = useState(5);
+  const [includeKeywordAnalysis, setIncludeKeywordAnalysis] = useState(true);
   
   // New state for app selection modal
   const [showAppSelection, setShowAppSelection] = useState(false);
@@ -95,7 +102,7 @@ export const MetadataImporter: React.FC<MetadataImporterProps> = ({ onImportSucc
     }
 
     const trimmedInput = input.trim();
-    console.log('🚀 [METADATA-IMPORTER] Starting import for:', trimmedInput);
+    console.log('🚀 [METADATA-IMPORTER] Starting enhanced import for:', trimmedInput);
 
     setIsImporting(true);
     setLastError(null);
@@ -108,20 +115,24 @@ export const MetadataImporter: React.FC<MetadataImporterProps> = ({ onImportSucc
     });
 
     try {
-      console.log('📤 [METADATA-IMPORTER] Calling appStoreService.importAppData...');
+      console.log('📤 [METADATA-IMPORTER] Calling enhanced appStoreService.importAppData...');
       
       const importedData = await appStoreService.importAppData(trimmedInput, {
         organizationId,
         validateData: true,
         includeCaching: true,
-        debugMode: process.env.NODE_ENV === 'development'
+        debugMode: process.env.NODE_ENV === 'development',
+        // Enhanced competitive intelligence options
+        includeCompetitors: enableCompetitorDiscovery,
+        maxCompetitors: competitorLimit,
+        includeKeywordAnalysis
       });
 
-      console.log('✅ [METADATA-IMPORTER] Import successful:', importedData);
+      console.log('✅ [METADATA-IMPORTER] Enhanced import successful:', importedData);
 
-      // Enhanced success message
+      // Enhanced success message with competitive intelligence info
       const searchContext = (importedData as any).searchContext;
-      const asoIntelligence = (importedData as any).asoIntelligence;
+      const competitorCount = (importedData as any).competitors?.length || 0;
       
       let successMessage = `Successfully imported ${importedData.name}`;
       if (searchContext) {
@@ -130,18 +141,21 @@ export const MetadataImporter: React.FC<MetadataImporterProps> = ({ onImportSucc
           successMessage += ` (${searchContext.totalResults} results analyzed)`;
         }
       }
+      if (competitorCount > 0) {
+        successMessage += ` with ${competitorCount} competitors discovered`;
+      }
 
       toast({
         title: 'Import Successful! 🎉',
         description: successMessage,
       });
 
-      // Show ASO intelligence if available
-      if (asoIntelligence?.opportunities?.length > 0) {
+      // Show competitive intelligence notification
+      if (enableCompetitorDiscovery && competitorCount > 0) {
         setTimeout(() => {
           toast({
-            title: 'ASO Intelligence Generated',
-            description: `Found ${asoIntelligence.opportunities.length} optimization opportunities`,
+            title: 'Competitive Intelligence Generated',
+            description: `Analyzed ${competitorCount} competitors for strategic insights`,
           });
         }, 1500);
       }
@@ -149,7 +163,7 @@ export const MetadataImporter: React.FC<MetadataImporterProps> = ({ onImportSucc
       onImportSuccess(importedData, organizationId);
 
     } catch (error: any) {
-      console.error('❌ [METADATA-IMPORTER] Import failed:', error);
+      console.error('❌ [METADATA-IMPORTER] Enhanced import failed:', error);
       
       // Handle AmbiguousSearchError as expected user selection flow
       if (error instanceof AmbiguousSearchError) {
@@ -157,14 +171,14 @@ export const MetadataImporter: React.FC<MetadataImporterProps> = ({ onImportSucc
         console.log(`📋 [METADATA-IMPORTER] User can choose from ${error.candidates.length} options`);
         setAppCandidates(error.candidates);
         setShowAppSelection(true);
-        setIsImporting(false); // Stop loading state
-        return; // Don't show error toast - let user select instead
+        setIsImporting(false);
+        return;
       }
       
+      // ... keep existing error handling code
       const errorMessage = error.message || 'An unknown error occurred during import.';
       setLastError(errorMessage);
       
-      // Enhanced error handling for other errors
       let title = 'Import Failed';
       let description = errorMessage;
       let suggestions: string[] = [];
@@ -296,6 +310,69 @@ export const MetadataImporter: React.FC<MetadataImporterProps> = ({ onImportSucc
         </Alert>
       )}
 
+      {/* Enhanced Competitive Intelligence Settings */}
+      <Card className="bg-zinc-900/50 border-zinc-800">
+        <CardHeader>
+          <CardTitle className="flex items-center text-lg">
+            <Users className="w-5 h-5 mr-2 text-blue-500" />
+            Competitive Intelligence
+          </CardTitle>
+          <p className="text-sm text-zinc-400">
+            Automatically discover and analyze competitors for strategic insights
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="space-y-1">
+              <div className="text-sm font-medium text-white">Enable Competitor Discovery</div>
+              <div className="text-xs text-zinc-400">
+                Automatically find and analyze top competitors during import
+              </div>
+            </div>
+            <Switch
+              checked={enableCompetitorDiscovery}
+              onCheckedChange={setEnableCompetitorDiscovery}
+            />
+          </div>
+          
+          {enableCompetitorDiscovery && (
+            <>
+              <div className="space-y-2">
+                <div className="text-sm font-medium text-white">Competitors to Analyze</div>
+                <div className="flex space-x-2">
+                  {[3, 5, 8, 10].map((limit) => (
+                    <button
+                      key={limit}
+                      onClick={() => setCompetitorLimit(limit)}
+                      className={`px-3 py-1 rounded text-sm transition-colors ${
+                        competitorLimit === limit
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
+                      }`}
+                    >
+                      {limit}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              
+              <div className="flex items-center justify-between">
+                <div className="space-y-1">
+                  <div className="text-sm font-medium text-white">Keyword Gap Analysis</div>
+                  <div className="text-xs text-zinc-400">
+                    Identify keyword opportunities from competitor analysis
+                  </div>
+                </div>
+                <Switch
+                  checked={includeKeywordAnalysis}
+                  onCheckedChange={setIncludeKeywordAnalysis}
+                />
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Search Type Selector */}
       <div className="mb-4">
         <label className="block text-sm font-medium text-zinc-300 mb-2">
@@ -330,14 +407,17 @@ export const MetadataImporter: React.FC<MetadataImporterProps> = ({ onImportSucc
       {/* Main Search Interface */}
       <DataImporter
         title="ASO Intelligence Search"
-        description="Discover apps, analyze competition, and get optimization insights"
+        description={enableCompetitorDiscovery 
+          ? "Discover apps, analyze competition, and get optimization insights with competitive intelligence"
+          : "Discover apps and get optimization insights"
+        }
         placeholder={getPlaceholderText()}
         onImport={handleImport}
         isLoading={isImporting || !organizationId}
         icon={isImporting ? <Loader2 className="w-4 h-4 ml-2 animate-spin" /> : <Sparkles className="w-4 h-4 ml-2" />}
       />
 
-      {/* NEW: App Selection Modal */}
+      {/* App Selection Modal */}
       <AppSearchResultsModal
         isOpen={showAppSelection}
         results={appCandidates}
@@ -389,7 +469,7 @@ export const MetadataImporter: React.FC<MetadataImporterProps> = ({ onImportSucc
         </div>
       )}
 
-      {/* Feature Highlights */}
+      {/* Enhanced Feature Highlights */}
       <div className="grid grid-cols-2 gap-4 mt-6">
         <div className="bg-zinc-800/30 p-4 rounded-lg">
           <h4 className="text-sm font-medium text-white mb-2">🔍 Smart Search</h4>
@@ -398,9 +478,14 @@ export const MetadataImporter: React.FC<MetadataImporterProps> = ({ onImportSucc
           </p>
         </div>
         <div className="bg-zinc-800/30 p-4 rounded-lg">
-          <h4 className="text-sm font-medium text-white mb-2">🧠 ASO Intelligence</h4>
+          <h4 className="text-sm font-medium text-white mb-2">
+            {enableCompetitorDiscovery ? '🧠 Competitive Intelligence' : '🧠 ASO Intelligence'}
+          </h4>
           <p className="text-xs text-zinc-400">
-            Get market insights, competition analysis, and optimization opportunities
+            {enableCompetitorDiscovery 
+              ? 'Get market insights, competition analysis, and strategic positioning opportunities'
+              : 'Get market insights and optimization opportunities'
+            }
           </p>
         </div>
       </div>
@@ -408,16 +493,18 @@ export const MetadataImporter: React.FC<MetadataImporterProps> = ({ onImportSucc
       {/* Development Debug Info */}
       {process.env.NODE_ENV === 'development' && (
         <div className="mt-4 bg-zinc-800/50 p-3 rounded text-xs text-zinc-300 space-y-1">
-          <div><strong>ASO Intelligence Platform v5.1.0-ambiguity-fix</strong></div>
+          <div><strong>ASO Intelligence Platform v5.2.0-competitive-intelligence</strong></div>
           <div>Organization ID: {organizationId || 'Not loaded'}</div>
           <div>Search Type: {searchType}</div>
+          <div>Competitive Intelligence: {enableCompetitorDiscovery ? 'Enabled' : 'Disabled'}</div>
+          <div>Competitor Limit: {competitorLimit}</div>
+          <div>Keyword Analysis: {includeKeywordAnalysis ? 'Enabled' : 'Disabled'}</div>
           <div>Is Importing: {isImporting ? 'Yes' : 'No'}</div>
           <div>Show App Selection: {showAppSelection ? 'Yes' : 'No'}</div>
           <div>App Candidates: {appCandidates.length}</div>
-          <div className="text-green-400">✅ Emergency stabilization active</div>
-          <div className="text-green-400">✅ Enhanced error handling</div>
-          <div className="text-green-400">✅ App selection modal implemented</div>
-          <div className="text-green-400">✅ AmbiguousSearchError handling fixed</div>
+          <div className="text-green-400">✅ Competitive intelligence integration active</div>
+          <div className="text-green-400">✅ Enhanced competitor discovery</div>
+          <div className="text-green-400">✅ Strategic positioning insights</div>
           {lastError && <div className="text-red-400">❌ Last Error: {lastError}</div>}
         </div>
       )}
