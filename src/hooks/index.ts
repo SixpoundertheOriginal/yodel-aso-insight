@@ -4,3 +4,5 @@ export * from './useMockAsoData';
 export * from './useSourceFiltering';
 export * from './useComparisonData';
 export * from './useCopilotChat';
+export * from './useBigQueryData';
+export * from './useAsoDataWithFallback';

@@ -4,6 +4,7 @@ import { MainLayout } from "../layouts";
 import KpiCard from "../components/KpiCard";
 import TimeSeriesChart from "../components/TimeSeriesChart";
 import ComparisonChart from "../components/ComparisonChart";
+import { DataSourceIndicator } from "../components/DataSourceIndicator";
 import { useAsoData } from "../context/AsoDataContext";
 import { useComparisonData } from "../hooks/useComparisonData";
 import { Toggle } from "@/components/ui/toggle";
@@ -11,7 +12,14 @@ import { Card, CardContent } from "@/components/ui/card";
 
 const Dashboard: React.FC = () => {
   const [excludeAsa, setExcludeAsa] = useState(false);
-  const { data, loading, filters, setFilters } = useAsoData();
+  const { 
+    data, 
+    loading, 
+    filters, 
+    setFilters, 
+    currentDataSource, 
+    dataSourceStatus 
+  } = useAsoData();
 
   // Update traffic sources when excludeAsa toggles
   useEffect(() => {
@@ -40,10 +48,18 @@ const Dashboard: React.FC = () => {
   if (loading || !data) {
     return (
       <MainLayout>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
-          {[...Array(4)].map((_, i) => (
-            <div key={i} className="h-32 bg-zinc-800 animate-pulse rounded-md"></div>
-          ))}
+        <div className="flex justify-between items-center mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 flex-1">
+            {[...Array(4)].map((_, i) => (
+              <div key={i} className="h-32 bg-zinc-800 animate-pulse rounded-md"></div>
+            ))}
+          </div>
+          <div className="ml-4">
+            <DataSourceIndicator 
+              currentDataSource={currentDataSource}
+              dataSourceStatus={dataSourceStatus}
+            />
+          </div>
         </div>
         <div className="h-64 bg-zinc-800 animate-pulse rounded-md"></div>
       </MainLayout>
@@ -62,28 +78,38 @@ const Dashboard: React.FC = () => {
 
   return (
     <MainLayout>
-      {/* KPI Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
-        <KpiCard
-          title="Impressions"
-          value={impressionsValue}
-          delta={impressionsDelta}
-        />
-        <KpiCard
-          title="Downloads"
-          value={downloadsValue}
-          delta={downloadsDelta}
-        />
-        <KpiCard
-          title="Product Page Views"
-          value={pageViewsValue}
-          delta={pageViewsDelta}
-        />
-        <KpiCard 
-          title="CVR" 
-          value={cvrValue} 
-          delta={cvrDelta} 
-        />
+      {/* KPI Cards with Data Source Indicator */}
+      <div className="flex justify-between items-start mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 flex-1">
+          <KpiCard
+            title="Impressions"
+            value={impressionsValue}
+            delta={impressionsDelta}
+          />
+          <KpiCard
+            title="Downloads"
+            value={downloadsValue}
+            delta={downloadsDelta}
+          />
+          <KpiCard
+            title="Product Page Views"
+            value={pageViewsValue}
+            delta={pageViewsDelta}
+          />
+          <KpiCard 
+            title="CVR" 
+            value={cvrValue} 
+            delta={cvrDelta} 
+          />
+        </div>
+        
+        {/* Data Source Indicator */}
+        <div className="ml-4 flex flex-col items-end gap-2">
+          <DataSourceIndicator 
+            currentDataSource={currentDataSource}
+            dataSourceStatus={dataSourceStatus}
+          />
+        </div>
       </div>
 
       {/* Exclude ASA Toggle */}

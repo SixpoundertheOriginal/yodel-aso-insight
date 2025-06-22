@@ -1,6 +1,7 @@
 
 import React, { createContext, useContext, useState, ReactNode } from 'react';
-import { useMockAsoData, AsoData, DateRange } from '../hooks/useMockAsoData';
+import { useAsoDataWithFallback, DataSource, CurrentDataSource } from '../hooks/useAsoDataWithFallback';
+import { AsoData, DateRange } from '../hooks/useMockAsoData';
 
 interface AsoFilters {
   clientList: string[];
@@ -14,6 +15,11 @@ interface AsoDataContextType {
   error: Error | null;
   filters: AsoFilters;
   setFilters: React.Dispatch<React.SetStateAction<AsoFilters>>;
+  // New BigQuery integration properties
+  dataSource: DataSource;
+  setDataSource: (source: DataSource) => void;
+  currentDataSource: CurrentDataSource | null;
+  dataSourceStatus: 'loading' | 'bigquery-success' | 'bigquery-failed-fallback' | 'mock-only';
 }
 
 const AsoDataContext = createContext<AsoDataContextType | undefined>(undefined);
@@ -39,11 +45,21 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
       "Unknown"
     ],
   });
+
+  // Data source management
+  const [dataSource, setDataSource] = useState<DataSource>('auto');
   
-  const { data, loading, error } = useMockAsoData(
+  const { 
+    data, 
+    loading, 
+    error, 
+    currentDataSource, 
+    dataSourceStatus 
+  } = useAsoDataWithFallback(
     filters.clientList,
     filters.dateRange,
-    filters.trafficSources
+    filters.trafficSources,
+    dataSource
   );
   
   const value = {
@@ -52,6 +68,10 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
     error,
     filters,
     setFilters,
+    dataSource,
+    setDataSource,
+    currentDataSource,
+    dataSourceStatus,
   };
   
   return (
