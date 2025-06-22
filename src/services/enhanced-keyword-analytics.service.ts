@@ -81,11 +81,11 @@ class EnhancedKeywordAnalyticsService {
     try {
       console.log('📈 [ANALYTICS] Fetching keyword trends for app:', appId);
       
-      // Try database function first
+      // Try database function first - ensure daysBack is passed as number
       const { data, error } = await supabase.rpc('get_keyword_trends', {
         p_organization_id: organizationId,
         p_app_id: appId,
-        p_days_back: daysBack.toString()
+        p_days_back: daysBack
       });
 
       if (error) {
