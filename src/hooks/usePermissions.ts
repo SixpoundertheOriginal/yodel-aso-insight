@@ -9,23 +9,28 @@ export const usePermissions = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return [];
 
-      // Get user roles and their permissions
-      const { data: userRoles } = await supabase
+      // Get user roles
+      const { data: userRoles, error: rolesError } = await supabase
         .from('user_roles')
-        .select(`
-          role,
-          role_permissions!inner(permission_name)
-        `)
+        .select('role')
         .eq('user_id', user.id);
 
-      if (!userRoles) return [];
+      if (rolesError || !userRoles) return [];
 
-      // Flatten permissions from all roles
-      const allPermissions = userRoles.flatMap(role => 
-        role.role_permissions.map(rp => rp.permission_name)
-      );
+      // Get permissions for those roles
+      const roleNames = userRoles.map(ur => ur.role);
+      if (roleNames.length === 0) return [];
 
-      return [...new Set(allPermissions)]; // Remove duplicates
+      const { data: rolePermissions, error: permissionsError } = await supabase
+        .from('role_permissions')
+        .select('permission_name')
+        .in('role', roleNames);
+
+      if (permissionsError || !rolePermissions) return [];
+
+      // Return unique permissions
+      const allPermissions = rolePermissions.map(rp => rp.permission_name);
+      return [...new Set(allPermissions)];
     },
   });
 
