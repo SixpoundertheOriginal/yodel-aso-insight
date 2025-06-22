@@ -121,10 +121,12 @@ class EnhancedKeywordAnalyticsService {
     try {
       console.log('🎯 [ANALYTICS] Fetching rank distribution for app:', appId);
       
+      const analysisDateStr = analysisDate?.toISOString().split('T')[0] || new Date().toISOString().split('T')[0];
+      
       const { data, error } = await supabase.rpc('calculate_rank_distribution', {
         p_organization_id: organizationId,
         p_app_id: appId,
-        p_analysis_date: analysisDate?.toISOString().split('T')[0] || new Date().toISOString().split('T')[0]
+        p_analysis_date: analysisDateStr
       });
 
       if (error) {
@@ -270,7 +272,11 @@ class EnhancedKeywordAnalyticsService {
       }
 
       console.log('✅ [ANALYTICS] Keyword pools loaded:', data?.length || 0);
-      return data || [];
+      // Type cast the pool_type to match our interface
+      return (data || []).map(pool => ({
+        ...pool,
+        pool_type: pool.pool_type as 'category' | 'competitor' | 'trending' | 'custom'
+      }));
 
     } catch (error) {
       console.error('❌ [ANALYTICS] Exception fetching keyword pools:', error);
@@ -307,7 +313,11 @@ class EnhancedKeywordAnalyticsService {
       }
 
       console.log('✅ [ANALYTICS] Keyword pool saved:', poolName);
-      return data;
+      // Type cast the returned data to match our interface
+      return {
+        ...data,
+        pool_type: data.pool_type as 'category' | 'competitor' | 'trending' | 'custom'
+      };
 
     } catch (error) {
       console.error('❌ [ANALYTICS] Exception saving keyword pool:', error);

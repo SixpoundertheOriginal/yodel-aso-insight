@@ -113,6 +113,11 @@ export const EnhancedKeywordIntelligence: React.FC<EnhancedKeywordIntelligencePr
     }
   };
 
+  // Convert timeframe string to days for the handler
+  const handleTimeframeChange = (timeframe: string) => {
+    setSelectedTimeframe(timeframe);
+  };
+
   if (!selectedAppId) {
     return (
       <Card className="bg-zinc-900 border-zinc-800">
@@ -208,7 +213,7 @@ export const EnhancedKeywordIntelligence: React.FC<EnhancedKeywordIntelligencePr
                 <span className="text-sm text-zinc-400">Improving</span>
               </div>
               <div className="text-2xl font-bold text-green-400">
-                {analytics.trendInsights.improvingKeywords}
+                {analytics.trendInsights?.improvingKeywords || 0}
               </div>
             </CardContent>
           </Card>
@@ -252,7 +257,7 @@ export const EnhancedKeywordIntelligence: React.FC<EnhancedKeywordIntelligencePr
           <KeywordTrendsTable
             trends={keywordTrends}
             isLoading={isLoading}
-            onTimeframeChange={setSelectedTimeframe}
+            onTimeframeChange={handleTimeframeChange}
             selectedTimeframe={selectedTimeframe}
           />
         </TabsContent>
