@@ -5,6 +5,8 @@ export interface KeywordDiscoveryOptions {
     name: string;
     appId: string;
     category: string;
+    description?: string;
+    subtitle?: string;
   };
   competitorApps?: string[];
   seedKeywords?: string[];
@@ -16,168 +18,393 @@ export interface DiscoveredKeyword {
   keyword: string;
   estimatedVolume: number;
   difficulty: number;
-  source: 'autocomplete' | 'competitor' | 'seed' | 'category';
+  source: 'app_metadata' | 'competitor' | 'category' | 'semantic' | 'trending';
   competitorRank?: number;
   competitorApp?: string;
+  relevanceScore: number;
 }
 
 export class KeywordDiscoveryService {
   private baseUrl = 'https://itunes.apple.com/search';
-  private autocompleteUrl = 'https://search.itunes.apple.com/WebObjects/MZSearchHints.woa/wa/hints';
 
   /**
-   * Harvest keywords from App Store autocomplete
+   * Main keyword discovery orchestrator with improved app-specific focus
    */
-  async harvestAutocompleteKeywords(
-    seedKeywords: string[],
-    country: string = 'us',
-    maxPerSeed: number = 20
-  ): Promise<DiscoveredKeyword[]> {
-    const keywords: DiscoveredKeyword[] = [];
+  async discoverKeywords(options: KeywordDiscoveryOptions): Promise<DiscoveredKeyword[]> {
+    const allKeywords: DiscoveredKeyword[] = [];
+    const maxKeywords = options.maxKeywords || 100;
     
-    for (const seed of seedKeywords) {
-      try {
-        // Get autocomplete suggestions
-        const suggestions = await this.getAutocompleteSuggestions(seed, country);
-        
-        for (const suggestion of suggestions.slice(0, maxPerSeed)) {
-          // Estimate volume based on suggestion order (higher = more popular)
-          const position = suggestions.indexOf(suggestion);
-          const estimatedVolume = Math.max(1000, 10000 - (position * 500));
-          
-          keywords.push({
-            keyword: suggestion,
-            estimatedVolume,
-            difficulty: await this.estimateKeywordDifficulty(suggestion, country),
-            source: 'autocomplete'
-          });
-        }
-      } catch (error) {
-        console.warn(`Failed to get autocomplete for "${seed}":`, error);
-      }
+    console.log(`🔍 [DISCOVERY] Starting enhanced keyword discovery for org: ${options.organizationId}`);
+    
+    // 1. Extract keywords from target app metadata (highest priority - 50% of results)
+    if (options.targetApp) {
+      console.log('📱 [DISCOVERY] Extracting app-specific keywords...');
+      const appKeywords = await this.extractAppSpecificKeywords(options.targetApp, options.country);
+      allKeywords.push(...appKeywords.slice(0, Math.floor(maxKeywords * 0.5)));
     }
     
-    return this.deduplicateKeywords(keywords);
+    // 2. Generate semantic variations of app name and core terms (20% of results)
+    if (options.targetApp) {
+      console.log('🧠 [DISCOVERY] Generating semantic variations...');
+      const semanticKeywords = await this.generateSemanticVariations(options.targetApp);
+      allKeywords.push(...semanticKeywords.slice(0, Math.floor(maxKeywords * 0.2)));
+    }
+    
+    // 3. Harvest from competitor apps (20% of results)
+    if (options.competitorApps && options.competitorApps.length > 0) {
+      console.log('🏢 [DISCOVERY] Analyzing competitor keywords...');
+      const competitorKeywords = await this.analyzeCompetitorKeywords(
+        options.competitorApps,
+        options.country,
+        options.targetApp
+      );
+      allKeywords.push(...competitorKeywords.slice(0, Math.floor(maxKeywords * 0.2)));
+    }
+    
+    // 4. Category-specific trending keywords (10% of results)
+    if (options.targetApp?.category) {
+      console.log('📈 [DISCOVERY] Finding trending category keywords...');
+      const trendingKeywords = await this.findTrendingCategoryKeywords(
+        options.targetApp.category,
+        options.country
+      );
+      allKeywords.push(...trendingKeywords.slice(0, Math.floor(maxKeywords * 0.1)));
+    }
+    
+    // Deduplicate, score relevance, and prioritize
+    const uniqueKeywords = this.deduplicateAndScore(allKeywords, options.targetApp);
+    const finalKeywords = this.prioritizeByRelevance(uniqueKeywords);
+    
+    console.log(`✅ [DISCOVERY] Discovered ${finalKeywords.length} relevant keywords`);
+    
+    return finalKeywords.slice(0, maxKeywords);
   }
 
   /**
-   * Extract keywords from competitor apps
+   * Extract app-specific keywords from metadata with intelligent parsing
    */
-  async harvestCompetitorKeywords(
-    competitorApps: string[],
+  private async extractAppSpecificKeywords(
+    targetApp: KeywordDiscoveryOptions['targetApp'],
     country: string = 'us'
   ): Promise<DiscoveredKeyword[]> {
     const keywords: DiscoveredKeyword[] = [];
     
-    for (const appId of competitorApps) {
+    if (!targetApp) return keywords;
+    
+    // Extract from app name components
+    const nameKeywords = this.extractFromAppName(targetApp.name);
+    keywords.push(...nameKeywords);
+    
+    // Extract from subtitle if available
+    if (targetApp.subtitle) {
+      const subtitleKeywords = this.extractFromText(targetApp.subtitle, 'app_metadata');
+      keywords.push(...subtitleKeywords);
+    }
+    
+    // Extract from description if available
+    if (targetApp.description) {
+      const descKeywords = this.extractFromDescription(targetApp.description);
+      keywords.push(...descKeywords);
+    }
+    
+    // Add brand and functionality keywords
+    const brandKeywords = this.generateBrandKeywords(targetApp.name, targetApp.category);
+    keywords.push(...brandKeywords);
+    
+    return keywords;
+  }
+
+  /**
+   * Extract meaningful keywords from app name
+   */
+  private extractFromAppName(appName: string): DiscoveredKeyword[] {
+    const keywords: DiscoveredKeyword[] = [];
+    const cleanName = appName.toLowerCase();
+    
+    // Full app name as primary keyword
+    keywords.push({
+      keyword: cleanName,
+      estimatedVolume: 5000,
+      difficulty: 3.0,
+      source: 'app_metadata',
+      relevanceScore: 10.0
+    });
+    
+    // Extract meaningful words from app name
+    const words = cleanName
+      .replace(/[^\w\s]/g, ' ')
+      .split(/\s+/)
+      .filter(word => word.length > 2 && !this.isCommonWord(word));
+    
+    words.forEach(word => {
+      keywords.push({
+        keyword: word,
+        estimatedVolume: 3000,
+        difficulty: 4.0,
+        source: 'app_metadata',
+        relevanceScore: 8.0
+      });
+    });
+    
+    // Combine significant words
+    if (words.length >= 2) {
+      for (let i = 0; i < words.length - 1; i++) {
+        keywords.push({
+          keyword: `${words[i]} ${words[i + 1]}`,
+          estimatedVolume: 2000,
+          difficulty: 3.5,
+          source: 'app_metadata',
+          relevanceScore: 7.0
+        });
+      }
+    }
+    
+    return keywords;
+  }
+
+  /**
+   * Extract keywords from app description with NLP-like processing
+   */
+  private extractFromDescription(description: string): DiscoveredKeyword[] {
+    const keywords: DiscoveredKeyword[] = [];
+    const sentences = description.split(/[.!?]+/).slice(0, 3); // First 3 sentences
+    
+    sentences.forEach(sentence => {
+      const words = sentence
+        .toLowerCase()
+        .replace(/[^\w\s]/g, ' ')
+        .split(/\s+/)
+        .filter(word => word.length > 3 && !this.isCommonWord(word));
+      
+      // Extract 2-3 word phrases
+      for (let i = 0; i < words.length - 1; i++) {
+        const twoWordPhrase = `${words[i]} ${words[i + 1]}`;
+        if (this.isRelevantPhrase(twoWordPhrase)) {
+          keywords.push({
+            keyword: twoWordPhrase,
+            estimatedVolume: 1500,
+            difficulty: 5.0,
+            source: 'app_metadata',
+            relevanceScore: 6.0
+          });
+        }
+        
+        if (i < words.length - 2) {
+          const threeWordPhrase = `${words[i]} ${words[i + 1]} ${words[i + 2]}`;
+          if (this.isRelevantPhrase(threeWordPhrase)) {
+            keywords.push({
+              keyword: threeWordPhrase,
+              estimatedVolume: 800,
+              difficulty: 4.0,
+              source: 'app_metadata',
+              relevanceScore: 5.5
+            });
+          }
+        }
+      }
+    });
+    
+    return keywords;
+  }
+
+  /**
+   * Generate semantic variations and synonyms
+   */
+  private async generateSemanticVariations(
+    targetApp: KeywordDiscoveryOptions['targetApp']
+  ): Promise<DiscoveredKeyword[]> {
+    const keywords: DiscoveredKeyword[] = [];
+    
+    if (!targetApp) return keywords;
+    
+    const appName = targetApp.name.toLowerCase();
+    const category = targetApp.category.toLowerCase();
+    
+    // Category-specific semantic variations
+    const semanticMap: Record<string, string[]> = {
+      'education': ['learning', 'study', 'course', 'lesson', 'tutorial', 'training'],
+      'productivity': ['efficiency', 'organization', 'management', 'workflow', 'planning'],
+      'health & fitness': ['wellness', 'workout', 'exercise', 'nutrition', 'mindfulness'],
+      'lifestyle': ['lifestyle', 'habits', 'personal', 'daily', 'routine'],
+      'entertainment': ['fun', 'game', 'play', 'entertainment', 'leisure'],
+      'social networking': ['social', 'connect', 'community', 'friends', 'network']
+    };
+    
+    const variations = semanticMap[category] || [];
+    
+    variations.forEach(variation => {
+      // Variation + app name
+      keywords.push({
+        keyword: `${variation} ${appName}`,
+        estimatedVolume: 1200,
+        difficulty: 4.5,
+        source: 'semantic',
+        relevanceScore: 7.5
+      });
+      
+      // App name + variation
+      keywords.push({
+        keyword: `${appName} ${variation}`,
+        estimatedVolume: 1000,
+        difficulty: 4.0,
+        source: 'semantic',
+        relevanceScore: 7.0
+      });
+    });
+    
+    return keywords;
+  }
+
+  /**
+   * Analyze competitor keywords with better extraction
+   */
+  private async analyzeCompetitorKeywords(
+    competitorApps: string[],
+    country: string = 'us',
+    targetApp?: KeywordDiscoveryOptions['targetApp']
+  ): Promise<DiscoveredKeyword[]> {
+    const keywords: DiscoveredKeyword[] = [];
+    
+    for (const appId of competitorApps.slice(0, 3)) { // Limit to 3 competitors
       try {
         const appData = await this.getAppMetadata(appId, country);
         if (!appData) continue;
         
-        // Extract keywords from app metadata
-        const extractedKeywords = this.extractKeywordsFromMetadata(appData);
-        
-        for (const keyword of extractedKeywords) {
+        // Extract competitor app name variations
+        const nameKeywords = this.extractFromAppName(appData.trackName);
+        nameKeywords.forEach(kw => {
           keywords.push({
-            keyword,
-            estimatedVolume: await this.estimateVolumeFromCategory(keyword, appData.primaryGenreName),
-            difficulty: await this.estimateKeywordDifficulty(keyword, country),
+            ...kw,
             source: 'competitor',
-            competitorApp: appData.trackName
+            competitorApp: appData.trackName,
+            relevanceScore: kw.relevanceScore * 0.7 // Lower relevance for competitor terms
+          });
+        });
+        
+        // Extract from competitor description
+        if (appData.description) {
+          const descKeywords = this.extractFromDescription(appData.description);
+          descKeywords.forEach(kw => {
+            keywords.push({
+              ...kw,
+              source: 'competitor',
+              competitorApp: appData.trackName,
+              relevanceScore: kw.relevanceScore * 0.6
+            });
           });
         }
       } catch (error) {
-        console.warn(`Failed to extract keywords from app ${appId}:`, error);
+        console.warn(`Failed to analyze competitor ${appId}:`, error);
       }
     }
     
-    return this.deduplicateKeywords(keywords);
+    return keywords;
   }
 
   /**
-   * Discover keywords by category analysis
+   * Find trending keywords for category
    */
-  async harvestCategoryKeywords(
+  private async findTrendingCategoryKeywords(
     category: string,
-    country: string = 'us',
-    maxApps: number = 50
+    country: string = 'us'
   ): Promise<DiscoveredKeyword[]> {
-    try {
-      // Search for top apps in category
-      const topApps = await this.getTopAppsInCategory(category, country, maxApps);
-      const appIds = topApps.map(app => app.trackId.toString());
-      
-      // Extract keywords from all top apps
-      return await this.harvestCompetitorKeywords(appIds, country);
-    } catch (error) {
-      console.error('Failed to harvest category keywords:', error);
-      return [];
-    }
+    const trendingTerms: Record<string, string[]> = {
+      'education': ['ai learning', 'personalized education', 'skill development', 'online courses'],
+      'productivity': ['remote work', 'time management', 'task automation', 'digital workspace'],
+      'health & fitness': ['mental health', 'home workout', 'nutrition tracking', 'wellness coach'],
+      'lifestyle': ['mindfulness', 'habit tracking', 'personal growth', 'life coaching'],
+      'entertainment': ['interactive content', 'streaming', 'social gaming', 'virtual reality'],
+      'social networking': ['video chat', 'community building', 'content creation', 'live streaming']
+    };
+    
+    const terms = trendingTerms[category.toLowerCase()] || [];
+    
+    return terms.map(term => ({
+      keyword: term,
+      estimatedVolume: 2500,
+      difficulty: 6.0,
+      source: 'trending' as const,
+      relevanceScore: 6.5
+    }));
   }
 
   /**
-   * Main keyword discovery orchestrator
+   * Generate brand-specific keywords
    */
-  async discoverKeywords(options: KeywordDiscoveryOptions): Promise<DiscoveredKeyword[]> {
-    const allKeywords: DiscoveredKeyword[] = [];
-    const maxKeywords = options.maxKeywords || 200;
+  private generateBrandKeywords(appName: string, category: string): DiscoveredKeyword[] {
+    const keywords: DiscoveredKeyword[] = [];
+    const cleanName = appName.toLowerCase();
     
-    console.log(`🔍 [DISCOVERY] Starting keyword discovery for org: ${options.organizationId}`);
+    // Brand + common action words
+    const actionWords = ['app', 'download', 'free', 'premium', 'pro', 'plus'];
+    actionWords.forEach(action => {
+      keywords.push({
+        keyword: `${cleanName} ${action}`,
+        estimatedVolume: 800,
+        difficulty: 3.0,
+        source: 'app_metadata',
+        relevanceScore: 6.0
+      });
+    });
     
-    // 1. Harvest from seed keywords via autocomplete
-    if (options.seedKeywords && options.seedKeywords.length > 0) {
-      console.log('📝 [DISCOVERY] Harvesting autocomplete keywords...');
-      const autocompleteKeywords = await this.harvestAutocompleteKeywords(
-        options.seedKeywords,
-        options.country,
-        Math.floor(maxKeywords * 0.4 / options.seedKeywords.length) // 40% from autocomplete
-      );
-      allKeywords.push(...autocompleteKeywords);
-    }
-    
-    // 2. Harvest from competitor apps
-    if (options.competitorApps && options.competitorApps.length > 0) {
-      console.log('🏢 [DISCOVERY] Harvesting competitor keywords...');
-      const competitorKeywords = await this.harvestCompetitorKeywords(
-        options.competitorApps,
-        options.country
-      );
-      allKeywords.push(...competitorKeywords.slice(0, Math.floor(maxKeywords * 0.4))); // 40% from competitors
-    }
-    
-    // 3. Harvest from category if target app provided
-    if (options.targetApp?.category) {
-      console.log('📱 [DISCOVERY] Harvesting category keywords...');
-      const categoryKeywords = await this.harvestCategoryKeywords(
-        options.targetApp.category,
-        options.country,
-        20
-      );
-      allKeywords.push(...categoryKeywords.slice(0, Math.floor(maxKeywords * 0.2))); // 20% from category
-    }
-    
-    // Deduplicate and prioritize
-    const uniqueKeywords = this.deduplicateKeywords(allKeywords);
-    const prioritizedKeywords = this.prioritizeKeywords(uniqueKeywords);
-    
-    console.log(`✅ [DISCOVERY] Discovered ${prioritizedKeywords.length} unique keywords`);
-    
-    return prioritizedKeywords.slice(0, maxKeywords);
+    return keywords;
   }
 
-  // Helper methods
-  private async getAutocompleteSuggestions(term: string, country: string): Promise<string[]> {
-    try {
-      const url = `${this.autocompleteUrl}?clientApplication=Software&term=${encodeURIComponent(term)}`;
-      const response = await fetch(url);
-      
-      if (!response.ok) return [];
-      
-      const data = await response.json();
-      return data.hints || [];
-    } catch {
-      return [];
+  // Utility methods
+  private extractFromText(text: string, source: DiscoveredKeyword['source']): DiscoveredKeyword[] {
+    return text
+      .toLowerCase()
+      .replace(/[^\w\s]/g, ' ')
+      .split(/\s+/)
+      .filter(word => word.length > 3 && !this.isCommonWord(word))
+      .map(word => ({
+        keyword: word,
+        estimatedVolume: 1000,
+        difficulty: 4.0,
+        source,
+        relevanceScore: 5.0
+      }));
+  }
+
+  private isCommonWord(word: string): boolean {
+    const commonWords = [
+      'the', 'and', 'for', 'with', 'your', 'you', 'are', 'can', 'will', 'this', 'that',
+      'app', 'application', 'mobile', 'phone', 'device', 'free', 'best', 'new', 'top'
+    ];
+    return commonWords.includes(word.toLowerCase());
+  }
+
+  private isRelevantPhrase(phrase: string): boolean {
+    // Filter out phrases that are too generic
+    const irrelevantPhrases = [
+      'app store', 'mobile app', 'download now', 'get started', 'sign up'
+    ];
+    return !irrelevantPhrases.includes(phrase.toLowerCase()) && phrase.length >= 6;
+  }
+
+  private deduplicateAndScore(
+    keywords: DiscoveredKeyword[], 
+    targetApp?: KeywordDiscoveryOptions['targetApp']
+  ): DiscoveredKeyword[] {
+    const seen = new Map<string, DiscoveredKeyword>();
+    
+    for (const keyword of keywords) {
+      const key = keyword.keyword.toLowerCase().trim();
+      if (!seen.has(key) || keyword.relevanceScore > seen.get(key)!.relevanceScore) {
+        seen.set(key, keyword);
+      }
     }
+    
+    return Array.from(seen.values());
+  }
+
+  private prioritizeByRelevance(keywords: DiscoveredKeyword[]): DiscoveredKeyword[] {
+    return keywords.sort((a, b) => {
+      // Priority: relevance score, then volume/difficulty ratio
+      const scoreA = a.relevanceScore + (a.estimatedVolume / (a.difficulty + 1));
+      const scoreB = b.relevanceScore + (b.estimatedVolume / (b.difficulty + 1));
+      return scoreB - scoreA;
+    });
   }
 
   private async getAppMetadata(appId: string, country: string): Promise<any> {
@@ -192,107 +419,5 @@ export class KeywordDiscoveryService {
     } catch {
       return null;
     }
-  }
-
-  private async getTopAppsInCategory(category: string, country: string, limit: number): Promise<any[]> {
-    try {
-      const url = `${this.baseUrl}?term=${encodeURIComponent(category)}&country=${country}&entity=software&limit=${limit}`;
-      const response = await fetch(url);
-      
-      if (!response.ok) return [];
-      
-      const data = await response.json();
-      return data.results || [];
-    } catch {
-      return [];
-    }
-  }
-
-  private extractKeywordsFromMetadata(appData: any): string[] {
-    const keywords: string[] = [];
-    
-    // Extract from app name and subtitle
-    const title = appData.trackName || '';
-    const subtitle = appData.trackCensoredName || '';
-    const description = appData.description || '';
-    
-    // Simple keyword extraction (can be enhanced)
-    const text = `${title} ${subtitle} ${description}`.toLowerCase();
-    const words = text.match(/\b[a-z]{3,}\b/g) || [];
-    
-    // Filter common words and duplicates
-    const commonWords = ['app', 'the', 'and', 'for', 'with', 'your', 'best', 'free', 'new'];
-    const uniqueWords = [...new Set(words)]
-      .filter(word => !commonWords.includes(word))
-      .slice(0, 10);
-    
-    return uniqueWords;
-  }
-
-  private async estimateKeywordDifficulty(keyword: string, country: string): Promise<number> {
-    try {
-      // Simple difficulty estimation based on search results count
-      const url = `${this.baseUrl}?term=${encodeURIComponent(keyword)}&country=${country}&entity=software&limit=200`;
-      const response = await fetch(url);
-      
-      if (!response.ok) return 5.0;
-      
-      const data = await response.json();
-      const resultCount = data.resultCount || 0;
-      
-      // Convert result count to difficulty score (0-10)
-      if (resultCount > 500) return 9.0;
-      if (resultCount > 200) return 7.5;
-      if (resultCount > 100) return 6.0;
-      if (resultCount > 50) return 4.5;
-      return 3.0;
-    } catch {
-      return 5.0; // Default difficulty
-    }
-  }
-
-  private async estimateVolumeFromCategory(keyword: string, category: string): Promise<number> {
-    // Category-based volume estimation
-    const categoryMultipliers: Record<string, number> = {
-      'Health & Fitness': 1.5,
-      'Lifestyle': 1.3,
-      'Productivity': 1.2,
-      'Education': 1.1,
-      'Entertainment': 1.4,
-      'Games': 2.0,
-      'Social Networking': 1.6,
-      'Utilities': 0.8
-    };
-    
-    const baseVolume = 1000;
-    const multiplier = categoryMultipliers[category] || 1.0;
-    const keywordLength = keyword.split(' ').length;
-    
-    // Longer keywords typically have lower volume
-    const lengthPenalty = keywordLength > 2 ? 0.7 : 1.0;
-    
-    return Math.floor(baseVolume * multiplier * lengthPenalty);
-  }
-
-  private deduplicateKeywords(keywords: DiscoveredKeyword[]): DiscoveredKeyword[] {
-    const seen = new Map<string, DiscoveredKeyword>();
-    
-    for (const keyword of keywords) {
-      const key = keyword.keyword.toLowerCase().trim();
-      if (!seen.has(key) || keyword.estimatedVolume > seen.get(key)!.estimatedVolume) {
-        seen.set(key, keyword);
-      }
-    }
-    
-    return Array.from(seen.values());
-  }
-
-  private prioritizeKeywords(keywords: DiscoveredKeyword[]): DiscoveredKeyword[] {
-    return keywords.sort((a, b) => {
-      // Priority: High volume, low difficulty
-      const scoreA = a.estimatedVolume / (a.difficulty + 1);
-      const scoreB = b.estimatedVolume / (b.difficulty + 1);
-      return scoreB - scoreA;
-    });
   }
 }

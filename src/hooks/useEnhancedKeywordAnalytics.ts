@@ -210,7 +210,7 @@ export const useEnhancedKeywordAnalytics = ({
     }
   };
 
-  // NEW: Discover real keywords from App Store
+  // Enhanced real keyword discovery with better app integration
   const discoverRealKeywords = async (config?: {
     seedKeywords?: string[];
     competitorApps?: string[];
@@ -219,10 +219,10 @@ export const useEnhancedKeywordAnalytics = ({
     if (!appId) return { success: false, discovered: 0, saved: 0 };
 
     try {
-      console.log('🌱 [HOOK] Starting real keyword discovery for app:', appId);
-      toast.info('Discovering keywords from App Store...');
+      console.log('🌱 [HOOK] Starting enhanced keyword discovery for app:', appId);
+      toast.info('Discovering relevant keywords from App Store...');
 
-      // Use the keyword discovery integration service
+      // Use the enhanced keyword discovery integration service
       const { keywordDiscoveryIntegrationService } = await import('@/services/keyword-discovery-integration.service');
       
       const result = await keywordDiscoveryIntegrationService.discoverAndSaveKeywords({
@@ -230,11 +230,11 @@ export const useEnhancedKeywordAnalytics = ({
         appId,
         seedKeywords: config?.seedKeywords,
         competitorApps: config?.competitorApps,
-        maxKeywords: config?.maxKeywords || 100
+        maxKeywords: config?.maxKeywords || 50
       });
 
-      if (result.success) {
-        toast.success(`Discovered ${result.keywordsDiscovered} keywords, saved ${result.keywordsSaved} to database`);
+      if (result.success && result.keywordsDiscovered > 0) {
+        toast.success(`Discovered ${result.keywordsDiscovered} relevant keywords, saved ${result.keywordsSaved} to database`);
         
         // Refresh all data after successful discovery
         refetchTrends();
@@ -247,13 +247,13 @@ export const useEnhancedKeywordAnalytics = ({
           saved: result.keywordsSaved 
         };
       } else {
-        toast.error('Failed to discover keywords from App Store');
+        toast.warning('Keyword discovery completed but found limited relevant results. Try providing more specific seed keywords.');
         return { success: false, discovered: 0, saved: 0 };
       }
 
     } catch (error) {
-      console.error('❌ [HOOK] Exception during keyword discovery:', error);
-      toast.error('An error occurred during keyword discovery');
+      console.error('❌ [HOOK] Exception during enhanced keyword discovery:', error);
+      toast.error('An error occurred during keyword discovery. Please try again.');
       return { success: false, discovered: 0, saved: 0 };
     }
   };
