@@ -18,7 +18,7 @@ interface AppStoreSearchResult {
 
 interface SearchResponse {
   success: boolean;
-  data?: AppStoreSearchResult;
+  data?: AppStoreSearchResult[];
   error?: string;
 }
 
@@ -35,7 +35,7 @@ export class AppStoreIntegrationService {
           includeCompetitorAnalysis: false,
           searchParameters: {
             country: 'us',
-            limit: 5
+            limit: 10
           }
         }
       });
@@ -52,9 +52,11 @@ export class AppStoreIntegrationService {
 
       console.log('✅ [APPSTORE-INTEGRATION] Search successful:', data.data);
       
+      // Ensure we return an array of results
+      const results = Array.isArray(data.data) ? data.data : [data.data];
+      
       // Transform the response to match our interface
-      const appData = data.data;
-      const result: AppStoreSearchResult = {
+      const transformedResults: AppStoreSearchResult[] = results.map((appData: any) => ({
         name: appData.name || searchTerm,
         appId: appData.appId || '',
         title: appData.title || appData.name || searchTerm,
@@ -67,9 +69,9 @@ export class AppStoreIntegrationService {
         developer: appData.developer || '',
         applicationCategory: appData.applicationCategory || '',
         locale: appData.locale || 'en-US'
-      };
+      }));
 
-      return { success: true, data: result };
+      return { success: true, data: transformedResults };
     } catch (error: any) {
       console.error('💥 [APPSTORE-INTEGRATION] Exception:', error);
       return { 

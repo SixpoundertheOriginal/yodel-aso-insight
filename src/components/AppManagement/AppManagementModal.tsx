@@ -18,7 +18,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Smartphone, Search, Loader2, ExternalLink, Star } from 'lucide-react';
+import { Smartphone, Search, Loader2, ExternalLink, Star, CheckCircle } from 'lucide-react';
 import { useAppManagement } from '@/hooks/useAppManagement';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -54,7 +54,7 @@ export const AppManagementModal: React.FC<AppManagementModalProps> = ({
   
   const [formData, setFormData] = useState({
     app_name: '',
-    platform: 'iOS' as 'iOS' | 'Android',
+    platform: 'ios' as 'ios' | 'android',
     app_store_id: '',
     bundle_id: '',
     category: '',
@@ -63,14 +63,15 @@ export const AppManagementModal: React.FC<AppManagementModalProps> = ({
   });
 
   const [isSearching, setIsSearching] = useState(false);
-  const [searchResults, setSearchResults] = useState<any>(null);
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [selectedResult, setSelectedResult] = useState<any>(null);
 
   // Reset form when modal opens/closes or app changes
   useEffect(() => {
     if (app && mode === 'edit') {
       setFormData({
         app_name: app.app_name || '',
-        platform: (app.platform as 'iOS' | 'Android') || 'iOS',
+        platform: (app.platform?.toLowerCase() as 'ios' | 'android') || 'ios',
         app_store_id: app.app_store_id || '',
         bundle_id: app.bundle_id || '',
         category: app.category || '',
@@ -80,7 +81,7 @@ export const AppManagementModal: React.FC<AppManagementModalProps> = ({
     } else {
       setFormData({
         app_name: '',
-        platform: 'iOS',
+        platform: 'ios',
         app_store_id: '',
         bundle_id: '',
         category: '',
@@ -89,6 +90,7 @@ export const AppManagementModal: React.FC<AppManagementModalProps> = ({
       });
     }
     setSearchResults([]);
+    setSelectedResult(null);
   }, [app, mode, isOpen]);
 
   const handleInputChange = (field: string, value: string) => {
@@ -112,7 +114,8 @@ export const AppManagementModal: React.FC<AppManagementModalProps> = ({
     }
 
     setIsSearching(true);
-    setSearchResults(null);
+    setSearchResults([]);
+    setSelectedResult(null);
     
     try {
       // Get user's organization ID
@@ -133,16 +136,18 @@ export const AppManagementModal: React.FC<AppManagementModalProps> = ({
       );
 
       if (result.success && result.data) {
-        setSearchResults(result.data);
-        toast.success('App found! Click to auto-fill details.');
+        // Convert single result to array for consistent handling
+        const results = Array.isArray(result.data) ? result.data : [result.data];
+        setSearchResults(results);
+        toast.success(`Found ${results.length} app(s). Select the correct one below.`);
       } else {
         toast.error(result.error || 'No apps found for that search term');
-        setSearchResults(null);
+        setSearchResults([]);
       }
     } catch (error: any) {
       console.error('Search error:', error);
       toast.error('Search failed. Please try again.');
-      setSearchResults(null);
+      setSearchResults([]);
     } finally {
       setIsSearching(false);
     }
@@ -162,7 +167,7 @@ export const AppManagementModal: React.FC<AppManagementModalProps> = ({
 
       const result = await AppStoreIntegrationService.validateAppStoreId(
         appStoreId,
-        formData.platform,
+        formData.platform === 'ios' ? 'iOS' : 'Android',
         profile.organization_id
       );
 
@@ -184,6 +189,7 @@ export const AppManagementModal: React.FC<AppManagementModalProps> = ({
   };
 
   const selectSearchResult = (result: any) => {
+    setSelectedResult(result);
     setFormData(prev => ({
       ...prev,
       app_store_id: result.appId || '',
@@ -192,7 +198,6 @@ export const AppManagementModal: React.FC<AppManagementModalProps> = ({
       app_icon_url: result.icon || '',
       bundle_id: result.appId || prev.bundle_id
     }));
-    setSearchResults(null);
     toast.success('App details auto-filled from App Store');
   };
 
@@ -224,7 +229,7 @@ export const AppManagementModal: React.FC<AppManagementModalProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="bg-zinc-900 border-zinc-800 max-w-2xl">
+      <DialogContent className="bg-zinc-900 border-zinc-800 max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-white flex items-center gap-2">
             <Smartphone className="h-5 w-5 text-yodel-orange" />
@@ -260,8 +265,8 @@ export const AppManagementModal: React.FC<AppManagementModalProps> = ({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="bg-zinc-800 border-zinc-700">
-                    <SelectItem value="iOS">iOS</SelectItem>
-                    <SelectItem value="Android">Android</SelectItem>
+                    <SelectItem value="ios">iOS</SelectItem>
+                    <SelectItem value="android">Android</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -285,44 +290,67 @@ export const AppManagementModal: React.FC<AppManagementModalProps> = ({
                   Search App Store
                 </Button>
                 <Badge variant="secondary" className="bg-zinc-800 text-zinc-300">
-                  Auto-fill metadata
+                  Find real app data
                 </Badge>
               </div>
 
-              {searchResults && (
-                <div className="border border-zinc-700 rounded-lg p-3 space-y-2">
-                  <div className="text-sm font-medium text-white">Search Result:</div>
-                  <div
-                    className="flex items-center gap-3 p-3 bg-zinc-800 rounded cursor-pointer hover:bg-zinc-700 transition-colors"
-                    onClick={() => selectSearchResult(searchResults)}
-                  >
-                    {searchResults.icon ? (
-                      <img src={searchResults.icon} alt={searchResults.name} className="w-12 h-12 rounded-lg" />
-                    ) : (
-                      <div className="w-12 h-12 bg-zinc-600 rounded-lg flex items-center justify-center">
-                        <Smartphone className="h-6 w-6 text-zinc-400" />
-                      </div>
-                    )}
-                    <div className="flex-1">
-                      <div className="text-white font-medium">{searchResults.name}</div>
-                      <div className="text-sm text-zinc-400">{searchResults.developer}</div>
-                      {searchResults.rating > 0 && (
-                        <div className="flex items-center gap-1 mt-1">
-                          <Star className="h-3 w-3 fill-yellow-400 text-yellow-400" />
-                          <span className="text-xs text-zinc-400">{searchResults.rating}</span>
-                          {searchResults.reviews > 0 && (
-                            <span className="text-xs text-zinc-500">({searchResults.reviews} reviews)</span>
+              {/* Search Results */}
+              {searchResults.length > 0 && (
+                <div className="border border-zinc-700 rounded-lg p-4 space-y-3">
+                  <div className="text-sm font-medium text-white">
+                    Search Results ({searchResults.length} found):
+                  </div>
+                  <div className="grid gap-3 max-h-64 overflow-y-auto">
+                    {searchResults.map((result, index) => (
+                      <div
+                        key={index}
+                        className={`flex items-center gap-3 p-3 rounded cursor-pointer transition-colors ${
+                          selectedResult === result 
+                            ? 'bg-yodel-orange/20 border border-yodel-orange' 
+                            : 'bg-zinc-800 hover:bg-zinc-700'
+                        }`}
+                        onClick={() => selectSearchResult(result)}
+                      >
+                        {result.icon ? (
+                          <img src={result.icon} alt={result.name} className="w-12 h-12 rounded-lg" />
+                        ) : (
+                          <div className="w-12 h-12 bg-zinc-600 rounded-lg flex items-center justify-center">
+                            <Smartphone className="h-6 w-6 text-zinc-400" />
+                          </div>
+                        )}
+                        <div className="flex-1">
+                          <div className="text-white font-medium">{result.name}</div>
+                          <div className="text-sm text-zinc-400">{result.developer}</div>
+                          {result.rating > 0 && (
+                            <div className="flex items-center gap-1 mt-1">
+                              <Star className="h-3 w-3 fill-yellow-400 text-yellow-400" />
+                              <span className="text-xs text-zinc-400">{result.rating}</span>
+                              {result.reviews > 0 && (
+                                <span className="text-xs text-zinc-500">({result.reviews} reviews)</span>
+                              )}
+                            </div>
+                          )}
+                          {result.applicationCategory && (
+                            <Badge variant="outline" className="mt-1 text-xs border-zinc-600 text-zinc-400">
+                              {result.applicationCategory}
+                            </Badge>
                           )}
                         </div>
-                      )}
-                      {searchResults.applicationCategory && (
-                        <Badge variant="outline" className="mt-1 text-xs border-zinc-600 text-zinc-400">
-                          {searchResults.applicationCategory}
-                        </Badge>
-                      )}
-                    </div>
-                    <ExternalLink className="h-4 w-4 text-zinc-400" />
+                        <div className="flex items-center gap-2">
+                          {selectedResult === result && (
+                            <CheckCircle className="h-5 w-5 text-yodel-orange" />
+                          )}
+                          <ExternalLink className="h-4 w-4 text-zinc-400" />
+                        </div>
+                      </div>
+                    ))}
                   </div>
+                  {searchResults.length === 0 && (
+                    <div className="text-center py-8 text-zinc-400">
+                      <Smartphone className="h-12 w-12 mx-auto mb-2 text-zinc-600" />
+                      <p>No apps found. Try a different search term or add manually.</p>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -336,7 +364,7 @@ export const AppManagementModal: React.FC<AppManagementModalProps> = ({
                   value={formData.app_store_id}
                   onChange={(e) => handleInputChange('app_store_id', e.target.value)}
                   className="bg-zinc-800 border-zinc-700 text-white"
-                  placeholder={formData.platform === 'iOS' ? '123456789' : 'com.company.app'}
+                  placeholder={formData.platform === 'ios' ? '123456789' : 'com.company.app'}
                 />
               </div>
               <div>

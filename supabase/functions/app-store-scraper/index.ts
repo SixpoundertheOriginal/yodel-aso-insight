@@ -1,7 +1,7 @@
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
-const VERSION = '7.2.0-emergency-body-fix'
+const VERSION = '8.0.0-real-search'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -39,11 +39,9 @@ serve(async (req: Request) => {
   const startTime = Date.now()
   const correlationId = req.headers.get('x-correlation-id') || crypto.randomUUID()
 
-  // EMERGENCY DEBUG: Log all request details
   console.log(`🔍 [${correlationId}] REQUEST RECEIVED:`, {
     method: req.method,
     url: req.url,
-    headers: Object.fromEntries(req.headers.entries()),
     timestamp: new Date().toISOString()
   })
 
@@ -64,9 +62,9 @@ serve(async (req: Request) => {
         status: 'ok',
         version: VERSION,
         timestamp: new Date().toISOString(),
-        mode: 'emergency-body-fix',
+        mode: 'real-search-enabled',
         correlationId,
-        message: 'Edge function is healthy and ready'
+        message: 'App Store scraper is ready for real searches'
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 200
@@ -86,167 +84,93 @@ serve(async (req: Request) => {
       })
     }
 
-    // EMERGENCY FIX: Robust body parsing with multiple strategies
+    // Parse request body
     let requestData: any
-    const contentType = req.headers.get('content-type') || ''
-    
-    console.log(`📋 [${correlationId}] PARSING REQUEST BODY:`, {
-      contentType,
-      hasBody: req.body !== null,
-      bodyLocked: req.bodyUsed
-    })
-
     try {
-      // Strategy 1: Try standard JSON parsing first
-      if (contentType.includes('application/json')) {
-        console.log(`📥 [${correlationId}] Using JSON parsing strategy`)
-        requestData = await req.json()
-        console.log(`✅ [${correlationId}] JSON parsing successful:`, requestData)
-      } else {
-        // Strategy 2: Get raw text and attempt JSON parse
-        console.log(`📥 [${correlationId}] Using text parsing strategy`)
-        const rawText = await req.text()
-        console.log(`📄 [${correlationId}] Raw body received:`, {
-          length: rawText.length,
-          content: rawText.substring(0, 500),
-          isEmpty: rawText.trim() === ''
-        })
-        
-        if (!rawText || rawText.trim() === '') {
-          throw new Error('Request body is completely empty')
-        }
-        
-        requestData = JSON.parse(rawText)
-        console.log(`✅ [${correlationId}] Text-to-JSON parsing successful:`, requestData)
-      }
-
-      // Strategy 3: Validate parsed data structure
-      if (!requestData || typeof requestData !== 'object') {
-        throw new Error(`Invalid request data structure: ${typeof requestData}`)
-      }
-
-      console.log(`🎯 [${correlationId}] REQUEST DATA VALIDATED:`, {
+      requestData = await req.json()
+      console.log(`🎯 [${correlationId}] REQUEST PARSED:`, {
         hasSearchTerm: !!requestData.searchTerm,
-        hasOrgId: !!requestData.organizationId,
-        searchTermType: typeof requestData.searchTerm,
-        searchTermLength: requestData.searchTerm?.length || 0
+        searchTerm: requestData.searchTerm,
+        organizationId: requestData.organizationId
       })
-
-    } catch (parseError: any) {
-      console.error(`💥 [${correlationId}] BODY PARSING FAILED:`, {
-        error: parseError.message,
-        stack: parseError.stack,
-        contentType,
-        receivedHeaders: Object.fromEntries(req.headers.entries())
-      })
-      
+    } catch (error: any) {
+      console.error(`💥 [${correlationId}] BODY PARSING FAILED:`, error.message)
       return new Response(JSON.stringify({
         success: false,
-        error: 'Request body parsing failed',
-        correlationId,
-        details: {
-          parseError: parseError.message,
-          contentType,
-          receivedHeaders: Object.fromEntries(req.headers.entries()),
-          expectedFormat: '{"searchTerm": "string", "organizationId": "string"}'
-        },
-        version: VERSION
+        error: 'Invalid JSON in request body',
+        correlationId
       }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
     }
 
-    // Enhanced validation with detailed error reporting
-    const validationErrors: string[] = []
-    
-    if (!requestData.searchTerm || typeof requestData.searchTerm !== 'string' || requestData.searchTerm.trim().length === 0) {
-      validationErrors.push(`searchTerm is required and must be a non-empty string. Received: ${JSON.stringify(requestData.searchTerm)}`)
-    }
-
-    if (!requestData.organizationId || typeof requestData.organizationId !== 'string') {
-      validationErrors.push(`organizationId is required and must be a string. Received: ${JSON.stringify(requestData.organizationId)}`)
-    }
-
-    if (validationErrors.length > 0) {
-      console.error(`❌ [${correlationId}] VALIDATION FAILED:`, {
-        errors: validationErrors,
-        receivedRequest: requestData
-      })
-      
+    // Validate required fields
+    if (!requestData.searchTerm || !requestData.organizationId) {
+      console.error(`❌ [${correlationId}] VALIDATION FAILED`)
       return new Response(JSON.stringify({
         success: false,
-        error: 'Request validation failed',
-        correlationId,
-        validationErrors,
-        receivedRequest: requestData,
-        requiredFields: ['searchTerm', 'organizationId'],
-        version: VERSION
+        error: 'Missing required fields: searchTerm and organizationId',
+        correlationId
       }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
     }
 
-    // Extract validated request data
-    const { searchTerm, searchType = 'keyword', organizationId, includeCompetitorAnalysis = true, searchParameters = {} } = requestData
+    const { searchTerm, searchType = 'keyword', organizationId, searchParameters = {} } = requestData
+    const country = searchParameters.country || 'us'
+    const limit = Math.min(searchParameters.limit || 5, 25) // Cap at 25 results
 
-    console.log(`🚀 [${correlationId}] PROCESSING VALIDATED REQUEST:`, {
+    console.log(`🚀 [${correlationId}] STARTING REAL APP STORE SEARCH:`, {
       searchTerm,
       searchType,
-      organizationId,
-      includeCompetitorAnalysis,
-      country: searchParameters.country || 'us',
-      limit: searchParameters.limit || 25
+      country,
+      limit
     })
 
-    // For now, return a test response to confirm body parsing is working
-    const testResponse = {
-      name: `Test App for "${searchTerm}"`,
-      appId: `test-${Date.now()}`,
-      title: `Search Results: ${searchTerm}`,
-      subtitle: 'Emergency Body Fix Test Response',
-      description: `This is a test response for search term: ${searchTerm}. Request body parsing is now working correctly.`,
-      url: 'https://apps.apple.com/test',
-      icon: '',
-      rating: 4.5,
-      reviews: 1000,
-      developer: 'Test Developer',
-      applicationCategory: 'Utilities',
-      locale: 'en-US',
-      competitors: [],
-      searchContext: {
-        query: searchTerm,
-        type: searchType,
-        totalResults: 1,
-        category: 'Test',
-        country: searchParameters.country || 'us'
-      }
+    // Perform real App Store search using iTunes Search API
+    const searchResults = await performRealAppStoreSearch(searchTerm, country, limit, correlationId)
+
+    if (!searchResults || searchResults.length === 0) {
+      console.log(`📭 [${correlationId}] NO RESULTS FOUND`)
+      return new Response(JSON.stringify({
+        success: false,
+        error: `No apps found for "${searchTerm}" in ${country.toUpperCase()}`,
+        correlationId,
+        searchTerm,
+        country
+      }), {
+        status: 404,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      })
     }
 
     const processingTime = Date.now() - startTime
-    console.log(`✅ [${correlationId}] REQUEST COMPLETED SUCCESSFULLY:`, {
-      processingTime: `${processingTime}ms`,
-      searchTerm,
-      organizationId,
-      bodyParsingFixed: true
+    console.log(`✅ [${correlationId}] SEARCH COMPLETED:`, {
+      resultsCount: searchResults.length,
+      processingTime: `${processingTime}ms`
     })
 
+    // Return multiple results for user selection
     return new Response(JSON.stringify({
       success: true,
-      data: testResponse,
+      data: searchResults,
       correlationId,
       processingTime: `${processingTime}ms`,
       version: VERSION,
-      debugMode: true,
-      message: 'Emergency body fix successful - request parsing working'
+      searchContext: {
+        query: searchTerm,
+        country,
+        resultsReturned: searchResults.length,
+        totalFound: searchResults.length
+      }
     }), {
       headers: {
         ...corsHeaders,
         'Content-Type': 'application/json',
         'X-Processing-Time': `${processingTime}ms`,
-        'X-Correlation-ID': correlationId,
-        'X-Debug-Mode': 'enabled'
+        'X-Correlation-ID': correlationId
       },
       status: 200
     })
@@ -256,21 +180,15 @@ serve(async (req: Request) => {
     console.error(`💥 [${correlationId}] CRITICAL ERROR:`, {
       error: error.message,
       stack: error.stack,
-      processingTime: `${processingTime}ms`,
-      timestamp: new Date().toISOString()
+      processingTime: `${processingTime}ms`
     })
     
     return new Response(JSON.stringify({
       success: false,
-      error: 'Internal server error',
+      error: 'App Store search service temporarily unavailable',
       correlationId,
-      details: {
-        message: error.message,
-        stack: error.stack,
-        processingTime: `${processingTime}ms`
-      },
-      version: VERSION,
-      timestamp: new Date().toISOString()
+      details: error.message,
+      version: VERSION
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -278,7 +196,72 @@ serve(async (req: Request) => {
   }
 })
 
-// Utility functions for when we restore full functionality
+async function performRealAppStoreSearch(searchTerm: string, country: string, limit: number, correlationId: string): Promise<AppData[]> {
+  try {
+    console.log(`🔍 [${correlationId}] CALLING ITUNES SEARCH API:`, {
+      term: searchTerm,
+      country,
+      limit
+    })
+
+    const searchUrl = `https://itunes.apple.com/search?term=${encodeURIComponent(searchTerm)}&country=${country}&entity=software&limit=${limit}`
+    
+    const response = await fetch(searchUrl, {
+      method: 'GET',
+      headers: {
+        'User-Agent': 'ASO-Insights-Platform/1.0'
+      }
+    })
+
+    if (!response.ok) {
+      console.error(`❌ [${correlationId}] ITUNES API ERROR:`, {
+        status: response.status,
+        statusText: response.statusText
+      })
+      throw new Error(`iTunes API returned ${response.status}: ${response.statusText}`)
+    }
+
+    const data = await response.json()
+    
+    console.log(`📊 [${correlationId}] ITUNES API RESPONSE:`, {
+      resultCount: data.resultCount,
+      resultsLength: data.results?.length || 0
+    })
+
+    if (!data.results || data.results.length === 0) {
+      return []
+    }
+
+    // Transform iTunes API results to our format
+    const transformedResults: AppData[] = data.results.map((app: any) => ({
+      name: app.trackName || app.bundleId,
+      appId: app.trackId?.toString() || app.bundleId,
+      title: app.trackName || app.bundleId,
+      subtitle: app.subtitle || '',
+      description: app.description || '',
+      url: app.trackViewUrl || '',
+      icon: app.artworkUrl512 || app.artworkUrl100 || app.artworkUrl60 || '',
+      rating: app.averageUserRating || 0,
+      reviews: app.userRatingCount || 0,
+      developer: app.artistName || app.sellerName || '',
+      applicationCategory: app.primaryGenreName || app.genres?.[0] || '',
+      locale: 'en-US'
+    }))
+
+    console.log(`✅ [${correlationId}] TRANSFORMED ${transformedResults.length} RESULTS`)
+    
+    return transformedResults
+
+  } catch (error: any) {
+    console.error(`💥 [${correlationId}] SEARCH FAILED:`, {
+      error: error.message,
+      searchTerm,
+      country
+    })
+    throw error
+  }
+}
+
 function isAppStoreUrl(input: string): boolean {
   try {
     const url = new URL(input.startsWith('http') ? input : `https://${input}`)
