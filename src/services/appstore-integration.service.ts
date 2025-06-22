@@ -81,12 +81,12 @@ export class AppStoreIntegrationService {
     }
   }
 
-  static async validateAppStoreId(appStoreId: string, platform: 'iOS' | 'Android', organizationId: string): Promise<SearchResponse> {
+  static async validateAppStoreId(appStoreId: string, platform: 'ios' | 'android', organizationId: string): Promise<SearchResponse> {
     try {
       console.log('🔍 [APPSTORE-INTEGRATION] Validating App Store ID:', appStoreId);
       
       // For iOS, search by app store URL
-      const searchUrl = platform === 'iOS' 
+      const searchUrl = platform === 'ios' 
         ? `https://apps.apple.com/app/id${appStoreId}`
         : `https://play.google.com/store/apps/details?id=${appStoreId}`;
 
