@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { competitorKeywordAnalysisService, KeywordVolumeHistory, KeywordGapAnalysis, KeywordDifficultyScore, KeywordCluster } from '@/services/competitor-keyword-analysis.service';
 import { keywordRankingService, KeywordRanking } from '@/services/keyword-ranking.service';
+import { supabase } from '@/integrations/supabase/client';
 
 export interface AdvancedKeywordData {
   keyword: string;
@@ -42,44 +43,76 @@ export const useAdvancedKeywordIntelligence = ({
     opportunity: 'all' as 'all' | 'high' | 'medium' | 'low'
   });
 
+  // Get current user's organization ID if not provided
+  const { data: currentOrgId } = useQuery({
+    queryKey: ['current-organization'],
+    queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return null;
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('organization_id')
+        .eq('id', user.id)
+        .single();
+
+      return profile?.organization_id || null;
+    },
+    enabled: !organizationId,
+  });
+
+  const effectiveOrgId = organizationId || currentOrgId;
+
   // Fetch keyword gap analysis
   const { data: gapAnalysis = [], isLoading: isLoadingGaps } = useQuery({
-    queryKey: ['keyword-gap-analysis', organizationId, targetAppId],
-    queryFn: () => targetAppId 
-      ? competitorKeywordAnalysisService.getKeywordGapAnalysis(organizationId, targetAppId)
+    queryKey: ['keyword-gap-analysis', effectiveOrgId, targetAppId],
+    queryFn: () => targetAppId && effectiveOrgId
+      ? competitorKeywordAnalysisService.getKeywordGapAnalysis(effectiveOrgId, targetAppId)
       : Promise.resolve([]),
-    enabled: enabled && !!targetAppId,
+    enabled: enabled && !!targetAppId && !!effectiveOrgId,
     staleTime: 1000 * 60 * 15, // 15 minutes
   });
 
   // Fetch keyword clusters
   const { data: clusters = [], isLoading: isLoadingClusters } = useQuery({
-    queryKey: ['keyword-clusters', organizationId],
-    queryFn: () => competitorKeywordAnalysisService.getKeywordClusters(organizationId),
-    enabled,
+    queryKey: ['keyword-clusters', effectiveOrgId],
+    queryFn: () => effectiveOrgId 
+      ? competitorKeywordAnalysisService.getKeywordClusters(effectiveOrgId)
+      : Promise.resolve([]),
+    enabled: enabled && !!effectiveOrgId,
     staleTime: 1000 * 60 * 30, // 30 minutes
   });
 
   // Fetch volume trends for selected keyword
   const { data: volumeTrends = [], isLoading: isLoadingTrends } = useQuery({
-    queryKey: ['keyword-volume-trends', organizationId, selectedKeyword],
-    queryFn: () => selectedKeyword 
-      ? competitorKeywordAnalysisService.getKeywordVolumeTrends(organizationId, selectedKeyword)
+    queryKey: ['keyword-volume-trends', effectiveOrgId, selectedKeyword],
+    queryFn: () => selectedKeyword && effectiveOrgId
+      ? competitorKeywordAnalysisService.getKeywordVolumeTrends(effectiveOrgId, selectedKeyword)
       : Promise.resolve([]),
-    enabled: enabled && !!selectedKeyword,
+    enabled: enabled && !!selectedKeyword && !!effectiveOrgId,
     staleTime: 1000 * 60 * 10, // 10 minutes
   });
 
-  // Generate mock keyword data for demo (in real app this would come from actual analysis)
-  const generateMockKeywordData = (gaps: KeywordGapAnalysis[]): AdvancedKeywordData[] => {
-    const mockKeywords = [
-      'fitness app', 'workout tracker', 'exercise planner', 'health monitor',
-      'diet tracker', 'calorie counter', 'meditation app', 'yoga practice',
-      'running tracker', 'gym workout', 'weight loss', 'muscle building'
-    ];
+  // Generate enhanced keyword data combining real and demo data
+  const generateEnhancedKeywordData = (gaps: KeywordGapAnalysis[], clusters: KeywordCluster[]): AdvancedKeywordData[] => {
+    // Get keywords from clusters first
+    const clusterKeywords = clusters.flatMap(cluster => [
+      cluster.primaryKeyword,
+      ...cluster.relatedKeywords
+    ]);
 
-    return mockKeywords.map((keyword, index) => {
+    // Add gap analysis keywords
+    const gapKeywords = gaps.map(g => g.keyword);
+
+    // Combine and deduplicate
+    const allKeywords = Array.from(new Set([...clusterKeywords, ...gapKeywords]));
+
+    return allKeywords.map((keyword, index) => {
       const gapData = gaps.find(g => g.keyword === keyword);
+      const relatedCluster = clusters.find(c => 
+        c.primaryKeyword === keyword || c.relatedKeywords.includes(keyword)
+      );
+
       return {
         keyword,
         rank: gapData?.targetRank || Math.floor(Math.random() * 100) + 1,
@@ -94,7 +127,7 @@ export const useAdvancedKeywordIntelligence = ({
     });
   };
 
-  const keywordData = generateMockKeywordData(gapAnalysis);
+  const keywordData = generateEnhancedKeywordData(gapAnalysis, clusters);
 
   // Apply filters
   const filteredKeywords = keywordData.filter(kw => {
@@ -127,6 +160,7 @@ export const useAdvancedKeywordIntelligence = ({
     setFilters,
     isLoading: isLoadingGaps || isLoadingClusters,
     isLoadingTrends,
-    gapAnalysis
+    gapAnalysis,
+    effectiveOrgId
   };
 };

@@ -1,4 +1,3 @@
-
 import { supabase } from '@/integrations/supabase/client';
 import { securityService } from './security.service';
 
@@ -62,6 +61,27 @@ export interface KeywordGapAnalysis {
 }
 
 class CompetitorKeywordAnalysisService {
+  /**
+   * Get current user's organization ID from auth context
+   */
+  private async getCurrentOrganizationId(): Promise<string | null> {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return null;
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('organization_id')
+        .eq('id', user.id)
+        .single();
+
+      return profile?.organization_id || null;
+    } catch (error) {
+      console.error('❌ [COMPETITOR-ANALYSIS] Failed to get organization ID:', error);
+      return null;
+    }
+  }
+
   /**
    * Get keyword volume trends for analysis
    */
@@ -353,6 +373,81 @@ class CompetitorKeywordAnalysisService {
       opportunityScore: dbRecord.opportunity_score,
       createdAt: dbRecord.created_at,
       updatedAt: dbRecord.updated_at
+    };
+  }
+
+  /**
+   * Get demo competitor keywords for a given app
+   */
+  async getDemoCompetitorKeywords(
+    organizationId: string,
+    targetAppId: string
+  ): Promise<CompetitorKeyword[]> {
+    try {
+      // First try to get real data
+      const { data, error } = await supabase
+        .from('competitor_keywords')
+        .select('*')
+        .eq('organization_id', organizationId)
+        .eq('target_app_id', targetAppId)
+        .limit(20);
+
+      if (data && data.length > 0) {
+        return data.map(this.mapCompetitorKeywordFromDb);
+      }
+
+      // If no real data, generate demo data
+      console.log('📊 [COMPETITOR-ANALYSIS] Generating demo competitor keywords');
+      return this.generateDemoCompetitorKeywords(organizationId, targetAppId);
+    } catch (error) {
+      console.error('❌ [COMPETITOR-ANALYSIS] Exception fetching competitor keywords:', error);
+      return this.generateDemoCompetitorKeywords(organizationId, targetAppId);
+    }
+  }
+
+  /**
+   * Generate demo competitor keyword data
+   */
+  private generateDemoCompetitorKeywords(
+    organizationId: string,
+    targetAppId: string
+  ): CompetitorKeyword[] {
+    const demoKeywords = [
+      'fitness app', 'workout tracker', 'exercise planner', 'health monitor',
+      'diet tracker', 'calorie counter', 'meditation app', 'yoga practice',
+      'running tracker', 'gym workout', 'weight loss', 'muscle building',
+      'step counter', 'heart rate monitor', 'sleep tracker', 'wellness app'
+    ];
+
+    return demoKeywords.slice(0, 12).map((keyword, index) => ({
+      id: `demo-${index}`,
+      targetAppId,
+      competitorAppId: `competitor-${index % 3}`,
+      keyword,
+      targetRank: Math.floor(Math.random() * 100) + 1,
+      competitorRank: Math.floor(Math.random() * 50) + 1,
+      keywordDifficulty: Math.round((Math.random() * 8 + 1) * 10) / 10,
+      searchVolume: Math.floor(Math.random() * 50000) + 1000,
+      gapOpportunity: (['high', 'medium', 'low'] as const)[Math.floor(Math.random() * 3)],
+      analyzedAt: new Date().toISOString()
+    }));
+  }
+
+  /**
+   * Map competitor keyword from database
+   */
+  private mapCompetitorKeywordFromDb(dbRecord: any): CompetitorKeyword {
+    return {
+      id: dbRecord.id,
+      targetAppId: dbRecord.target_app_id,
+      competitorAppId: dbRecord.competitor_app_id,
+      keyword: dbRecord.keyword,
+      targetRank: dbRecord.target_rank,
+      competitorRank: dbRecord.competitor_rank,
+      keywordDifficulty: dbRecord.keyword_difficulty,
+      searchVolume: dbRecord.search_volume,
+      gapOpportunity: dbRecord.gap_opportunity,
+      analyzedAt: dbRecord.analyzed_at
     };
   }
 }
