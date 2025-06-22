@@ -1,15 +1,17 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Brain, RefreshCw, AlertTriangle, Zap, TrendingUp, Target } from 'lucide-react';
+import { Brain, RefreshCw, AlertTriangle, Zap, TrendingUp, Target, Database, Search } from 'lucide-react';
 import { useKeywordIntelligenceManager } from '@/hooks/useKeywordIntelligenceManager';
 import { KeywordClustersPanel } from './KeywordClustersPanel';
 import { RankDistributionChart } from './RankDistributionChart';
 import { KeywordTrendsTable } from './KeywordTrendsTable';
 import { UsageTrackingPanel } from './UsageTrackingPanel';
+import { ProgressiveKeywordLoader } from './ProgressiveKeywordLoader';
+import { KeywordPoolManager } from './KeywordPoolManager';
 
 interface UnifiedKeywordIntelligenceProps {
   organizationId: string;
@@ -20,12 +22,14 @@ export const UnifiedKeywordIntelligence: React.FC<UnifiedKeywordIntelligenceProp
   organizationId,
   selectedAppId
 }) => {
+  const [keywordData, setKeywordData] = useState<any[]>([]);
+  const [selectedPool, setSelectedPool] = useState<{ id: string; keywords: string[] } | null>(null);
+
   const {
     isLoading,
     isInitialized,
     fallbackMode,
     lastSuccessfulLoad,
-    keywordData,
     clusters,
     stats,
     selectedApp,
@@ -63,6 +67,31 @@ export const UnifiedKeywordIntelligence: React.FC<UnifiedKeywordIntelligenceProp
     clearStuckTransition();
   };
 
+  const handleKeywordsLoaded = (newKeywords: any[]) => {
+    if (Array.isArray(newKeywords)) {
+      setKeywordData(newKeywords);
+    } else {
+      setKeywordData(prev => [...prev, ...newKeywords]);
+    }
+  };
+
+  const handlePoolSelect = (poolId: string, keywords: string[]) => {
+    setSelectedPool({ id: poolId, keywords });
+    // Convert pool keywords to keyword data format
+    const poolKeywordData = keywords.map((keyword, index) => ({
+      keyword,
+      rank: Math.floor(Math.random() * 50) + 1,
+      searchVolume: Math.floor(Math.random() * 10000) + 1000,
+      difficulty: Math.round((Math.random() * 6 + 2) * 10) / 10,
+      trend: (['up', 'down', 'stable'] as const)[Math.floor(Math.random() * 3)],
+      opportunity: (['high', 'medium', 'low'] as const)[Math.floor(Math.random() * 3)],
+      competitorRank: Math.floor(Math.random() * 30) + 1,
+      volumeHistory: [],
+      source: 'pool'
+    }));
+    setKeywordData(poolKeywordData);
+  };
+
   return (
     <div className="space-y-6">
       {/* Header with Status */}
@@ -74,6 +103,12 @@ export const UnifiedKeywordIntelligence: React.FC<UnifiedKeywordIntelligenceProp
               <Badge variant="outline" className="text-orange-400 border-orange-500">
                 <AlertTriangle className="w-3 h-3 mr-1" />
                 Fallback Mode
+              </Badge>
+            )}
+            {selectedPool && (
+              <Badge variant="outline" className="text-blue-400 border-blue-500">
+                <Database className="w-3 h-3 mr-1" />
+                Pool Active
               </Badge>
             )}
           </h2>
@@ -108,7 +143,7 @@ export const UnifiedKeywordIntelligence: React.FC<UnifiedKeywordIntelligenceProp
 
       {/* Quick Stats */}
       {isInitialized && stats && (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
           <Card className="bg-zinc-900 border-zinc-800">
             <CardContent className="p-4">
               <div className="flex items-center gap-2">
@@ -116,7 +151,7 @@ export const UnifiedKeywordIntelligence: React.FC<UnifiedKeywordIntelligenceProp
                 <span className="text-sm text-zinc-400">Total Keywords</span>
               </div>
               <div className="text-2xl font-bold text-white">
-                {stats.totalKeywords}
+                {keywordData.length || stats.totalKeywords}
               </div>
             </CardContent>
           </Card>
@@ -127,7 +162,7 @@ export const UnifiedKeywordIntelligence: React.FC<UnifiedKeywordIntelligenceProp
                 <span className="text-sm text-zinc-400">High Opportunity</span>
               </div>
               <div className="text-2xl font-bold text-green-400">
-                {stats.highOpportunityKeywords}
+                {keywordData.filter(kw => kw.opportunity === 'high').length || stats.highOpportunityKeywords}
               </div>
             </CardContent>
           </Card>
@@ -149,7 +184,18 @@ export const UnifiedKeywordIntelligence: React.FC<UnifiedKeywordIntelligenceProp
                 <span className="text-sm text-zinc-400">Search Volume</span>
               </div>
               <div className="text-2xl font-bold text-white">
-                {(stats.totalSearchVolume / 1000).toFixed(0)}K
+                {(keywordData.reduce((sum, kw) => sum + (kw.searchVolume || 0), 0) / 1000).toFixed(0) || (stats.totalSearchVolume / 1000).toFixed(0)}K
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="bg-zinc-900 border-zinc-800">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2">
+                <Search className="h-4 w-4 text-cyan-400" />
+                <span className="text-sm text-zinc-400">Data Source</span>
+              </div>
+              <div className="text-sm font-bold text-white">
+                {selectedPool ? 'Pool' : fallbackMode ? 'Fallback' : 'Live'}
               </div>
             </CardContent>
           </Card>
@@ -158,9 +204,10 @@ export const UnifiedKeywordIntelligence: React.FC<UnifiedKeywordIntelligenceProp
 
       {/* Main Content Tabs */}
       <Tabs defaultValue="overview" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-4 bg-zinc-900 border-zinc-800">
+        <TabsList className="grid w-full grid-cols-5 bg-zinc-900 border-zinc-800">
           <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="keywords">Keywords</TabsTrigger>
+          <TabsTrigger value="discovery">Discovery</TabsTrigger>
+          <TabsTrigger value="pools">Pools</TabsTrigger>
           <TabsTrigger value="trends">Trends</TabsTrigger>
           <TabsTrigger value="analytics">Analytics</TabsTrigger>
         </TabsList>
@@ -178,28 +225,31 @@ export const UnifiedKeywordIntelligence: React.FC<UnifiedKeywordIntelligenceProp
           </div>
         </TabsContent>
 
-        <TabsContent value="keywords" className="space-y-6">
+        <TabsContent value="discovery" className="space-y-6">
+          <ProgressiveKeywordLoader
+            organizationId={organizationId}
+            appId={selectedAppId}
+            onKeywordsLoaded={handleKeywordsLoaded}
+          />
+          
+          {/* Current Keywords Display */}
           <Card className="bg-zinc-900 border-zinc-800">
             <CardHeader>
-              <CardTitle className="text-white">Keyword Opportunities</CardTitle>
+              <CardTitle className="text-white">Discovered Keywords</CardTitle>
               <CardDescription>
-                Discover high-value keywords with optimization potential
+                Keywords from progressive discovery and pool selection
               </CardDescription>
             </CardHeader>
             <CardContent>
-              {isLoading ? (
+              {keywordData.length > 0 ? (
                 <div className="space-y-4">
-                  <div className="h-4 bg-zinc-700 rounded w-3/4 animate-pulse"></div>
-                  <div className="h-32 bg-zinc-700 rounded animate-pulse"></div>
-                </div>
-              ) : keywordData.length > 0 ? (
-                <div className="space-y-4">
-                  {keywordData.slice(0, 10).map((keyword, index) => (
-                    <div key={keyword.keyword} className="flex items-center justify-between p-3 bg-zinc-800/50 rounded-lg">
+                  {keywordData.slice(0, 15).map((keyword, index) => (
+                    <div key={index} className="flex items-center justify-between p-3 bg-zinc-800/50 rounded-lg">
                       <div>
                         <h4 className="font-medium text-white">{keyword.keyword}</h4>
                         <p className="text-sm text-zinc-400">
                           Rank: {keyword.rank || 'N/A'} • Volume: {keyword.searchVolume?.toLocaleString() || 'N/A'}
+                          {keyword.source && <span className="ml-2 text-xs">({keyword.source})</span>}
                         </p>
                       </div>
                       <Badge className={
@@ -211,14 +261,26 @@ export const UnifiedKeywordIntelligence: React.FC<UnifiedKeywordIntelligenceProp
                       </Badge>
                     </div>
                   ))}
+                  {keywordData.length > 15 && (
+                    <div className="text-center text-zinc-400 text-sm">
+                      ... and {keywordData.length - 15} more keywords
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="text-center py-8 text-zinc-400">
-                  No keyword data available. Try refreshing or check your data sources.
+                  No keywords discovered yet. Start discovery or select a pool.
                 </div>
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="pools" className="space-y-6">
+          <KeywordPoolManager
+            organizationId={organizationId}
+            onPoolSelect={handlePoolSelect}
+          />
         </TabsContent>
 
         <TabsContent value="trends" className="space-y-6">

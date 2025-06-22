@@ -1,4 +1,3 @@
-
 export * from './useTheme';
 export * from './useMockAsoData';
 export * from './useSourceFiltering';
@@ -29,3 +28,6 @@ export { useEnhancedKeywordAnalytics } from './useEnhancedKeywordAnalytics';
 
 // Add unified keyword intelligence manager
 export { useKeywordIntelligenceManager } from './useKeywordIntelligenceManager';
+
+// Add new keyword discovery service
+export { keywordDiscoveryService } from '../services/keyword-discovery.service';
