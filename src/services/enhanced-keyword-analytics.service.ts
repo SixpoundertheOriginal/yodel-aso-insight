@@ -1,3 +1,4 @@
+
 import { supabase } from '@/integrations/supabase/client';
 import { keywordPersistenceService } from './keyword-persistence.service';
 
@@ -272,10 +273,11 @@ class EnhancedKeywordAnalyticsService {
       }
 
       console.log('✅ [ANALYTICS] Keyword pools loaded:', data?.length || 0);
-      // Type cast the pool_type to match our interface
+      // Type cast and convert metadata to match our interface
       return (data || []).map(pool => ({
         ...pool,
-        pool_type: pool.pool_type as 'category' | 'competitor' | 'trending' | 'custom'
+        pool_type: pool.pool_type as 'category' | 'competitor' | 'trending' | 'custom',
+        metadata: (pool.metadata as Record<string, any>) || {}
       }));
 
     } catch (error) {
@@ -316,7 +318,8 @@ class EnhancedKeywordAnalyticsService {
       // Type cast the returned data to match our interface
       return {
         ...data,
-        pool_type: data.pool_type as 'category' | 'competitor' | 'trending' | 'custom'
+        pool_type: data.pool_type as 'category' | 'competitor' | 'trending' | 'custom',
+        metadata: (data.metadata as Record<string, any>) || {}
       };
 
     } catch (error) {

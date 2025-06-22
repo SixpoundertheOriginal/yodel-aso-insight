@@ -113,9 +113,24 @@ export const EnhancedKeywordIntelligence: React.FC<EnhancedKeywordIntelligencePr
     }
   };
 
-  // Convert timeframe string to days for the handler
-  const handleTimeframeChange = (timeframe: string) => {
-    setSelectedTimeframe(timeframe);
+  // Convert timeframe string to days and update the hook
+  const handleTimeframeChange = (days: number) => {
+    const timeframeMap: Record<number, string> = {
+      7: '7d',
+      30: '30d',
+      90: '90d'
+    };
+    setSelectedTimeframe(timeframeMap[days] || '30d');
+  };
+
+  // Convert string timeframe to days for the component
+  const getSelectedDays = (timeframe: string): number => {
+    const daysMap: Record<string, number> = {
+      '7d': 7,
+      '30d': 30,
+      '90d': 90
+    };
+    return daysMap[timeframe] || 30;
   };
 
   if (!selectedAppId) {
@@ -258,7 +273,7 @@ export const EnhancedKeywordIntelligence: React.FC<EnhancedKeywordIntelligencePr
             trends={keywordTrends}
             isLoading={isLoading}
             onTimeframeChange={handleTimeframeChange}
-            selectedTimeframe={selectedTimeframe}
+            selectedTimeframe={getSelectedDays(selectedTimeframe)}
           />
         </TabsContent>
 
