@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
@@ -36,6 +37,7 @@ serve(async (req) => {
 
   try {
     console.log('🔍 BigQuery ASO Data request received');
+    console.log('📋 Request method:', req.method);
 
     // Enhanced credential diagnostics
     const credentialString = Deno.env.get('BIGQUERY_CREDENTIALS');
@@ -88,9 +90,53 @@ serve(async (req) => {
       );
     }
 
-    // Parse request body
-    const body: BigQueryRequest = await req.json();
-    console.log('📊 Request body:', { organizationId: body.organizationId, hasDateRange: !!body.dateRange });
+    // Handle GET vs POST requests
+    let body: BigQueryRequest;
+    if (req.method === 'GET') {
+      // Default parameters for GET requests (testing/debugging)
+      body = { 
+        organizationId: "yodel_pimsleur", 
+        limit: 10 
+      };
+      console.log('📊 GET request - using default params:', body);
+    } else if (req.method === 'POST') {
+      // Parse JSON body for POST requests
+      try {
+        body = await req.json();
+        console.log('📊 POST request body:', body);
+      } catch (parseError) {
+        console.error('❌ Failed to parse POST request body:', parseError);
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: 'Invalid JSON in request body',
+            details: parseError.message
+          }),
+          {
+            status: 400,
+            headers: {
+              ...corsHeaders,
+              'Content-Type': 'application/json',
+            },
+          }
+        );
+      }
+    } else {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: `Method ${req.method} not allowed`,
+          allowedMethods: ['GET', 'POST']
+        }),
+        {
+          status: 405,
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+    }
 
     // Validate request
     if (!body.organizationId) {
@@ -269,7 +315,8 @@ serve(async (req) => {
         totalRows: parseInt(queryResult.totalRows || '0'),
         executionTime: queryResult.jobComplete ? 'completed' : 'pending',
         projectId,
-        organizationId: body.organizationId
+        organizationId: body.organizationId,
+        requestMethod: req.method
       }),
       {
         headers: {
@@ -288,7 +335,8 @@ serve(async (req) => {
         success: false,
         error: error.message,
         timestamp: new Date().toISOString(),
-        stack: error.stack
+        stack: error.stack,
+        requestMethod: req.method
       }),
       {
         status: 500,
