@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -7,7 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
 import { Label } from '@/components/ui/label';
-import { TrendingUp, TrendingDown, Minus, Search, Filter, Target, BarChart3 } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus, Search, Filter, Target, BarChart3, Loader2 } from 'lucide-react';
 import { useAdvancedKeywordIntelligence } from '@/hooks/useAdvancedKeywordIntelligence';
 import { KeywordVolumeChart } from './KeywordVolumeChart';
 import { KeywordClustersPanel } from './KeywordClustersPanel';
@@ -21,6 +21,9 @@ export const AdvancedKeywordIntelligence: React.FC<AdvancedKeywordIntelligencePr
   organizationId,
   targetAppId = 'demo-app-123'
 }) => {
+  const [appChanging, setAppChanging] = useState(false);
+  const [previousAppId, setPreviousAppId] = useState(targetAppId);
+
   const {
     keywordData,
     clusters,
@@ -31,11 +34,33 @@ export const AdvancedKeywordIntelligence: React.FC<AdvancedKeywordIntelligencePr
     filters,
     setFilters,
     isLoading,
-    isLoadingTrends
+    isLoadingTrends,
+    selectedApp
   } = useAdvancedKeywordIntelligence({
     organizationId,
     targetAppId
   });
+
+  // Track app changes for loading state
+  useEffect(() => {
+    if (targetAppId !== previousAppId) {
+      console.log('🔄 [KEYWORD-INTELLIGENCE] App changed from', previousAppId, 'to', targetAppId);
+      setAppChanging(true);
+      setPreviousAppId(targetAppId);
+      
+      // Clear the loading state after a brief moment
+      const timer = setTimeout(() => {
+        setAppChanging(false);
+      }, 1500);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [targetAppId, previousAppId]);
+
+  // Log keyword data changes for debugging
+  useEffect(() => {
+    console.log('🎯 [KEYWORD-INTELLIGENCE] Keywords updated for app:', selectedApp?.app_name, 'count:', keywordData.length);
+  }, [keywordData.length, selectedApp?.app_name]);
 
   const getTrendIcon = (trend: 'up' | 'down' | 'stable' | null) => {
     switch (trend) {
@@ -54,18 +79,16 @@ export const AdvancedKeywordIntelligence: React.FC<AdvancedKeywordIntelligencePr
     }
   };
 
-  if (isLoading) {
+  if (isLoading || appChanging) {
     return (
       <div className="space-y-6">
-        <div className="grid grid-cols-4 gap-4">
-          {[...Array(4)].map((_, i) => (
-            <Card key={i} className="bg-zinc-900/50 border-zinc-800">
-              <CardContent className="p-6">
-                <div className="h-4 bg-zinc-700 rounded animate-pulse mb-2"></div>
-                <div className="h-8 bg-zinc-700 rounded animate-pulse"></div>
-              </CardContent>
-            </Card>
-          ))}
+        <div className="flex items-center justify-center h-32">
+          <div className="flex items-center space-x-2">
+            <Loader2 className="h-6 w-6 animate-spin text-yodel-orange" />
+            <div className="text-zinc-400">
+              {appChanging ? `Loading keywords for ${selectedApp?.app_name || 'app'}...` : 'Loading keyword intelligence...'}
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -206,7 +229,14 @@ export const AdvancedKeywordIntelligence: React.FC<AdvancedKeywordIntelligencePr
           {/* Keywords Table */}
           <Card className="bg-zinc-900/50 border-zinc-800">
             <CardHeader>
-              <CardTitle className="text-white">Keywords Analysis</CardTitle>
+              <CardTitle className="text-white">
+                Keywords Analysis
+                {selectedApp && (
+                  <span className="text-sm font-normal text-zinc-400 ml-2">
+                    for {selectedApp.app_name}
+                  </span>
+                )}
+              </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="overflow-x-auto">
@@ -225,7 +255,7 @@ export const AdvancedKeywordIntelligence: React.FC<AdvancedKeywordIntelligencePr
                   </thead>
                   <tbody>
                     {keywordData.map((keyword, index) => (
-                      <tr key={index} className="border-b border-zinc-800 hover:bg-zinc-800/50">
+                      <tr key={`${keyword.keyword}-${selectedApp?.app_name}-${index}`} className="border-b border-zinc-800 hover:bg-zinc-800/50">
                         <td className="py-3 px-4">
                           <span className="text-white font-medium">{keyword.keyword}</span>
                         </td>
