@@ -10,7 +10,6 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
   SelectContent,
@@ -19,8 +18,12 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Smartphone, Search, Loader2, ExternalLink } from 'lucide-react';
+import { Smartphone, Search, Loader2, ExternalLink, Star } from 'lucide-react';
 import { useAppManagement } from '@/hooks/useAppManagement';
+import { useAuth } from '@/context/AuthContext';
+import { supabase } from '@/integrations/supabase/client';
+import { AppStoreIntegrationService } from '@/services/appstore-integration.service';
+import { toast } from 'sonner';
 
 interface App {
   id: string;
@@ -47,6 +50,7 @@ export const AppManagementModal: React.FC<AppManagementModalProps> = ({
   mode
 }) => {
   const { createApp, updateApp, isCreating, isUpdating } = useAppManagement();
+  const { user } = useAuth();
   
   const [formData, setFormData] = useState({
     app_name: '',
@@ -59,7 +63,7 @@ export const AppManagementModal: React.FC<AppManagementModalProps> = ({
   });
 
   const [isSearching, setIsSearching] = useState(false);
-  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [searchResults, setSearchResults] = useState<any>(null);
 
   // Reset form when modal opens/closes or app changes
   useEffect(() => {
@@ -89,38 +93,107 @@ export const AppManagementModal: React.FC<AppManagementModalProps> = ({
 
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
+    
+    // Auto-validate App Store ID when user types it
+    if (field === 'app_store_id' && value.length > 5) {
+      handleValidateAppStoreId(value);
+    }
   };
 
   const handleAppStoreSearch = async () => {
-    if (!formData.app_name.trim()) return;
-    
+    if (!formData.app_name.trim()) {
+      toast.error('Please enter an app name to search');
+      return;
+    }
+
+    if (!user) {
+      toast.error('Authentication required');
+      return;
+    }
+
     setIsSearching(true);
-    // Mock search results - in real implementation, this would call App Store API
-    setTimeout(() => {
-      setSearchResults([
-        {
-          id: '123456789',
-          name: formData.app_name,
-          developer: 'Example Developer',
-          category: 'Productivity',
-          icon: 'https://via.placeholder.com/60x60',
-          bundleId: 'com.example.app'
-        }
-      ]);
+    setSearchResults(null);
+    
+    try {
+      // Get user's organization ID
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('organization_id')
+        .eq('id', user.id)
+        .single();
+
+      if (!profile?.organization_id) {
+        toast.error('Organization not found');
+        return;
+      }
+
+      const result = await AppStoreIntegrationService.searchApp(
+        formData.app_name,
+        profile.organization_id
+      );
+
+      if (result.success && result.data) {
+        setSearchResults(result.data);
+        toast.success('App found! Click to auto-fill details.');
+      } else {
+        toast.error(result.error || 'No apps found for that search term');
+        setSearchResults(null);
+      }
+    } catch (error: any) {
+      console.error('Search error:', error);
+      toast.error('Search failed. Please try again.');
+      setSearchResults(null);
+    } finally {
       setIsSearching(false);
-    }, 1000);
+    }
+  };
+
+  const handleValidateAppStoreId = async (appStoreId: string) => {
+    if (!user || appStoreId.length < 6) return;
+
+    try {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('organization_id')
+        .eq('id', user.id)
+        .single();
+
+      if (!profile?.organization_id) return;
+
+      const result = await AppStoreIntegrationService.validateAppStoreId(
+        appStoreId,
+        formData.platform,
+        profile.organization_id
+      );
+
+      if (result.success && result.data) {
+        // Auto-fill some fields if validation succeeds
+        setFormData(prev => ({
+          ...prev,
+          app_name: result.data!.name || prev.app_name,
+          developer_name: result.data!.developer || prev.developer_name,
+          category: result.data!.applicationCategory || prev.category,
+          app_icon_url: result.data!.icon || prev.app_icon_url,
+          bundle_id: result.data!.appId || prev.bundle_id
+        }));
+      }
+    } catch (error) {
+      // Silent validation - don't show errors for this
+      console.log('App Store ID validation failed:', error);
+    }
   };
 
   const selectSearchResult = (result: any) => {
     setFormData(prev => ({
       ...prev,
-      app_store_id: result.id,
-      developer_name: result.developer,
-      category: result.category,
-      app_icon_url: result.icon,
-      bundle_id: result.bundleId
+      app_store_id: result.appId || '',
+      developer_name: result.developer || '',
+      category: result.applicationCategory || '',
+      app_icon_url: result.icon || '',
+      bundle_id: result.appId || prev.bundle_id
     }));
-    setSearchResults([]);
+    setSearchResults(null);
+    toast.success('App details auto-filled from App Store');
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -216,23 +289,40 @@ export const AppManagementModal: React.FC<AppManagementModalProps> = ({
                 </Badge>
               </div>
 
-              {searchResults.length > 0 && (
+              {searchResults && (
                 <div className="border border-zinc-700 rounded-lg p-3 space-y-2">
-                  <div className="text-sm font-medium text-white">Search Results:</div>
-                  {searchResults.map((result, index) => (
-                    <div
-                      key={index}
-                      className="flex items-center gap-3 p-2 bg-zinc-800 rounded cursor-pointer hover:bg-zinc-700"
-                      onClick={() => selectSearchResult(result)}
-                    >
-                      <img src={result.icon} alt={result.name} className="w-8 h-8 rounded" />
-                      <div className="flex-1">
-                        <div className="text-white font-medium">{result.name}</div>
-                        <div className="text-xs text-zinc-400">{result.developer} • {result.category}</div>
+                  <div className="text-sm font-medium text-white">Search Result:</div>
+                  <div
+                    className="flex items-center gap-3 p-3 bg-zinc-800 rounded cursor-pointer hover:bg-zinc-700 transition-colors"
+                    onClick={() => selectSearchResult(searchResults)}
+                  >
+                    {searchResults.icon ? (
+                      <img src={searchResults.icon} alt={searchResults.name} className="w-12 h-12 rounded-lg" />
+                    ) : (
+                      <div className="w-12 h-12 bg-zinc-600 rounded-lg flex items-center justify-center">
+                        <Smartphone className="h-6 w-6 text-zinc-400" />
                       </div>
-                      <ExternalLink className="h-4 w-4 text-zinc-400" />
+                    )}
+                    <div className="flex-1">
+                      <div className="text-white font-medium">{searchResults.name}</div>
+                      <div className="text-sm text-zinc-400">{searchResults.developer}</div>
+                      {searchResults.rating > 0 && (
+                        <div className="flex items-center gap-1 mt-1">
+                          <Star className="h-3 w-3 fill-yellow-400 text-yellow-400" />
+                          <span className="text-xs text-zinc-400">{searchResults.rating}</span>
+                          {searchResults.reviews > 0 && (
+                            <span className="text-xs text-zinc-500">({searchResults.reviews} reviews)</span>
+                          )}
+                        </div>
+                      )}
+                      {searchResults.applicationCategory && (
+                        <Badge variant="outline" className="mt-1 text-xs border-zinc-600 text-zinc-400">
+                          {searchResults.applicationCategory}
+                        </Badge>
+                      )}
                     </div>
-                  ))}
+                    <ExternalLink className="h-4 w-4 text-zinc-400" />
+                  </div>
                 </div>
               )}
             </div>
@@ -246,7 +336,7 @@ export const AppManagementModal: React.FC<AppManagementModalProps> = ({
                   value={formData.app_store_id}
                   onChange={(e) => handleInputChange('app_store_id', e.target.value)}
                   className="bg-zinc-800 border-zinc-700 text-white"
-                  placeholder="123456789"
+                  placeholder={formData.platform === 'iOS' ? '123456789' : 'com.company.app'}
                 />
               </div>
               <div>
@@ -293,6 +383,19 @@ export const AppManagementModal: React.FC<AppManagementModalProps> = ({
                 className="bg-zinc-800 border-zinc-700 text-white"
                 placeholder="https://example.com/icon.png"
               />
+              {formData.app_icon_url && (
+                <div className="mt-2">
+                  <img 
+                    src={formData.app_icon_url} 
+                    alt="App icon preview" 
+                    className="w-16 h-16 rounded-lg"
+                    onError={(e) => {
+                      const target = e.target as HTMLImageElement;
+                      target.style.display = 'none';
+                    }}
+                  />
+                </div>
+              )}
             </div>
           </div>
 
