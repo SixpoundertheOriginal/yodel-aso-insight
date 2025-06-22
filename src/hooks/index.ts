@@ -23,3 +23,6 @@ export { useUserProfile } from './useUserProfile';
 // Add new architecture hooks
 export { useAppSelection } from './useAppSelection';
 export { useEnhancedQueries } from './useEnhancedQueries';
+
+// Add enhanced keyword analytics
+export { useEnhancedKeywordAnalytics } from './useEnhancedKeywordAnalytics';

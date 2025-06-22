@@ -422,6 +422,51 @@ export type Database = {
         }
         Relationships: []
       }
+      keyword_collection_jobs: {
+        Row: {
+          app_id: string
+          completed_at: string | null
+          created_at: string
+          created_by: string | null
+          error_message: string | null
+          id: string
+          job_type: string | null
+          keywords_collected: number | null
+          organization_id: string
+          progress: Json | null
+          started_at: string | null
+          status: string | null
+        }
+        Insert: {
+          app_id: string
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          error_message?: string | null
+          id?: string
+          job_type?: string | null
+          keywords_collected?: number | null
+          organization_id: string
+          progress?: Json | null
+          started_at?: string | null
+          status?: string | null
+        }
+        Update: {
+          app_id?: string
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          error_message?: string | null
+          id?: string
+          job_type?: string | null
+          keywords_collected?: number | null
+          organization_id?: string
+          progress?: Json | null
+          started_at?: string | null
+          status?: string | null
+        }
+        Relationships: []
+      }
       keyword_difficulty_scores: {
         Row: {
           calculated_at: string
@@ -461,6 +506,99 @@ export type Database = {
           organization_id?: string
           search_volume?: number | null
           top_apps_strength?: number | null
+        }
+        Relationships: []
+      }
+      keyword_pools: {
+        Row: {
+          created_at: string
+          id: string
+          keywords: string[]
+          metadata: Json | null
+          organization_id: string
+          pool_name: string
+          pool_type: string | null
+          total_keywords: number | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          keywords: string[]
+          metadata?: Json | null
+          organization_id: string
+          pool_name: string
+          pool_type?: string | null
+          total_keywords?: number | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          keywords?: string[]
+          metadata?: Json | null
+          organization_id?: string
+          pool_name?: string
+          pool_type?: string | null
+          total_keywords?: number | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      keyword_rank_distributions: {
+        Row: {
+          analysis_date: string
+          app_id: string
+          avg_rank: number | null
+          created_at: string
+          id: string
+          median_rank: number | null
+          organization_id: string
+          top_1_keywords: number | null
+          top_10_keywords: number | null
+          top_100_keywords: number | null
+          top_20_keywords: number | null
+          top_3_keywords: number | null
+          top_5_keywords: number | null
+          top_50_keywords: number | null
+          total_keywords: number | null
+          visibility_score: number | null
+        }
+        Insert: {
+          analysis_date?: string
+          app_id: string
+          avg_rank?: number | null
+          created_at?: string
+          id?: string
+          median_rank?: number | null
+          organization_id: string
+          top_1_keywords?: number | null
+          top_10_keywords?: number | null
+          top_100_keywords?: number | null
+          top_20_keywords?: number | null
+          top_3_keywords?: number | null
+          top_5_keywords?: number | null
+          top_50_keywords?: number | null
+          total_keywords?: number | null
+          visibility_score?: number | null
+        }
+        Update: {
+          analysis_date?: string
+          app_id?: string
+          avg_rank?: number | null
+          created_at?: string
+          id?: string
+          median_rank?: number | null
+          organization_id?: string
+          top_1_keywords?: number | null
+          top_10_keywords?: number | null
+          top_100_keywords?: number | null
+          top_20_keywords?: number | null
+          top_3_keywords?: number | null
+          top_5_keywords?: number | null
+          top_50_keywords?: number | null
+          total_keywords?: number | null
+          visibility_score?: number | null
         }
         Relationships: []
       }
@@ -554,6 +692,54 @@ export type Database = {
           scheduled_at?: string
           started_at?: string | null
           status?: string
+        }
+        Relationships: []
+      }
+      keyword_ranking_snapshots: {
+        Row: {
+          app_id: string
+          created_at: string
+          data_source: string | null
+          difficulty_score: number | null
+          id: string
+          keyword: string
+          organization_id: string
+          rank_change: number | null
+          rank_position: number | null
+          search_volume: number | null
+          snapshot_date: string
+          volume_change: number | null
+          volume_trend: string | null
+        }
+        Insert: {
+          app_id: string
+          created_at?: string
+          data_source?: string | null
+          difficulty_score?: number | null
+          id?: string
+          keyword: string
+          organization_id: string
+          rank_change?: number | null
+          rank_position?: number | null
+          search_volume?: number | null
+          snapshot_date?: string
+          volume_change?: number | null
+          volume_trend?: string | null
+        }
+        Update: {
+          app_id?: string
+          created_at?: string
+          data_source?: string | null
+          difficulty_score?: number | null
+          id?: string
+          keyword?: string
+          organization_id?: string
+          rank_change?: number | null
+          rank_position?: number | null
+          search_volume?: number | null
+          snapshot_date?: string
+          volume_change?: number | null
+          volume_trend?: string | null
         }
         Relationships: []
       }
@@ -695,6 +881,45 @@ export type Database = {
           score?: Json | null
           subtitle?: string
           title?: string
+        }
+        Relationships: []
+      }
+      organization_keyword_usage: {
+        Row: {
+          api_calls_made: number | null
+          created_at: string
+          id: string
+          keywords_processed: number | null
+          month_year: string
+          organization_id: string
+          overage_keywords: number | null
+          storage_used_mb: number | null
+          tier_limit: number | null
+          updated_at: string
+        }
+        Insert: {
+          api_calls_made?: number | null
+          created_at?: string
+          id?: string
+          keywords_processed?: number | null
+          month_year: string
+          organization_id: string
+          overage_keywords?: number | null
+          storage_used_mb?: number | null
+          tier_limit?: number | null
+          updated_at?: string
+        }
+        Update: {
+          api_calls_made?: number | null
+          created_at?: string
+          id?: string
+          keywords_processed?: number | null
+          month_year?: string
+          organization_id?: string
+          overage_keywords?: number | null
+          storage_used_mb?: number | null
+          tier_limit?: number | null
+          updated_at?: string
         }
         Relationships: []
       }
@@ -1090,6 +1315,25 @@ export type Database = {
         Args: { target_user_id: string }
         Returns: undefined
       }
+      calculate_rank_distribution: {
+        Args: {
+          p_organization_id: string
+          p_app_id: string
+          p_analysis_date?: string
+        }
+        Returns: {
+          top_1: number
+          top_3: number
+          top_5: number
+          top_10: number
+          top_20: number
+          top_50: number
+          top_100: number
+          total_tracked: number
+          avg_rank: number
+          visibility_score: number
+        }[]
+      }
       can_add_app: {
         Args: { org_id: string }
         Returns: boolean
@@ -1137,6 +1381,22 @@ export type Database = {
           difficulty_score: number
         }[]
       }
+      get_keyword_trends: {
+        Args: {
+          p_organization_id: string
+          p_app_id: string
+          p_days_back?: number
+        }
+        Returns: {
+          keyword: string
+          current_rank: number
+          previous_rank: number
+          rank_change: number
+          current_volume: number
+          volume_change_pct: number
+          trend_direction: string
+        }[]
+      }
       get_keyword_volume_trends: {
         Args: {
           p_organization_id: string
@@ -1169,6 +1429,14 @@ export type Database = {
       }
       unlock_platform_admin_creation: {
         Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
+      update_keyword_usage: {
+        Args: {
+          p_organization_id: string
+          p_keywords_processed?: number
+          p_api_calls?: number
+        }
         Returns: undefined
       }
     }

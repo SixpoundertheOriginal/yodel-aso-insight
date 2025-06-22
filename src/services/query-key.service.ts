@@ -23,18 +23,50 @@ export class QueryKeyService {
     
     selectedApp: (appId: string, organizationId: string) =>
       ['selected-app', appId, organizationId] as const,
+
+    // Enhanced analytics keys
+    rankDistribution: (organizationId: string, appId?: string) =>
+      appId 
+        ? ['rank-distribution', organizationId, appId] as const
+        : ['rank-distribution', organizationId] as const,
+
+    keywordTrends: (organizationId: string, appId: string, timeframe: number) =>
+      ['keyword-trends', organizationId, appId, timeframe] as const,
+
+    keywordPools: (organizationId: string, poolType?: string) =>
+      poolType
+        ? ['keyword-pools', organizationId, poolType] as const
+        : ['keyword-pools', organizationId] as const,
+
+    collectionJobs: (organizationId: string, status?: string) =>
+      status
+        ? ['collection-jobs', organizationId, status] as const
+        : ['collection-jobs', organizationId] as const,
+
+    usageStats: (organizationId: string) =>
+      ['usage-stats', organizationId] as const,
+
+    keywordHistory: (organizationId: string, appId: string, keyword: string) =>
+      ['keyword-history', organizationId, appId, keyword] as const,
     
     // Wildcard patterns for invalidation
     allForApp: (organizationId: string, appId: string) => [
       ['keyword-gap-analysis', organizationId, appId],
       ['keyword-clusters', organizationId, appId],
-      ['selected-app', appId, organizationId]
+      ['selected-app', appId, organizationId],
+      ['rank-distribution', organizationId, appId],
+      ['keyword-trends', organizationId, appId],
+      ['keyword-history', organizationId, appId]
     ] as const,
     
     allForOrganization: (organizationId: string) => [
       ['keyword-gap-analysis', organizationId],
       ['keyword-clusters', organizationId],
-      ['keyword-volume-trends', organizationId]
+      ['keyword-volume-trends', organizationId],
+      ['rank-distribution', organizationId],
+      ['keyword-pools', organizationId],
+      ['collection-jobs', organizationId],
+      ['usage-stats', organizationId]
     ] as const
   };
 
@@ -46,7 +78,13 @@ export class QueryKeyService {
       `keyword-data:${organizationId}:${appId}`,
     
     appMetadata: (organizationId: string, appId: string) =>
-      `app-metadata:${organizationId}:${appId}`
+      `app-metadata:${organizationId}:${appId}`,
+
+    rankDistribution: (organizationId: string, appId: string) =>
+      `rank-dist:${organizationId}:${appId}`,
+
+    keywordPool: (organizationId: string, poolName: string) =>
+      `pool:${organizationId}:${poolName}`
   };
 
   /**
