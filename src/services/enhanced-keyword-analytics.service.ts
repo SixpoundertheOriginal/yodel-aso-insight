@@ -111,7 +111,7 @@ class EnhancedKeywordAnalyticsService {
   }
 
   /**
-   * Get rank distribution with enhanced error handling and better fallback data
+   * Get rank distribution with enhanced error handling and automatic data creation
    */
   async getRankDistribution(
     organizationId: string,
@@ -123,6 +123,24 @@ class EnhancedKeywordAnalyticsService {
       
       const analysisDateStr = analysisDate?.toISOString().split('T')[0] || new Date().toISOString().split('T')[0];
       
+      // Check if we have any snapshot data first
+      const { data: existingData, error: checkError } = await supabase
+        .from('keyword_ranking_snapshots')
+        .select('id')
+        .eq('organization_id', organizationId)
+        .eq('app_id', appId)
+        .limit(1);
+
+      if (checkError) {
+        console.error('❌ [ANALYTICS] Error checking snapshot data:', checkError);
+      }
+
+      // If no data exists, create comprehensive sample data
+      if (!existingData || existingData.length === 0) {
+        console.log('🔄 [ANALYTICS] No ranking data found, creating enhanced sample data');
+        await this.createEnhancedSampleData(organizationId, appId);
+      }
+
       // RPC function requires string parameters
       const { data, error } = await supabase.rpc('calculate_rank_distribution', {
         p_organization_id: organizationId,
@@ -132,8 +150,6 @@ class EnhancedKeywordAnalyticsService {
 
       if (error) {
         console.error('❌ [ANALYTICS] Rank distribution error:', error);
-        // Create sample data and then return fallback
-        await this.createSampleRankingData(organizationId, appId);
         return this.generateFallbackRankDistribution();
       }
 
@@ -154,9 +170,7 @@ class EnhancedKeywordAnalyticsService {
         };
       }
 
-      console.log('📊 [ANALYTICS] No distribution data, creating sample data and using fallback');
-      // Create sample data for better demo experience
-      await this.createSampleRankingData(organizationId, appId);
+      console.log('📊 [ANALYTICS] No distribution data, using fallback');
       return this.generateFallbackRankDistribution();
 
     } catch (error) {
@@ -166,46 +180,94 @@ class EnhancedKeywordAnalyticsService {
   }
 
   /**
-   * Create sample ranking data for demonstration purposes
+   * Create enhanced sample ranking data with realistic distribution
    */
-  private async createSampleRankingData(organizationId: string, appId: string): Promise<void> {
+  private async createEnhancedSampleData(organizationId: string, appId: string): Promise<void> {
     try {
-      console.log('🔄 [ANALYTICS] Creating sample ranking data for app:', appId);
+      console.log('🔄 [ANALYTICS] Creating enhanced sample ranking data for app:', appId);
       
-      const sampleKeywords = [
-        { keyword: 'language learning', rank: 8, volume: 12000 },
-        { keyword: 'language app', rank: 15, volume: 8500 },
-        { keyword: 'learn languages', rank: 22, volume: 6200 },
-        { keyword: 'spanish lessons', rank: 3, volume: 4800 },
-        { keyword: 'french learning', rank: 12, volume: 3900 },
-        { keyword: 'pimsleur method', rank: 1, volume: 2100 },
-        { keyword: 'audio lessons', rank: 18, volume: 2800 },
-        { keyword: 'language course', rank: 35, volume: 5200 }
+      // Generate realistic keyword set based on app type
+      const enhancedKeywords = [
+        // Top performing keywords (rank 1-5)
+        { keyword: 'language learning app', rank: 2, volume: 45000 },
+        { keyword: 'learn languages', rank: 3, volume: 38000 },
+        { keyword: 'pimsleur method', rank: 1, volume: 12000 },
+        
+        // Good performing keywords (rank 6-10)
+        { keyword: 'language lessons', rank: 7, volume: 28000 },
+        { keyword: 'spanish learning', rank: 9, volume: 22000 },
+        { keyword: 'french lessons', rank: 8, volume: 18000 },
+        { keyword: 'audio language course', rank: 6, volume: 15000 },
+        
+        // Moderate performing keywords (rank 11-20)
+        { keyword: 'learn spanish fast', rank: 12, volume: 14000 },
+        { keyword: 'language course app', rank: 15, volume: 11000 },
+        { keyword: 'conversation practice', rank: 18, volume: 9500 },
+        { keyword: 'pronunciation training', rank: 14, volume: 8800 },
+        { keyword: 'foreign language', rank: 19, volume: 8200 },
+        
+        // Competitive keywords (rank 21-50)
+        { keyword: 'language tutor', rank: 25, volume: 7500 },
+        { keyword: 'speak fluent spanish', rank: 32, volume: 6800 },
+        { keyword: 'mobile language learning', rank: 28, volume: 6200 },
+        { keyword: 'quick language learning', rank: 35, volume: 5900 },
+        { keyword: 'beginner spanish', rank: 41, volume: 5400 },
+        { keyword: 'travel phrases', rank: 38, volume: 4900 },
+        { keyword: 'language immersion', rank: 45, volume: 4500 },
+        { keyword: 'conversational spanish', rank: 33, volume: 4200 },
+        
+        // Long-tail keywords (rank 51-100)
+        { keyword: 'learn spanish while driving', rank: 65, volume: 3800 },
+        { keyword: 'business spanish course', rank: 72, volume: 3200 },
+        { keyword: 'spanish vocabulary builder', rank: 58, volume: 2900 },
+        { keyword: 'latin american spanish', rank: 84, volume: 2600 },
+        { keyword: 'spanish grammar lessons', rank: 91, volume: 2300 },
+        { keyword: 'advanced spanish course', rank: 77, volume: 2100 },
+        { keyword: 'mexican spanish lessons', rank: 88, volume: 1900 },
+        { keyword: 'spanish for professionals', rank: 95, volume: 1700 }
       ];
 
-      // Database expects numbers for rank_position and search_volume
-      const snapshots = sampleKeywords.map(item => ({
+      // Create snapshots with current and historical data
+      const currentDate = new Date().toISOString().split('T')[0];
+      const previousDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+      const currentSnapshots = enhancedKeywords.map(item => ({
         organization_id: organizationId,
         app_id: appId,
         keyword: item.keyword,
-        rank_position: item.rank, // Keep as number for database
-        search_volume: item.volume, // Keep as number for database
-        difficulty_score: Math.random() * 10 + 1,
+        rank_position: item.rank,
+        search_volume: item.volume,
+        difficulty_score: Math.random() * 5 + 3, // 3-8 difficulty range
         volume_trend: (['up', 'down', 'stable'] as const)[Math.floor(Math.random() * 3)],
-        snapshot_date: new Date().toISOString().split('T')[0]
+        snapshot_date: currentDate
       }));
 
+      // Create previous snapshots for trend analysis
+      const previousSnapshots = enhancedKeywords.map(item => ({
+        organization_id: organizationId,
+        app_id: appId,
+        keyword: item.keyword,
+        rank_position: item.rank + Math.floor(Math.random() * 10 - 5), // Slight rank variations
+        search_volume: Math.floor(item.volume * (0.9 + Math.random() * 0.2)), // Volume variations
+        difficulty_score: Math.random() * 5 + 3,
+        volume_trend: (['up', 'down', 'stable'] as const)[Math.floor(Math.random() * 3)],
+        snapshot_date: previousDate
+      }));
+
+      // Insert all snapshots
+      const allSnapshots = [...currentSnapshots, ...previousSnapshots];
+      
       const { error } = await supabase
         .from('keyword_ranking_snapshots')
-        .upsert(snapshots, { onConflict: 'organization_id,app_id,keyword,snapshot_date' });
+        .upsert(allSnapshots, { onConflict: 'organization_id,app_id,keyword,snapshot_date' });
 
       if (error) {
-        console.error('❌ [ANALYTICS] Failed to create sample data:', error);
+        console.error('❌ [ANALYTICS] Failed to create enhanced sample data:', error);
       } else {
-        console.log('✅ [ANALYTICS] Sample ranking data created');
+        console.log('✅ [ANALYTICS] Enhanced sample ranking data created:', allSnapshots.length, 'snapshots');
       }
     } catch (error) {
-      console.error('❌ [ANALYTICS] Exception creating sample data:', error);
+      console.error('❌ [ANALYTICS] Exception creating enhanced sample data:', error);
     }
   }
 
