@@ -1,7 +1,8 @@
-
 import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { enhancedKeywordAnalyticsService, KeywordTrend, RankDistribution, KeywordAnalytics, UsageStats, KeywordPool } from '@/services/enhanced-keyword-analytics.service';
+import { rankingDataValidatorService } from '@/services/ranking-data-validator.service';
+import { toast } from 'sonner';
 
 interface UseEnhancedKeywordAnalyticsProps {
   organizationId: string;
@@ -16,6 +17,7 @@ export const useEnhancedKeywordAnalytics = ({
 }: UseEnhancedKeywordAnalyticsProps) => {
   const [lastSuccessfulLoad, setLastSuccessfulLoad] = useState<Date | null>(null);
   const [selectedTimeframe, setSelectedTimeframe] = useState<string>('30d');
+  const [dataIntegrityChecked, setDataIntegrityChecked] = useState<boolean>(false);
 
   // Keyword trends query with enhanced error handling
   const {
@@ -52,7 +54,7 @@ export const useEnhancedKeywordAnalytics = ({
     }
   });
 
-  // Rank distribution query with enhanced error handling
+  // Rank distribution query with enhanced error handling and automatic retry
   const {
     data: rankDistribution,
     isLoading: distributionLoading,
@@ -63,20 +65,40 @@ export const useEnhancedKeywordAnalytics = ({
     queryFn: async () => {
       if (!appId) return null;
       
-      const distribution = await enhancedKeywordAnalyticsService.getRankDistribution(
-        organizationId,
-        appId
-      );
-      
-      if (distribution) {
-        setLastSuccessfulLoad(new Date());
+      try {
+        const distribution = await enhancedKeywordAnalyticsService.getRankDistribution(
+          organizationId,
+          appId
+        );
+        
+        if (distribution) {
+          setLastSuccessfulLoad(new Date());
+          
+          // Check if we have meaningful data
+          if (distribution.total_tracked === 0) {
+            console.log('📊 [HOOK] Rank distribution shows no tracked keywords, data may need refresh');
+            toast.info('No ranking data found. Creating sample data for visualization.');
+          } else {
+            console.log('✅ [HOOK] Rank distribution loaded with', distribution.total_tracked, 'keywords');
+            setDataIntegrityChecked(true);
+          }
+        }
+        
+        return distribution;
+      } catch (error) {
+        console.error('❌ [HOOK] Error in rank distribution query:', error);
+        toast.error('Failed to load ranking distribution data');
+        throw error;
       }
-      
-      return distribution;
     },
     enabled: enabled && !!appId,
     staleTime: 10 * 60 * 1000,
-    retry: 2
+    retry: (failureCount, error) => {
+      if (failureCount >= 3) return false;
+      console.log(`🔄 [HOOK] Retrying rank distribution query (attempt ${failureCount + 1})`);
+      return true;
+    },
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000)
   });
 
   // Collection jobs query
@@ -125,25 +147,7 @@ export const useEnhancedKeywordAnalytics = ({
     usageStats
   );
 
-  // Create collection job function
-  const createCollectionJob = async (jobType: 'full_refresh' | 'incremental' | 'competitor_analysis' = 'incremental') => {
-    if (!appId) return null;
-    
-    console.log('🚀 [HOOK] Creating collection job:', jobType);
-    const jobId = await enhancedKeywordAnalyticsService.createCollectionJob(
-      organizationId,
-      appId,
-      jobType
-    );
-    
-    if (jobId) {
-      refetchJobs();
-    }
-    
-    return jobId;
-  };
-
-  // Save keyword snapshots function
+  // Enhanced save keyword snapshots function with validation
   const saveKeywordSnapshots = async (snapshots: Array<{
     keyword: string;
     rank_position: number;
@@ -153,11 +157,57 @@ export const useEnhancedKeywordAnalytics = ({
   }>) => {
     if (!appId) return { success: false, saved: 0 };
     
-    return await enhancedKeywordAnalyticsService.saveKeywordSnapshots(
-      organizationId,
-      appId,
-      snapshots
-    );
+    try {
+      // Validate data before saving
+      const validationResult = rankingDataValidatorService.validateKeywordRankings(snapshots);
+      
+      if (!validationResult.isValid) {
+        console.error('❌ [HOOK] Validation failed:', validationResult.errors);
+        toast.error(`Data validation failed: ${validationResult.errors[0]}`);
+        return { success: false, saved: 0 };
+      }
+
+      if (validationResult.warnings.length > 0) {
+        console.warn('⚠️ [HOOK] Validation warnings:', validationResult.warnings);
+        validationResult.warnings.forEach(warning => toast.warning(warning));
+      }
+
+      // Sanitize data
+      const sanitizedSnapshots = rankingDataValidatorService.sanitizeKeywordRankings(snapshots);
+      
+      // Check data integrity
+      const integrityResult = rankingDataValidatorService.checkDataIntegrity(
+        organizationId,
+        appId,
+        sanitizedSnapshots
+      );
+
+      if (integrityResult.warnings.length > 0) {
+        integrityResult.warnings.forEach(warning => toast.warning(warning));
+      }
+
+      // Save the data
+      const result = await enhancedKeywordAnalyticsService.saveKeywordSnapshots(
+        organizationId,
+        appId,
+        sanitizedSnapshots
+      );
+
+      if (result.success) {
+        toast.success(`Successfully saved ${result.saved} keyword snapshots`);
+        // Refresh data after successful save
+        refetchRankDist();
+        refetchTrends();
+      } else {
+        toast.error('Failed to save keyword snapshots');
+      }
+
+      return result;
+    } catch (error) {
+      console.error('❌ [HOOK] Exception saving snapshots:', error);
+      toast.error('An error occurred while saving keyword snapshots');
+      return { success: false, saved: 0 };
+    }
   };
 
   // Save keyword pool function
@@ -176,6 +226,51 @@ export const useEnhancedKeywordAnalytics = ({
     );
   };
 
+  // Create collection job function
+  const createCollectionJob = async (jobType: 'full_refresh' | 'incremental' | 'competitor_analysis' = 'incremental') => {
+    if (!appId) return null;
+    
+    console.log('🚀 [HOOK] Creating collection job:', jobType);
+    const jobId = await enhancedKeywordAnalyticsService.createCollectionJob(
+      organizationId,
+      appId,
+      jobType
+    );
+    
+    if (jobId) {
+      refetchJobs();
+    }
+    
+    return jobId;
+  };
+
+  // Enhanced refresh function with better error handling
+  const refreshAll = async () => {
+    try {
+      console.log('🔄 [HOOK] Refreshing all keyword analytics data');
+      
+      const results = await Promise.allSettled([
+        refetchTrends(),
+        refetchRankDist(),
+        refetchJobs(),
+        refetchUsage(),
+        refetchPools()
+      ]);
+
+      const failures = results.filter(result => result.status === 'rejected');
+      
+      if (failures.length > 0) {
+        console.warn('⚠️ [HOOK] Some refresh operations failed:', failures);
+        toast.warning(`${failures.length} data sources failed to refresh`);
+      } else {
+        toast.success('All data refreshed successfully');
+      }
+    } catch (error) {
+      console.error('❌ [HOOK] Exception during refresh:', error);
+      toast.error('Failed to refresh data');
+    }
+  };
+
   // Combined loading state
   const isLoading = trendsLoading || distributionLoading || jobsLoading || usageLoading || poolsLoading;
 
@@ -192,6 +287,7 @@ export const useEnhancedKeywordAnalytics = ({
     usageStats,
     keywordPools,
     lastSuccessfulLoad,
+    dataIntegrityChecked,
     
     // Loading states
     isLoading,
@@ -218,16 +314,6 @@ export const useEnhancedKeywordAnalytics = ({
     refetchRankDist,
     refetchJobs,
     refetchPools,
-    
-    // Refresh all data
-    refreshAll: async () => {
-      await Promise.all([
-        refetchTrends(),
-        refetchRankDist(),
-        refetchJobs(),
-        refetchUsage(),
-        refetchPools()
-      ]);
-    }
+    refreshAll
   };
 };

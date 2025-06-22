@@ -138,7 +138,12 @@ class EnhancedKeywordAnalyticsService {
       // If no data exists, create comprehensive sample data
       if (!existingData || existingData.length === 0) {
         console.log('🔄 [ANALYTICS] No ranking data found, creating enhanced sample data');
-        await this.createEnhancedSampleData(organizationId, appId);
+        const sampleDataCreated = await this.createEnhancedSampleData(organizationId, appId);
+        
+        if (!sampleDataCreated) {
+          console.log('⚠️ [ANALYTICS] Sample data creation failed, using fallback distribution');
+          return this.generateFallbackRankDistribution();
+        }
       }
 
       // RPC function requires string parameters
@@ -180,9 +185,9 @@ class EnhancedKeywordAnalyticsService {
   }
 
   /**
-   * Create enhanced sample ranking data with realistic distribution
+   * Create enhanced sample ranking data with realistic distribution and proper upsert
    */
-  private async createEnhancedSampleData(organizationId: string, appId: string): Promise<void> {
+  private async createEnhancedSampleData(organizationId: string, appId: string): Promise<boolean> {
     try {
       console.log('🔄 [ANALYTICS] Creating enhanced sample ranking data for app:', appId);
       
@@ -254,20 +259,57 @@ class EnhancedKeywordAnalyticsService {
         snapshot_date: previousDate
       }));
 
-      // Insert all snapshots
-      const allSnapshots = [...currentSnapshots, ...previousSnapshots];
+      // Insert snapshots in batches to avoid conflicts
+      const batchSize = 10;
+      let successfulInserts = 0;
       
-      const { error } = await supabase
-        .from('keyword_ranking_snapshots')
-        .upsert(allSnapshots, { onConflict: 'organization_id,app_id,keyword,snapshot_date' });
+      // Insert current snapshots
+      for (let i = 0; i < currentSnapshots.length; i += batchSize) {
+        const batch = currentSnapshots.slice(i, i + batchSize);
+        
+        const { error } = await supabase
+          .from('keyword_ranking_snapshots')
+          .upsert(batch, { 
+            onConflict: 'organization_id,app_id,keyword,snapshot_date',
+            ignoreDuplicates: false 
+          });
 
-      if (error) {
-        console.error('❌ [ANALYTICS] Failed to create enhanced sample data:', error);
-      } else {
-        console.log('✅ [ANALYTICS] Enhanced sample ranking data created:', allSnapshots.length, 'snapshots');
+        if (error) {
+          console.error('❌ [ANALYTICS] Failed to insert current snapshots batch:', error);
+        } else {
+          successfulInserts += batch.length;
+        }
       }
+
+      // Insert previous snapshots
+      for (let i = 0; i < previousSnapshots.length; i += batchSize) {
+        const batch = previousSnapshots.slice(i, i + batchSize);
+        
+        const { error } = await supabase
+          .from('keyword_ranking_snapshots')
+          .upsert(batch, { 
+            onConflict: 'organization_id,app_id,keyword,snapshot_date',
+            ignoreDuplicates: false 
+          });
+
+        if (error) {
+          console.error('❌ [ANALYTICS] Failed to insert previous snapshots batch:', error);
+        } else {
+          successfulInserts += batch.length;
+        }
+      }
+
+      if (successfulInserts > 0) {
+        console.log('✅ [ANALYTICS] Enhanced sample ranking data created:', successfulInserts, 'snapshots');
+        return true;
+      } else {
+        console.error('❌ [ANALYTICS] No snapshots were successfully inserted');
+        return false;
+      }
+
     } catch (error) {
       console.error('❌ [ANALYTICS] Exception creating enhanced sample data:', error);
+      return false;
     }
   }
 
@@ -443,7 +485,7 @@ class EnhancedKeywordAnalyticsService {
   }
 
   /**
-   * Save keyword snapshots with error handling
+   * Save keyword snapshots with enhanced error handling and proper upsert
    */
   async saveKeywordSnapshots(
     organizationId: string,
@@ -457,29 +499,46 @@ class EnhancedKeywordAnalyticsService {
     }>
   ): Promise<{ success: boolean; saved: number }> {
     try {
-      // Database expects numbers for rank_position and search_volume
-      const snapshotData = snapshots.map(snapshot => ({
-        organization_id: organizationId,
-        app_id: appId,
-        keyword: snapshot.keyword,
-        rank_position: snapshot.rank_position, // Keep as number for database
-        search_volume: snapshot.search_volume, // Keep as number for database
-        difficulty_score: snapshot.difficulty_score,
-        volume_trend: snapshot.volume_trend,
-        snapshot_date: new Date().toISOString().split('T')[0]
-      }));
+      // Validate input data
+      if (!snapshots || snapshots.length === 0) {
+        console.warn('⚠️ [ANALYTICS] No snapshots provided for saving');
+        return { success: false, saved: 0 };
+      }
 
+      // Prepare snapshot data with proper validation
+      const snapshotData = snapshots
+        .filter(snapshot => snapshot.keyword && typeof snapshot.rank_position === 'number')
+        .map(snapshot => ({
+          organization_id: organizationId,
+          app_id: appId,
+          keyword: snapshot.keyword.trim(),
+          rank_position: Math.max(1, snapshot.rank_position), // Ensure rank is at least 1
+          search_volume: Math.max(0, snapshot.search_volume || 0), // Ensure volume is non-negative
+          difficulty_score: snapshot.difficulty_score,
+          volume_trend: snapshot.volume_trend,
+          snapshot_date: new Date().toISOString().split('T')[0]
+        }));
+
+      if (snapshotData.length === 0) {
+        console.warn('⚠️ [ANALYTICS] No valid snapshots to save after filtering');
+        return { success: false, saved: 0 };
+      }
+
+      // Use upsert with the new unique constraint
       const { error } = await supabase
         .from('keyword_ranking_snapshots')
-        .insert(snapshotData);
+        .upsert(snapshotData, { 
+          onConflict: 'organization_id,app_id,keyword,snapshot_date',
+          ignoreDuplicates: false 
+        });
 
       if (error) {
         console.error('❌ [ANALYTICS] Keyword snapshots save failed:', error);
         return { success: false, saved: 0 };
       }
 
-      console.log('✅ [ANALYTICS] Keyword snapshots saved:', snapshots.length);
-      return { success: true, saved: snapshots.length };
+      console.log('✅ [ANALYTICS] Keyword snapshots saved:', snapshotData.length);
+      return { success: true, saved: snapshotData.length };
 
     } catch (error) {
       console.error('❌ [ANALYTICS] Exception saving keyword snapshots:', error);
