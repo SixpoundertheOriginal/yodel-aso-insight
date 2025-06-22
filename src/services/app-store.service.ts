@@ -1,6 +1,8 @@
+
 import { supabase } from '@/integrations/supabase/client';
 import { ScrapedMetadata, ValidationResult, ImportConfig, CompetitorData } from '@/types/aso';
 import { asoSearchService, SearchResult } from './aso-search.service';
+import { AmbiguousSearchError } from '@/types/search-errors';
 
 class AppStoreService {
   /**
@@ -96,7 +98,13 @@ class AppStoreService {
     } catch (error: any) {
       console.error('❌ [APP-STORE-SERVICE] Import failed:', error);
       
-      // Enhanced error handling with user-friendly messages
+      // CRITICAL FIX: Preserve AmbiguousSearchError instead of converting to generic Error
+      if (error instanceof AmbiguousSearchError) {
+        console.log('🎯 [APP-STORE-SERVICE] Re-throwing AmbiguousSearchError for user selection');
+        throw error; // Re-throw as-is to preserve type and candidates data
+      }
+      
+      // Enhanced error handling with user-friendly messages for other errors
       let userMessage = this.getUserFriendlyError(error, trimmedInput);
       
       // Add debugging info in development
@@ -160,9 +168,6 @@ class AppStoreService {
     };
   }
 
-  /**
-   * Sanitize text content
-   */
   private sanitizeText(text: string): string {
     if (!text || typeof text !== 'string') return '';
     
@@ -174,9 +179,6 @@ class AppStoreService {
       .substring(0, 10000); // Reasonable length limit
   }
 
-  /**
-   * Generate user-friendly error messages
-   */
   private getUserFriendlyError(error: any, input: string): string {
     const message = error.message?.toLowerCase() || '';
     
