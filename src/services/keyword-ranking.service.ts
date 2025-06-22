@@ -181,8 +181,8 @@ class KeywordRankingService {
     } catch (error) {
       console.error('❌ [KEYWORD-RANKING] Complete analysis failure, providing fallback rankings:', error);
       
-      // Provide basic fallback rankings
-      const fallbackKeywords = [
+      // Provide basic fallback rankings with proper typing
+      const fallbackKeywords: Array<{ keyword: string; priority: 'high' | 'medium' | 'low' }> = [
         { keyword: app.name.toLowerCase(), priority: 'high' },
         { keyword: 'mobile app', priority: 'low' },
         { keyword: app.applicationCategory?.toLowerCase() || 'app', priority: 'medium' }
