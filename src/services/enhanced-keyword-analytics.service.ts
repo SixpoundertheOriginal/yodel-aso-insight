@@ -1,4 +1,3 @@
-
 import { supabase } from '@/integrations/supabase/client';
 import { keywordPersistenceService } from './keyword-persistence.service';
 
@@ -150,8 +149,8 @@ class EnhancedKeywordAnalyticsService {
           top_50: result.top_50 || 0,
           top_100: result.top_100 || 0,
           total_tracked: result.total_tracked || 0,
-          avg_rank: parseFloat(result.avg_rank) || 0,
-          visibility_score: parseFloat(result.visibility_score) || 0
+          avg_rank: result.avg_rank || 0,
+          visibility_score: result.visibility_score || 0
         };
       }
 
