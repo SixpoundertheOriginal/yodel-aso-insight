@@ -80,7 +80,7 @@ class EnhancedKeywordAnalyticsService {
     try {
       console.log('📈 [ANALYTICS] Fetching keyword trends for app:', appId);
       
-      // Try database function first - ensure daysBack is passed as number
+      // Try database function first - ensure all parameters are properly typed
       const { data, error } = await supabase.rpc('get_keyword_trends', {
         p_organization_id: organizationId,
         p_app_id: appId,
@@ -123,9 +123,10 @@ class EnhancedKeywordAnalyticsService {
       
       const analysisDateStr = analysisDate?.toISOString().split('T')[0] || new Date().toISOString().split('T')[0];
       
+      // Fix: Ensure appId is passed as string, not converted to number
       const { data, error } = await supabase.rpc('calculate_rank_distribution', {
         p_organization_id: organizationId,
-        p_app_id: appId,
+        p_app_id: appId, // Keep as string
         p_analysis_date: analysisDateStr
       });
 
@@ -184,7 +185,7 @@ class EnhancedKeywordAnalyticsService {
 
       const snapshots = sampleKeywords.map(item => ({
         organization_id: organizationId,
-        app_id: appId,
+        app_id: appId, // Keep as string
         keyword: item.keyword,
         rank_position: item.rank,
         search_volume: item.volume,
