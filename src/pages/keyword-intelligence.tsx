@@ -16,11 +16,14 @@ const KeywordIntelligencePage: React.FC = () => {
   const [selectedApp, setSelectedApp] = useState<ScrapedMetadata | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [keywordRankings, setKeywordRankings] = useState<any[]>([]);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
   const { toast } = useToast();
 
   const handleAppImport = async (appData: ScrapedMetadata, organizationId: string) => {
     setSelectedApp(appData);
     setIsAnalyzing(true);
+    setAnalysisError(null);
+    setKeywordRankings([]);
     
     try {
       console.log('🎯 [KEYWORD-INTELLIGENCE] Starting keyword analysis for:', appData.name);
@@ -28,21 +31,25 @@ const KeywordIntelligencePage: React.FC = () => {
       // Use the keyword ranking service for actual analysis
       const rankings = await keywordRankingService.getAppKeywordRankings(appData, {
         organizationId,
-        maxKeywords: 20,
-        includeCompetitors: true,
+        maxKeywords: 5, // Reduced to prevent overloading
+        includeCompetitors: false, // Simplified for now
         debugMode: process.env.NODE_ENV === 'development'
       });
       
       setKeywordRankings(rankings);
       setIsAnalyzing(false);
       
+      const actualCount = rankings.filter(r => r.confidence === 'actual').length;
+      const estimatedCount = rankings.length - actualCount;
+      
       toast({
         title: "Analysis Complete",
-        description: `Found ${rankings.length} keyword rankings for ${appData.name}`,
+        description: `Found ${actualCount} actual and ${estimatedCount} estimated keyword rankings`,
       });
     } catch (error) {
       console.error('❌ [KEYWORD-INTELLIGENCE] Analysis failed:', error);
       setIsAnalyzing(false);
+      setAnalysisError(error.message || 'Analysis failed');
       toast({
         title: "Analysis Failed",
         description: "Could not analyze keyword rankings. Please try again.",
@@ -51,7 +58,17 @@ const KeywordIntelligencePage: React.FC = () => {
     }
   };
 
-  const getRankingBadgeColor = (position: number) => {
+  const getRankingBadgeColor = (ranking: any) => {
+    const { position, confidence } = ranking;
+    
+    // Different styling for estimated vs actual rankings
+    if (confidence === 'estimated') {
+      if (position <= 10) return 'bg-blue-600 text-white border border-blue-400';
+      if (position <= 30) return 'bg-blue-500 text-white border border-blue-300';
+      return 'bg-blue-400 text-white border border-blue-200';
+    }
+    
+    // Actual rankings
     if (position <= 3) return 'bg-green-600 text-white';
     if (position <= 10) return 'bg-yellow-600 text-white';
     if (position <= 20) return 'bg-orange-600 text-white';
@@ -74,7 +91,7 @@ const KeywordIntelligencePage: React.FC = () => {
           <div>
             <h1 className="text-3xl font-bold text-white">Keyword Intelligence</h1>
             <p className="text-zinc-400 mt-2">
-              Discover which keywords your app and competitors rank for in the App Store
+              Discover which keywords your app ranks for in the App Store
             </p>
           </div>
           <Badge variant="outline" className="border-purple-600 text-purple-400">
@@ -125,7 +142,11 @@ const KeywordIntelligencePage: React.FC = () => {
                   </div>
                   <Button
                     variant="outline"
-                    onClick={() => setSelectedApp(null)}
+                    onClick={() => {
+                      setSelectedApp(null);
+                      setKeywordRankings([]);
+                      setAnalysisError(null);
+                    }}
                     className="border-zinc-700"
                   >
                     Analyze Different App
@@ -143,8 +164,33 @@ const KeywordIntelligencePage: React.FC = () => {
                     <div>
                       <h3 className="text-lg font-medium text-white">Analyzing Keyword Rankings</h3>
                       <p className="text-zinc-400">
-                        Discovering which keywords {selectedApp.name} ranks for...
+                        Extracting keywords from {selectedApp.name} and checking rankings...
                       </p>
+                      <p className="text-xs text-zinc-500 mt-2">
+                        This may take a moment. We'll provide estimated rankings if searches fail.
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Error State */}
+            {analysisError && !isAnalyzing && (
+              <Card className="bg-zinc-900/50 border-zinc-800 border-red-600/50">
+                <CardContent className="py-6">
+                  <div className="text-center space-y-4">
+                    <AlertCircle className="w-12 h-12 text-red-500 mx-auto" />
+                    <div>
+                      <h3 className="text-lg font-medium text-red-400">Analysis Error</h3>
+                      <p className="text-zinc-400">{analysisError}</p>
+                      <Button
+                        variant="outline"
+                        onClick={() => handleAppImport(selectedApp, 'default')}
+                        className="mt-4 border-red-600 text-red-400 hover:bg-red-600/10"
+                      >
+                        Try Again
+                      </Button>
                     </div>
                   </div>
                 </CardContent>
@@ -155,7 +201,7 @@ const KeywordIntelligencePage: React.FC = () => {
             {!isAnalyzing && keywordRankings.length > 0 && (
               <Tabs defaultValue="rankings" className="space-y-4">
                 <TabsList className="grid w-full grid-cols-3 bg-zinc-800">
-                  <TabsTrigger value="rankings">Top Rankings</TabsTrigger>
+                  <TabsTrigger value="rankings">Keyword Rankings</TabsTrigger>
                   <TabsTrigger value="opportunities">Opportunities</TabsTrigger>
                   <TabsTrigger value="competitive">Competitive</TabsTrigger>
                 </TabsList>
@@ -165,10 +211,11 @@ const KeywordIntelligencePage: React.FC = () => {
                     <CardHeader>
                       <CardTitle className="flex items-center">
                         <Target className="w-5 h-5 mr-2 text-green-500" />
-                        Top Keyword Rankings
+                        Keyword Rankings for {selectedApp.name}
                       </CardTitle>
                       <p className="text-sm text-zinc-400">
-                        Keywords where {selectedApp.name} appears in search results
+                        Keywords where {selectedApp.name} appears in search results. 
+                        Blue badges indicate estimated rankings.
                       </p>
                     </CardHeader>
                     <CardContent>
@@ -176,13 +223,16 @@ const KeywordIntelligencePage: React.FC = () => {
                         {keywordRankings.map((ranking, index) => (
                           <div key={index} className="flex items-center justify-between p-4 bg-zinc-800/50 rounded-lg">
                             <div className="flex items-center space-x-4">
-                              <Badge className={getRankingBadgeColor(ranking.position)}>
+                              <Badge className={getRankingBadgeColor(ranking)}>
                                 #{ranking.position}
+                                {ranking.confidence === 'estimated' && (
+                                  <span className="ml-1 text-xs">~</span>
+                                )}
                               </Badge>
                               <div>
                                 <span className="text-white font-medium">{ranking.keyword}</span>
                                 <div className="text-xs text-zinc-400">
-                                  Search Volume: {ranking.volume}
+                                  Volume: {ranking.volume} • {ranking.confidence === 'estimated' ? 'Estimated' : 'Actual'}
                                 </div>
                               </div>
                             </div>
@@ -195,6 +245,15 @@ const KeywordIntelligencePage: React.FC = () => {
                           </div>
                         ))}
                       </div>
+                      
+                      {keywordRankings.some(r => r.confidence === 'estimated') && (
+                        <div className="mt-4 p-3 bg-blue-900/20 border border-blue-600/30 rounded-lg">
+                          <p className="text-xs text-blue-300">
+                            <span className="font-medium">Note:</span> Some rankings are estimated due to search limitations. 
+                            Estimated rankings (marked with ~) are based on keyword analysis and may not reflect actual App Store positions.
+                          </p>
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
                 </TabsContent>
@@ -212,9 +271,9 @@ const KeywordIntelligencePage: React.FC = () => {
                     </CardHeader>
                     <CardContent>
                       <div className="text-center py-8">
-                        <AlertCircle className="w-12 h-12 text-zinc-500 mx-auto mb-4" />
+                        <TrendingUp className="w-12 h-12 text-zinc-500 mx-auto mb-4" />
                         <p className="text-zinc-400">
-                          Opportunity analysis will be available in the next update
+                          Opportunity analysis coming soon. Focus on improving rankings for keywords with positions 11-30.
                         </p>
                       </div>
                     </CardContent>
@@ -234,9 +293,9 @@ const KeywordIntelligencePage: React.FC = () => {
                     </CardHeader>
                     <CardContent>
                       <div className="text-center py-8">
-                        <AlertCircle className="w-12 h-12 text-zinc-500 mx-auto mb-4" />
+                        <Crown className="w-12 h-12 text-zinc-500 mx-auto mb-4" />
                         <p className="text-zinc-400">
-                          Competitive analysis will be available in the next update
+                          Competitive analysis coming soon. We'll show how your keywords compare against similar apps.
                         </p>
                       </div>
                     </CardContent>
