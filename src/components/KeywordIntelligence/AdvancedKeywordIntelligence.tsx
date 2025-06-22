@@ -7,7 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
 import { Label } from '@/components/ui/label';
-import { TrendingUp, TrendingDown, Minus, Search, Filter, Target, BarChart3, Loader2 } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus, Search, Filter, Target, BarChart3, Loader2, RefreshCw } from 'lucide-react';
 import { useAdvancedKeywordIntelligence } from '@/hooks/useAdvancedKeywordIntelligence';
 import { KeywordVolumeChart } from './KeywordVolumeChart';
 import { KeywordClustersPanel } from './KeywordClustersPanel';
@@ -21,9 +21,6 @@ export const AdvancedKeywordIntelligence: React.FC<AdvancedKeywordIntelligencePr
   organizationId,
   targetAppId = 'demo-app-123'
 }) => {
-  const [appChanging, setAppChanging] = useState(false);
-  const [previousAppId, setPreviousAppId] = useState(targetAppId);
-
   const {
     keywordData,
     clusters,
@@ -35,27 +32,13 @@ export const AdvancedKeywordIntelligence: React.FC<AdvancedKeywordIntelligencePr
     setFilters,
     isLoading,
     isLoadingTrends,
-    selectedApp
+    selectedApp,
+    refreshKeywordData,
+    isTransitioning
   } = useAdvancedKeywordIntelligence({
     organizationId,
     targetAppId
   });
-
-  // Track app changes for loading state
-  useEffect(() => {
-    if (targetAppId !== previousAppId) {
-      console.log('🔄 [KEYWORD-INTELLIGENCE] App changed from', previousAppId, 'to', targetAppId);
-      setAppChanging(true);
-      setPreviousAppId(targetAppId);
-      
-      // Clear the loading state after a brief moment
-      const timer = setTimeout(() => {
-        setAppChanging(false);
-      }, 1500);
-      
-      return () => clearTimeout(timer);
-    }
-  }, [targetAppId, previousAppId]);
 
   // Log keyword data changes for debugging
   useEffect(() => {
@@ -79,14 +62,14 @@ export const AdvancedKeywordIntelligence: React.FC<AdvancedKeywordIntelligencePr
     }
   };
 
-  if (isLoading || appChanging) {
+  if (isLoading) {
     return (
       <div className="space-y-6">
         <div className="flex items-center justify-center h-32">
           <div className="flex items-center space-x-2">
             <Loader2 className="h-6 w-6 animate-spin text-yodel-orange" />
             <div className="text-zinc-400">
-              {appChanging ? `Loading keywords for ${selectedApp?.app_name || 'app'}...` : 'Loading keyword intelligence...'}
+              {isTransitioning ? `Loading keywords for ${selectedApp?.app_name || 'app'}...` : 'Loading keyword intelligence...'}
             </div>
           </div>
         </div>
@@ -96,6 +79,28 @@ export const AdvancedKeywordIntelligence: React.FC<AdvancedKeywordIntelligencePr
 
   return (
     <div className="space-y-6">
+      {/* Header with refresh button */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-bold text-white">Keyword Intelligence</h2>
+          {selectedApp && (
+            <p className="text-zinc-400 text-sm">
+              Analyzing keywords for <span className="text-yodel-orange">{selectedApp.app_name}</span>
+            </p>
+          )}
+        </div>
+        <Button
+          onClick={refreshKeywordData}
+          variant="outline"
+          size="sm"
+          className="border-zinc-700 hover:bg-zinc-800"
+          disabled={isLoading}
+        >
+          <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+          Refresh Data
+        </Button>
+      </div>
+
       {/* Stats Overview */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card className="bg-zinc-900/50 border-zinc-800">
@@ -239,67 +244,76 @@ export const AdvancedKeywordIntelligence: React.FC<AdvancedKeywordIntelligencePr
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-zinc-700">
-                      <th className="text-left py-3 px-4 text-zinc-300">Keyword</th>
-                      <th className="text-right py-3 px-4 text-zinc-300">Rank</th>
-                      <th className="text-right py-3 px-4 text-zinc-300">Volume</th>
-                      <th className="text-right py-3 px-4 text-zinc-300">Difficulty</th>
-                      <th className="text-center py-3 px-4 text-zinc-300">Trend</th>
-                      <th className="text-center py-3 px-4 text-zinc-300">Opportunity</th>
-                      <th className="text-right py-3 px-4 text-zinc-300">Competitor</th>
-                      <th className="text-center py-3 px-4 text-zinc-300">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {keywordData.map((keyword, index) => (
-                      <tr key={`${keyword.keyword}-${selectedApp?.app_name}-${index}`} className="border-b border-zinc-800 hover:bg-zinc-800/50">
-                        <td className="py-3 px-4">
-                          <span className="text-white font-medium">{keyword.keyword}</span>
-                        </td>
-                        <td className="py-3 px-4 text-right">
-                          <span className={`${keyword.rank && keyword.rank <= 10 ? 'text-green-400' : 
-                            keyword.rank && keyword.rank <= 50 ? 'text-yellow-400' : 'text-red-400'}`}>
-                            {keyword.rank || 'N/A'}
-                          </span>
-                        </td>
-                        <td className="py-3 px-4 text-right text-zinc-300">
-                          {keyword.searchVolume?.toLocaleString() || 'N/A'}
-                        </td>
-                        <td className="py-3 px-4 text-right">
-                          <span className={`${keyword.difficulty && keyword.difficulty <= 3 ? 'text-green-400' : 
-                            keyword.difficulty && keyword.difficulty <= 6 ? 'text-yellow-400' : 'text-red-400'}`}>
-                            {keyword.difficulty?.toFixed(1) || 'N/A'}/10
-                          </span>
-                        </td>
-                        <td className="py-3 px-4 text-center">
-                          {getTrendIcon(keyword.trend)}
-                        </td>
-                        <td className="py-3 px-4 text-center">
-                          <Badge className={getOpportunityColor(keyword.opportunity)}>
-                            {keyword.opportunity || 'Unknown'}
-                          </Badge>
-                        </td>
-                        <td className="py-3 px-4 text-right text-zinc-300">
-                          #{keyword.competitorRank || 'N/A'}
-                        </td>
-                        <td className="py-3 px-4 text-center">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => setSelectedKeyword(keyword.keyword)}
-                            className="bg-zinc-800 border-zinc-700 hover:bg-zinc-700"
-                          >
-                            View Trends
-                          </Button>
-                        </td>
+              {keywordData.length === 0 ? (
+                <div className="text-center py-8">
+                  <div className="text-zinc-400 mb-2">No keywords found</div>
+                  <div className="text-zinc-500 text-sm">
+                    {isTransitioning ? 'Loading keywords for the selected app...' : 'Try adjusting your filters or refresh the data'}
+                  </div>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-zinc-700">
+                        <th className="text-left py-3 px-4 text-zinc-300">Keyword</th>
+                        <th className="text-right py-3 px-4 text-zinc-300">Rank</th>
+                        <th className="text-right py-3 px-4 text-zinc-300">Volume</th>
+                        <th className="text-right py-3 px-4 text-zinc-300">Difficulty</th>
+                        <th className="text-center py-3 px-4 text-zinc-300">Trend</th>
+                        <th className="text-center py-3 px-4 text-zinc-300">Opportunity</th>
+                        <th className="text-right py-3 px-4 text-zinc-300">Competitor</th>
+                        <th className="text-center py-3 px-4 text-zinc-300">Actions</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {keywordData.map((keyword, index) => (
+                        <tr key={`${keyword.keyword}-${selectedApp?.id}-${index}`} className="border-b border-zinc-800 hover:bg-zinc-800/50">
+                          <td className="py-3 px-4">
+                            <span className="text-white font-medium">{keyword.keyword}</span>
+                          </td>
+                          <td className="py-3 px-4 text-right">
+                            <span className={`${keyword.rank && keyword.rank <= 10 ? 'text-green-400' : 
+                              keyword.rank && keyword.rank <= 50 ? 'text-yellow-400' : 'text-red-400'}`}>
+                              {keyword.rank || 'N/A'}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 text-right text-zinc-300">
+                            {keyword.searchVolume?.toLocaleString() || 'N/A'}
+                          </td>
+                          <td className="py-3 px-4 text-right">
+                            <span className={`${keyword.difficulty && keyword.difficulty <= 3 ? 'text-green-400' : 
+                              keyword.difficulty && keyword.difficulty <= 6 ? 'text-yellow-400' : 'text-red-400'}`}>
+                              {keyword.difficulty?.toFixed(1) || 'N/A'}/10
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 text-center">
+                            {getTrendIcon(keyword.trend)}
+                          </td>
+                          <td className="py-3 px-4 text-center">
+                            <Badge className={getOpportunityColor(keyword.opportunity)}>
+                              {keyword.opportunity || 'Unknown'}
+                            </Badge>
+                          </td>
+                          <td className="py-3 px-4 text-right text-zinc-300">
+                            #{keyword.competitorRank || 'N/A'}
+                          </td>
+                          <td className="py-3 px-4 text-center">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => setSelectedKeyword(keyword.keyword)}
+                              className="bg-zinc-800 border-zinc-700 hover:bg-zinc-700"
+                            >
+                              View Trends
+                            </Button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

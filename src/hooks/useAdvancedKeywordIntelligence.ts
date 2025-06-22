@@ -1,9 +1,9 @@
-
 import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { competitorKeywordAnalysisService, KeywordVolumeHistory, KeywordGapAnalysis, KeywordDifficultyScore, KeywordCluster } from '@/services/competitor-keyword-analysis.service';
 import { keywordRankingService, KeywordRanking } from '@/services/keyword-ranking.service';
 import { supabase } from '@/integrations/supabase/client';
+import { useKeywordDataManager } from './useKeywordDataManager';
 
 export interface AdvancedKeywordData {
   keyword: string;
@@ -43,6 +43,12 @@ export const useAdvancedKeywordIntelligence = ({
     opportunity: 'all' as 'all' | 'high' | 'medium' | 'low'
   });
 
+  // Use the new keyword data manager
+  const { isTransitioning, refreshKeywordData } = useKeywordDataManager({
+    targetAppId,
+    organizationId
+  });
+
   // Get current user's organization ID if not provided
   const { data: currentOrgId } = useQuery({
     queryKey: ['current-organization'],
@@ -63,7 +69,7 @@ export const useAdvancedKeywordIntelligence = ({
 
   const effectiveOrgId = organizationId || currentOrgId;
 
-  // Get selected app details for app-specific keyword generation
+  // Get selected app details - with stable query key
   const { data: selectedApp, isLoading: isLoadingApp } = useQuery({
     queryKey: ['selected-app', targetAppId, effectiveOrgId],
     queryFn: async () => {
@@ -79,47 +85,49 @@ export const useAdvancedKeywordIntelligence = ({
       console.log('🔍 [KEYWORD-INTELLIGENCE] Selected app loaded:', apps?.app_name);
       return apps;
     },
-    enabled: !!targetAppId && !!effectiveOrgId,
+    enabled: !!targetAppId && !!effectiveOrgId && enabled,
+    staleTime: 1000 * 60 * 10, // 10 minutes
   });
 
-  // Fetch keyword gap analysis with improved error handling - include targetAppId in key
+  // Fetch keyword gap analysis - optimized with better error handling
   const { data: gapAnalysis = [], isLoading: isLoadingGaps, error: gapError } = useQuery({
-    queryKey: ['keyword-gap-analysis', effectiveOrgId, targetAppId, selectedApp?.app_name],
+    queryKey: ['keyword-gap-analysis', effectiveOrgId, targetAppId],
     queryFn: async () => {
       if (!targetAppId || !effectiveOrgId) return [];
       
       try {
         console.log('🔍 [KEYWORD-INTELLIGENCE] Fetching gap analysis for app:', selectedApp?.app_name || targetAppId);
         const data = await competitorKeywordAnalysisService.getKeywordGapAnalysis(effectiveOrgId, targetAppId);
-        console.log('✅ [KEYWORD-INTELLIGENCE] Gap analysis data:', data);
+        console.log('✅ [KEYWORD-INTELLIGENCE] Gap analysis data:', data.length);
         return data;
       } catch (error) {
         console.error('❌ [KEYWORD-INTELLIGENCE] Gap analysis failed:', error);
         return [];
       }
     },
-    enabled: enabled && !!targetAppId && !!effectiveOrgId,
-    staleTime: 1000 * 60 * 5, // Reduced to 5 minutes for more frequent updates
+    enabled: enabled && !!targetAppId && !!effectiveOrgId && !isTransitioning,
+    staleTime: 1000 * 60 * 5, // 5 minutes
+    gcTime: 1000 * 60 * 10, // 10 minutes garbage collection
   });
 
-  // Fetch keyword clusters with error handling - include targetAppId in key
+  // Fetch keyword clusters - optimized
   const { data: clusters = [], isLoading: isLoadingClusters, error: clusterError } = useQuery({
-    queryKey: ['keyword-clusters', effectiveOrgId, targetAppId, selectedApp?.app_name],
+    queryKey: ['keyword-clusters', effectiveOrgId],
     queryFn: async () => {
       if (!effectiveOrgId) return [];
       
       try {
-        console.log('🔍 [KEYWORD-INTELLIGENCE] Fetching clusters for app:', selectedApp?.app_name || 'unknown');
+        console.log('🔍 [KEYWORD-INTELLIGENCE] Fetching clusters');
         const data = await competitorKeywordAnalysisService.getKeywordClusters(effectiveOrgId);
-        console.log('✅ [KEYWORD-INTELLIGENCE] Clusters data:', data);
+        console.log('✅ [KEYWORD-INTELLIGENCE] Clusters data:', data.length);
         return data;
       } catch (error) {
         console.error('❌ [KEYWORD-INTELLIGENCE] Clusters failed:', error);
         return [];
       }
     },
-    enabled: enabled && !!effectiveOrgId,
-    staleTime: 1000 * 60 * 10, // Reduced to 10 minutes
+    enabled: enabled && !!effectiveOrgId && !isTransitioning,
+    staleTime: 1000 * 60 * 10, // 10 minutes
   });
 
   // Fetch volume trends for selected keyword
@@ -132,7 +140,7 @@ export const useAdvancedKeywordIntelligence = ({
     staleTime: 1000 * 60 * 10, // 10 minutes
   });
 
-  // Generate app-specific demo keywords based on app name/category
+  // Generate app-specific keywords based on app name/category
   const generateAppSpecificKeywords = (appName: string, appCategory?: string): string[] => {
     const normalizedName = appName.toLowerCase();
     console.log('📱 [KEYWORD-INTELLIGENCE] Generating keywords for app:', appName, 'category:', appCategory);
@@ -163,8 +171,13 @@ export const useAdvancedKeywordIntelligence = ({
     ];
   };
 
-  // Generate enhanced keyword data combining real and app-specific demo data
+  // Generate enhanced keyword data - with better app context
   const generateEnhancedKeywordData = (gaps: KeywordGapAnalysis[], clusters: KeywordCluster[], appData?: any): AdvancedKeywordData[] => {
+    if (isTransitioning || !appData) {
+      console.log('🔄 [KEYWORD-INTELLIGENCE] App transitioning or no app data, returning empty');
+      return [];
+    }
+
     console.log('🎯 [KEYWORD-INTELLIGENCE] Generating enhanced data for app:', appData?.app_name, 'with gaps:', gaps.length, 'clusters:', clusters.length);
 
     // Get keywords from clusters first
@@ -176,11 +189,11 @@ export const useAdvancedKeywordIntelligence = ({
     // Add gap analysis keywords
     const gapKeywords = gaps.map(g => g.keyword);
 
-    // Generate app-specific keywords if we have app data
+    // Generate app-specific keywords
     let appSpecificKeywords: string[] = [];
     if (appData) {
       appSpecificKeywords = generateAppSpecificKeywords(appData.app_name, appData.category);
-      console.log('📱 [KEYWORD-INTELLIGENCE] Generated app-specific keywords for', appData.app_name, ':', appSpecificKeywords);
+      console.log('📱 [KEYWORD-INTELLIGENCE] Generated app-specific keywords for', appData.app_name, ':', appSpecificKeywords.length);
     }
 
     // Combine and deduplicate
@@ -193,7 +206,6 @@ export const useAdvancedKeywordIntelligence = ({
         c.primaryKeyword === keyword || c.relatedKeywords.includes(keyword)
       );
 
-      // Use real data if available, otherwise generate realistic demo data
       return {
         keyword,
         rank: gapData?.targetRank || Math.floor(Math.random() * 100) + 1,
@@ -208,7 +220,7 @@ export const useAdvancedKeywordIntelligence = ({
     });
   };
 
-  // Force regeneration when app changes
+  // Generate keyword data - only when not transitioning
   const keywordData = generateEnhancedKeywordData(gapAnalysis, clusters, selectedApp);
 
   // Apply filters
@@ -242,10 +254,12 @@ export const useAdvancedKeywordIntelligence = ({
     }
   }, [gapError, clusterError]);
 
-  // Log when app changes to debug re-rendering
+  // Log when app changes for debugging
   useEffect(() => {
-    console.log('🔄 [KEYWORD-INTELLIGENCE] App changed, regenerating data for:', selectedApp?.app_name);
-  }, [selectedApp?.app_name, targetAppId]);
+    if (selectedApp?.app_name) {
+      console.log('🔄 [KEYWORD-INTELLIGENCE] App data loaded for:', selectedApp.app_name);
+    }
+  }, [selectedApp?.app_name]);
 
   return {
     keywordData: filteredKeywords,
@@ -256,11 +270,13 @@ export const useAdvancedKeywordIntelligence = ({
     setSelectedKeyword,
     filters,
     setFilters,
-    isLoading: isLoadingGaps || isLoadingClusters || isLoadingApp,
+    isLoading: isLoadingGaps || isLoadingClusters || isLoadingApp || isTransitioning,
     isLoadingTrends,
     gapAnalysis,
     effectiveOrgId,
     hasErrors: !!gapError || !!clusterError,
-    selectedApp
+    selectedApp,
+    refreshKeywordData,
+    isTransitioning
   };
 };
