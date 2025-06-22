@@ -32,13 +32,13 @@ class KeywordDiscoveryIntegrationService {
       
       if (!appMetadata) {
         console.warn('⚠️ [DISCOVERY-INTEGRATION] No app metadata found, using intelligent fallback');
-        return this.generateIntelligentFallbackKeywords(config);
+        return await this.generateIntelligentFallbackKeywords(config);
       }
 
       const discoveryRequest = {
         organizationId: config.organizationId,
         targetApp: {
-          name: appMetadata.app_name || appMetadata.name || 'Unknown App',
+          name: appMetadata.app_name || 'Unknown App',
           appId: config.appId,
           category: this.normalizeCategory(appMetadata.category),
           description: appMetadata.description || this.generateDescriptionFromName(appMetadata.app_name),
@@ -61,12 +61,12 @@ class KeywordDiscoveryIntegrationService {
 
       if (error) {
         console.error('❌ [DISCOVERY-INTEGRATION] Service error:', error);
-        return this.generateIntelligentFallbackKeywords(config);
+        return await this.generateIntelligentFallbackKeywords(config);
       }
 
       if (!data?.success) {
         console.error('❌ [DISCOVERY-INTEGRATION] Discovery failed:', data?.error);
-        return this.generateIntelligentFallbackKeywords(config);
+        return await this.generateIntelligentFallbackKeywords(config);
       }
 
       const keywords = data.data.keywords || [];
@@ -77,7 +77,7 @@ class KeywordDiscoveryIntegrationService {
 
     } catch (error) {
       console.error('💥 [DISCOVERY-INTEGRATION] Exception:', error);
-      return this.generateIntelligentFallbackKeywords(config);
+      return await this.generateIntelligentFallbackKeywords(config);
     }
   }
 
@@ -124,8 +124,8 @@ class KeywordDiscoveryIntegrationService {
         // Enhance with generated description if none exists
         return {
           ...appData,
-          description: appData.description || this.generateDescriptionFromName(appData.app_name),
-          subtitle: appData.subtitle || ''
+          description: this.generateDescriptionFromName(appData.app_name),
+          subtitle: ''
         };
       }
 
@@ -184,8 +184,8 @@ class KeywordDiscoveryIntegrationService {
   private generateSmartSeedKeywords(appMetadata: any): string[] {
     const seeds: string[] = [];
     
-    if (appMetadata.app_name || appMetadata.name) {
-      const appName = (appMetadata.app_name || appMetadata.name).toLowerCase();
+    if (appMetadata.app_name) {
+      const appName = appMetadata.app_name.toLowerCase();
       
       // Add the app name itself
       seeds.push(appName);
@@ -285,11 +285,11 @@ class KeywordDiscoveryIntegrationService {
   /**
    * Generate intelligent fallback keywords when discovery fails
    */
-  private generateIntelligentFallbackKeywords(config: KeywordDiscoveryConfig): DiscoveredKeywordResult[] {
+  private async generateIntelligentFallbackKeywords(config: KeywordDiscoveryConfig): Promise<DiscoveredKeywordResult[]> {
     console.log('🔄 [DISCOVERY-INTEGRATION] Generating intelligent fallback keywords...');
     
     // Try to get app data for intelligent fallback
-    return this.getAppBasedFallbackKeywords(config.appId);
+    return await this.getAppBasedFallbackKeywords(config.appId);
   }
 
   /**
@@ -361,7 +361,7 @@ class KeywordDiscoveryIntegrationService {
    * Enhance keyword results with app-specific relevance scoring
    */
   private enhanceKeywordResults(keywords: any[], appMetadata: any): DiscoveredKeywordResult[] {
-    const appName = (appMetadata.app_name || appMetadata.name || '').toLowerCase();
+    const appName = (appMetadata.app_name || '').toLowerCase();
     
     return keywords.map(kw => ({
       keyword: kw.keyword,
@@ -493,42 +493,6 @@ class KeywordDiscoveryIntegrationService {
   }
 
   // Helper methods
-  private async getAppMetadata(appId: string) {
-    try {
-      const { data } = await supabase
-        .from('apps')
-        .select('app_name, category')
-        .eq('id', appId)
-        .single();
-
-      return data;
-    } catch {
-      return null;
-    }
-  }
-
-  private getDefaultCompetitors(category?: string): string[] {
-    const competitors: Record<string, string[]> = {
-      'Health & Fitness': ['389801252', '1040872112', '448474618'],
-      'Productivity': ['1091189122', '966085870', '1090624618'],
-      'Education': ['479516143', '1135441750', '918858936'],
-      'Lifestyle': ['1437816860', '1107421413', '1052240851']
-    };
-
-    return competitors[category || 'Productivity'] || competitors['Productivity'];
-  }
-
-  private getDefaultSeedKeywords(category?: string): string[] {
-    const seeds: Record<string, string[]> = {
-      'Health & Fitness': ['fitness', 'workout', 'health', 'meditation'],
-      'Productivity': ['productivity', 'task manager', 'notes', 'calendar'],
-      'Education': ['learning', 'study', 'education', 'courses'],
-      'Lifestyle': ['lifestyle', 'wellness', 'mindfulness', 'habits']
-    };
-
-    return seeds[category || 'Productivity'] || seeds['Productivity'];
-  }
-
   private isCommonWord(word: string): boolean {
     const commonWords = ['the', 'and', 'for', 'with', 'your', 'you', 'are', 'can', 'will', 'app', 'mobile', 'free', 'best', 'new', 'get', 'use'];
     return commonWords.includes(word.toLowerCase());
