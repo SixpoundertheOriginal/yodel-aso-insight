@@ -3,10 +3,10 @@ import React, { useState } from 'react';
 import MainLayout from '@/layouts/MainLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Search, TrendingUp, Target, Crown, AlertCircle } from 'lucide-react';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Search, TrendingUp, Target, Crown, AlertCircle, CheckCircle, BarChart3, Lightbulb } from 'lucide-react';
 import { MetadataImporter } from '@/components/AsoAiHub/MetadataCopilot/MetadataImporter';
 import { keywordRankingService } from '@/services/keyword-ranking.service';
 import { ScrapedMetadata } from '@/types/aso';
@@ -26,13 +26,13 @@ const KeywordIntelligencePage: React.FC = () => {
     setKeywordRankings([]);
     
     try {
-      console.log('🎯 [KEYWORD-INTELLIGENCE] Starting keyword analysis for:', appData.name);
+      console.log('🎯 [KEYWORD-INTELLIGENCE] Starting smart keyword analysis for:', appData.name);
       
-      // Use the keyword ranking service for actual analysis
+      // Use the enhanced keyword ranking service
       const rankings = await keywordRankingService.getAppKeywordRankings(appData, {
         organizationId,
-        maxKeywords: 5, // Reduced to prevent overloading
-        includeCompetitors: false, // Simplified for now
+        maxKeywords: 15,
+        includeCompetitors: false,
         debugMode: process.env.NODE_ENV === 'development'
       });
       
@@ -43,8 +43,8 @@ const KeywordIntelligencePage: React.FC = () => {
       const estimatedCount = rankings.length - actualCount;
       
       toast({
-        title: "Analysis Complete",
-        description: `Found ${actualCount} actual and ${estimatedCount} estimated keyword rankings`,
+        title: "Smart Analysis Complete",
+        description: `Generated ${actualCount} verified and ${estimatedCount} intelligent keyword predictions`,
       });
     } catch (error) {
       console.error('❌ [KEYWORD-INTELLIGENCE] Analysis failed:', error);
@@ -58,29 +58,104 @@ const KeywordIntelligencePage: React.FC = () => {
     }
   };
 
-  const getRankingBadgeColor = (ranking: any) => {
-    const { position, confidence } = ranking;
-    
-    // Different styling for estimated vs actual rankings
-    if (confidence === 'estimated') {
-      if (position <= 10) return 'bg-blue-600 text-white border border-blue-400';
-      if (position <= 30) return 'bg-blue-500 text-white border border-blue-300';
-      return 'bg-blue-400 text-white border border-blue-200';
-    }
-    
-    // Actual rankings
-    if (position <= 3) return 'bg-green-600 text-white';
-    if (position <= 10) return 'bg-yellow-600 text-white';
-    if (position <= 20) return 'bg-orange-600 text-white';
-    return 'bg-gray-600 text-white';
+  // Group rankings by position ranges
+  const groupedRankings = {
+    topRankings: keywordRankings.filter(r => r.position <= 3),
+    mediumRankings: keywordRankings.filter(r => r.position > 3 && r.position <= 10),
+    longTailRankings: keywordRankings.filter(r => r.position > 10)
   };
 
-  const getTrendIcon = (trend: string) => {
-    switch (trend) {
-      case 'up': return <TrendingUp className="w-3 h-3 text-green-500" />;
-      case 'down': return <TrendingUp className="w-3 h-3 text-red-500 rotate-180" />;
-      default: return <div className="w-3 h-3 bg-gray-400 rounded-full" />;
+  const getStatusIcon = (ranking: any) => {
+    if (ranking.confidence === 'actual') {
+      return <CheckCircle className="w-4 h-4 text-green-500" />;
     }
+    return <BarChart3 className="w-4 h-4 text-blue-500" />;
+  };
+
+  const getStatusBadge = (ranking: any) => {
+    if (ranking.confidence === 'actual') {
+      return <Badge className="bg-green-600 text-white">Verified</Badge>;
+    }
+    return <Badge variant="outline" className="border-blue-600 text-blue-400">Predicted</Badge>;
+  };
+
+  const getPriorityBadge = (priority: string) => {
+    switch (priority) {
+      case 'high':
+        return <Badge className="bg-red-600 text-white">High Impact</Badge>;
+      case 'medium':
+        return <Badge className="bg-yellow-600 text-white">Medium Impact</Badge>;
+      case 'low':
+        return <Badge className="bg-gray-600 text-white">Long-tail</Badge>;
+      default:
+        return null;
+    }
+  };
+
+  const renderRankingTable = (rankings: any[], title: string, description: string, colorClass: string) => {
+    if (rankings.length === 0) return null;
+
+    return (
+      <Card className="bg-zinc-900/50 border-zinc-800">
+        <CardHeader>
+          <CardTitle className={`text-lg ${colorClass}`}>{title}</CardTitle>
+          <p className="text-sm text-zinc-400">{description}</p>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Keyword</TableHead>
+                <TableHead>Position</TableHead>
+                <TableHead>Volume</TableHead>
+                <TableHead>Impact</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Reason</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rankings.map((ranking, index) => (
+                <TableRow key={index}>
+                  <TableCell>
+                    <div className="flex items-center space-x-2">
+                      {getStatusIcon(ranking)}
+                      <span className="font-medium text-white">{ranking.keyword}</span>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <Badge className={`${
+                      ranking.position <= 3 ? 'bg-green-600' :
+                      ranking.position <= 10 ? 'bg-yellow-600' : 'bg-gray-600'
+                    } text-white`}>
+                      #{ranking.position}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <span className={`text-sm ${
+                      ranking.volume === 'High' ? 'text-green-400' :
+                      ranking.volume === 'Medium' ? 'text-yellow-400' : 'text-gray-400'
+                    }`}>
+                      {ranking.volume}
+                    </span>
+                  </TableCell>
+                  <TableCell>
+                    {ranking.priority && getPriorityBadge(ranking.priority)}
+                  </TableCell>
+                  <TableCell>
+                    {getStatusBadge(ranking)}
+                  </TableCell>
+                  <TableCell>
+                    <span className="text-xs text-zinc-400">
+                      {ranking.reason || 'Natural search term'}
+                    </span>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+    );
   };
 
   return (
@@ -89,14 +164,14 @@ const KeywordIntelligencePage: React.FC = () => {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-white">Keyword Intelligence</h1>
+            <h1 className="text-3xl font-bold text-white">Smart Keyword Intelligence</h1>
             <p className="text-zinc-400 mt-2">
-              Discover which keywords your app ranks for in the App Store
+              AI-powered keyword analysis with natural search terms and competitive insights
             </p>
           </div>
           <Badge variant="outline" className="border-purple-600 text-purple-400">
             <Crown className="w-3 h-3 mr-1" />
-            ASO Intelligence
+            Enhanced Intelligence
           </Badge>
         </div>
 
@@ -106,16 +181,14 @@ const KeywordIntelligencePage: React.FC = () => {
             <CardHeader>
               <CardTitle className="flex items-center">
                 <Search className="w-5 h-5 mr-2 text-purple-500" />
-                Select App to Analyze
+                Select App for Smart Analysis
               </CardTitle>
               <p className="text-sm text-zinc-400">
-                Enter an app name, URL, or keywords to discover keyword rankings
+                Get intelligent keyword predictions based on semantic analysis and category intelligence
               </p>
             </CardHeader>
             <CardContent>
-              <MetadataImporter
-                onImportSuccess={handleAppImport}
-              />
+              <MetadataImporter onImportSuccess={handleAppImport} />
             </CardContent>
           </Card>
         )}
@@ -138,6 +211,9 @@ const KeywordIntelligencePage: React.FC = () => {
                     <div>
                       <h2 className="text-xl font-bold text-white">{selectedApp.name}</h2>
                       <p className="text-zinc-400">{selectedApp.developer}</p>
+                      <Badge variant="outline" className="mt-1">
+                        {selectedApp.applicationCategory || 'App'}
+                      </Badge>
                     </div>
                   </div>
                   <Button
@@ -162,12 +238,12 @@ const KeywordIntelligencePage: React.FC = () => {
                   <div className="text-center space-y-4">
                     <div className="animate-spin w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full mx-auto"></div>
                     <div>
-                      <h3 className="text-lg font-medium text-white">Analyzing Keyword Rankings</h3>
+                      <h3 className="text-lg font-medium text-white">Smart Keyword Analysis</h3>
                       <p className="text-zinc-400">
-                        Extracting keywords from {selectedApp.name} and checking rankings...
+                        Using AI to generate natural, searchable keywords for {selectedApp.name}...
                       </p>
                       <p className="text-xs text-zinc-500 mt-2">
-                        This may take a moment. We'll provide estimated rankings if searches fail.
+                        Analyzing category patterns, semantic meaning, and search intent
                       </p>
                     </div>
                   </div>
@@ -197,111 +273,105 @@ const KeywordIntelligencePage: React.FC = () => {
               </Card>
             )}
 
-            {/* Keyword Rankings */}
+            {/* Smart Keyword Results */}
             {!isAnalyzing && keywordRankings.length > 0 && (
-              <Tabs defaultValue="rankings" className="space-y-4">
-                <TabsList className="grid w-full grid-cols-3 bg-zinc-800">
-                  <TabsTrigger value="rankings">Keyword Rankings</TabsTrigger>
-                  <TabsTrigger value="opportunities">Opportunities</TabsTrigger>
-                  <TabsTrigger value="competitive">Competitive</TabsTrigger>
-                </TabsList>
-
-                <TabsContent value="rankings">
-                  <Card className="bg-zinc-900/50 border-zinc-800">
-                    <CardHeader>
-                      <CardTitle className="flex items-center">
-                        <Target className="w-5 h-5 mr-2 text-green-500" />
-                        Keyword Rankings for {selectedApp.name}
-                      </CardTitle>
-                      <p className="text-sm text-zinc-400">
-                        Keywords where {selectedApp.name} appears in search results. 
-                        Blue badges indicate estimated rankings.
-                      </p>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-3">
-                        {keywordRankings.map((ranking, index) => (
-                          <div key={index} className="flex items-center justify-between p-4 bg-zinc-800/50 rounded-lg">
-                            <div className="flex items-center space-x-4">
-                              <Badge className={getRankingBadgeColor(ranking)}>
-                                #{ranking.position}
-                                {ranking.confidence === 'estimated' && (
-                                  <span className="ml-1 text-xs">~</span>
-                                )}
-                              </Badge>
-                              <div>
-                                <span className="text-white font-medium">{ranking.keyword}</span>
-                                <div className="text-xs text-zinc-400">
-                                  Volume: {ranking.volume} • {ranking.confidence === 'estimated' ? 'Estimated' : 'Actual'}
-                                </div>
-                              </div>
-                            </div>
-                            <div className="flex items-center space-x-2">
-                              {getTrendIcon(ranking.trend)}
-                              <span className="text-xs text-zinc-400 capitalize">
-                                {ranking.trend}
-                              </span>
-                            </div>
-                          </div>
-                        ))}
+              <div className="space-y-6">
+                {/* Summary Stats */}
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <Card className="bg-green-900/20 border-green-600/50">
+                    <CardContent className="p-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm text-green-400">Top 1-3 Rankings</p>
+                          <p className="text-2xl font-bold text-white">{groupedRankings.topRankings.length}</p>
+                        </div>
+                        <Target className="w-8 h-8 text-green-500" />
                       </div>
-                      
-                      {keywordRankings.some(r => r.confidence === 'estimated') && (
-                        <div className="mt-4 p-3 bg-blue-900/20 border border-blue-600/30 rounded-lg">
-                          <p className="text-xs text-blue-300">
-                            <span className="font-medium">Note:</span> Some rankings are estimated due to search limitations. 
-                            Estimated rankings (marked with ~) are based on keyword analysis and may not reflect actual App Store positions.
+                    </CardContent>
+                  </Card>
+                  
+                  <Card className="bg-yellow-900/20 border-yellow-600/50">
+                    <CardContent className="p-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm text-yellow-400">Top 4-10 Rankings</p>
+                          <p className="text-2xl font-bold text-white">{groupedRankings.mediumRankings.length}</p>
+                        </div>
+                        <TrendingUp className="w-8 h-8 text-yellow-500" />
+                      </div>
+                    </CardContent>
+                  </Card>
+                  
+                  <Card className="bg-blue-900/20 border-blue-600/50">
+                    <CardContent className="p-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm text-blue-400">Verified Rankings</p>
+                          <p className="text-2xl font-bold text-white">
+                            {keywordRankings.filter(r => r.confidence === 'actual').length}
                           </p>
                         </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                </TabsContent>
-
-                <TabsContent value="opportunities">
-                  <Card className="bg-zinc-900/50 border-zinc-800">
-                    <CardHeader>
-                      <CardTitle className="flex items-center">
-                        <TrendingUp className="w-5 h-5 mr-2 text-orange-500" />
-                        Keyword Opportunities
-                      </CardTitle>
-                      <p className="text-sm text-zinc-400">
-                        Keywords with potential for improvement
-                      </p>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-center py-8">
-                        <TrendingUp className="w-12 h-12 text-zinc-500 mx-auto mb-4" />
-                        <p className="text-zinc-400">
-                          Opportunity analysis coming soon. Focus on improving rankings for keywords with positions 11-30.
-                        </p>
+                        <CheckCircle className="w-8 h-8 text-blue-500" />
                       </div>
                     </CardContent>
                   </Card>
-                </TabsContent>
-
-                <TabsContent value="competitive">
-                  <Card className="bg-zinc-900/50 border-zinc-800">
-                    <CardHeader>
-                      <CardTitle className="flex items-center">
-                        <Crown className="w-5 h-5 mr-2 text-purple-500" />
-                        Competitive Analysis
-                      </CardTitle>
-                      <p className="text-sm text-zinc-400">
-                        Compare rankings with competitors
-                      </p>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-center py-8">
-                        <Crown className="w-12 h-12 text-zinc-500 mx-auto mb-4" />
-                        <p className="text-zinc-400">
-                          Competitive analysis coming soon. We'll show how your keywords compare against similar apps.
-                        </p>
+                  
+                  <Card className="bg-purple-900/20 border-purple-600/50">
+                    <CardContent className="p-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm text-purple-400">AI Predictions</p>
+                          <p className="text-2xl font-bold text-white">
+                            {keywordRankings.filter(r => r.confidence === 'estimated').length}
+                          </p>
+                        </div>
+                        <Lightbulb className="w-8 h-8 text-purple-500" />
                       </div>
                     </CardContent>
                   </Card>
-                </TabsContent>
-              </Tabs>
+                </div>
+
+                {/* Grouped Ranking Tables */}
+                <div className="space-y-6">
+                  {renderRankingTable(
+                    groupedRankings.topRankings,
+                    "🏆 Top 1-3 Rankings (High Impact)",
+                    "Keywords driving significant traffic and visibility",
+                    "text-green-400"
+                  )}
+                  
+                  {renderRankingTable(
+                    groupedRankings.mediumRankings,
+                    "🎯 Top 4-10 Rankings (Medium Impact)",
+                    "Good optimization targets with solid search volume",
+                    "text-yellow-400"
+                  )}
+                  
+                  {renderRankingTable(
+                    groupedRankings.longTailRankings,
+                    "📊 Top 11+ Rankings (Long-tail)",
+                    "Niche targeting opportunities and specific search terms",
+                    "text-gray-400"
+                  )}
+                </div>
+
+                {/* Intelligence Note */}
+                <Card className="bg-purple-900/20 border-purple-600/30">
+                  <CardContent className="p-4">
+                    <div className="flex items-start space-x-3">
+                      <Lightbulb className="w-5 h-5 text-purple-400 mt-0.5" />
+                      <div>
+                        <h4 className="font-medium text-purple-300">Smart Keyword Intelligence</h4>
+                        <p className="text-sm text-purple-200 mt-1">
+                          These keywords were generated using AI semantic analysis, category intelligence, and natural search patterns. 
+                          <span className="text-green-400"> Verified rankings</span> come from actual App Store searches, while 
+                          <span className="text-blue-400"> predicted rankings</span> use intelligent estimation based on app characteristics.
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
             )}
           </div>
         )}
