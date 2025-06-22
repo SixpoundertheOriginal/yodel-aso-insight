@@ -109,7 +109,15 @@ class CompetitorKeywordAnalysisService {
         return [];
       }
 
-      return data || [];
+      // Map snake_case database response to camelCase interface
+      return data?.map((item: any) => ({
+        keyword: item.keyword,
+        targetRank: item.target_rank,
+        bestCompetitorRank: item.best_competitor_rank,
+        gapOpportunity: item.gap_opportunity,
+        searchVolume: item.search_volume,
+        difficultyScore: item.difficulty_score
+      })) || [];
     } catch (error) {
       console.error('❌ [COMPETITOR-ANALYSIS] Exception fetching gap analysis:', error);
       return [];
