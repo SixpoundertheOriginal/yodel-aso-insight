@@ -1,3 +1,4 @@
+
 import React, { useState } from "react";
 import { MainLayout } from "../layouts";
 import { useAsoData } from "../context/AsoDataContext";
@@ -7,6 +8,7 @@ import { DateRange } from "../hooks/useMockAsoData";
 import { Card, CardContent, CardTitle, CardHeader } from "@/components/ui/card";
 import { ChartContainer } from "@/components/ui/chart";
 import { Skeleton } from "@/components/ui/skeleton";
+import { AiInsightsPanel } from "../components/AiInsightsPanel";
 import { 
   Select,
   SelectContent,
@@ -65,6 +67,11 @@ const OverviewPage: React.FC = () => {
   return (
     <MainLayout>
       <div className="flex flex-col space-y-10">
+        {/* AI Insights Panel - Top Priority */}
+        <div className="mb-6">
+          <AiInsightsPanel maxDisplayed={3} />
+        </div>
+
         <div className="flex justify-between items-center">
           <h1 className="text-4xl font-bold text-white">Performance Overview</h1>
           
