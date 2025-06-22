@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import {
   Dialog,
@@ -54,7 +53,7 @@ export const AppManagementModal: React.FC<AppManagementModalProps> = ({
   
   const [formData, setFormData] = useState({
     app_name: '',
-    platform: 'iOS' as 'iOS' | 'Android',
+    platform: 'ios' as 'ios' | 'android', // Changed back to lowercase for consistency
     app_store_id: '',
     bundle_id: '',
     category: '',
@@ -71,7 +70,7 @@ export const AppManagementModal: React.FC<AppManagementModalProps> = ({
     if (app && mode === 'edit') {
       setFormData({
         app_name: app.app_name || '',
-        platform: (app.platform?.toLowerCase() === 'ios' ? 'iOS' : 'Android') as 'iOS' | 'Android',
+        platform: (app.platform?.toLowerCase() === 'ios' ? 'ios' : 'android') as 'ios' | 'android',
         app_store_id: app.app_store_id || '',
         bundle_id: app.bundle_id || '',
         category: app.category || '',
@@ -81,7 +80,7 @@ export const AppManagementModal: React.FC<AppManagementModalProps> = ({
     } else {
       setFormData({
         app_name: '',
-        platform: 'iOS',
+        platform: 'ios',
         app_store_id: '',
         bundle_id: '',
         category: '',
@@ -167,7 +166,7 @@ export const AppManagementModal: React.FC<AppManagementModalProps> = ({
 
       const result = await AppStoreIntegrationService.validateAppStoreId(
         appStoreId,
-        formData.platform === 'iOS' ? 'iOS' : 'Android',
+        formData.platform === 'ios' ? 'ios' : 'android',
         profile.organization_id
       );
 
@@ -211,7 +210,7 @@ export const AppManagementModal: React.FC<AppManagementModalProps> = ({
 
     const submitData = {
       app_name: formData.app_name.trim(),
-      platform: formData.platform.toLowerCase() as 'ios' | 'android', // Convert to lowercase for database
+      platform: formData.platform, // Already lowercase, matches hook expectation
       app_store_id: formData.app_store_id || undefined,
       bundle_id: formData.bundle_id || undefined,
       category: formData.category || undefined,
@@ -268,8 +267,8 @@ export const AppManagementModal: React.FC<AppManagementModalProps> = ({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="bg-zinc-800 border-zinc-700">
-                    <SelectItem value="iOS">iOS</SelectItem>
-                    <SelectItem value="Android">Android</SelectItem>
+                    <SelectItem value="ios">iOS</SelectItem>
+                    <SelectItem value="android">Android</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -367,7 +366,7 @@ export const AppManagementModal: React.FC<AppManagementModalProps> = ({
                   value={formData.app_store_id}
                   onChange={(e) => handleInputChange('app_store_id', e.target.value)}
                   className="bg-zinc-800 border-zinc-700 text-white"
-                  placeholder={formData.platform === 'iOS' ? '123456789' : 'com.company.app'}
+                  placeholder={formData.platform === 'ios' ? '123456789' : 'com.company.app'}
                 />
               </div>
               <div>

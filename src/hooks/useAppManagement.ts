@@ -1,4 +1,3 @@
-
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/context/AuthContext';
@@ -19,7 +18,7 @@ interface OrganizationUsage {
 
 interface AppFormData {
   app_name: string;
-  platform: 'iOS' | 'Android';
+  platform: 'ios' | 'android'; // Changed to match database schema (lowercase)
   app_store_id?: string;
   bundle_id?: string;
   category?: string;
