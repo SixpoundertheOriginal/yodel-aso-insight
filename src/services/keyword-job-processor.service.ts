@@ -126,8 +126,8 @@ class KeywordJobProcessorService {
         return;
       }
 
-      const job = jobs[0];
-      console.log(`🔄 [JOB-PROCESSOR] Processing job ${job.id} (${job.job_type})`);
+      const job = this.mapDatabaseJobToInterface(jobs[0]);
+      console.log(`🔄 [JOB-PROCESSOR] Processing job ${job.id} (${job.jobType})`);
 
       // Mark job as processing
       await this.updateJobStatus(job.id, 'processing', { started_at: new Date().toISOString() });
@@ -135,7 +135,7 @@ class KeywordJobProcessorService {
       // Process based on job type
       let result: Record<string, any> = {};
       
-      switch (job.job_type) {
+      switch (job.jobType) {
         case 'batch_analysis':
           result = await this.processBatchAnalysis(job);
           break;
@@ -146,7 +146,7 @@ class KeywordJobProcessorService {
           result = await this.processTrendAnalysis(job);
           break;
         default:
-          throw new Error(`Unknown job type: ${job.job_type}`);
+          throw new Error(`Unknown job type: ${job.jobType}`);
       }
 
       // Mark job as completed
@@ -303,6 +303,27 @@ class KeywordJobProcessorService {
   }
 
   /**
+   * Map database record to KeywordJob interface
+   */
+  private mapDatabaseJobToInterface(dbJob: any): KeywordJob {
+    return {
+      id: dbJob.id,
+      organizationId: dbJob.organization_id,
+      jobType: dbJob.job_type as KeywordJob['jobType'],
+      status: dbJob.status as KeywordJob['status'],
+      inputData: (typeof dbJob.input_data === 'string' ? JSON.parse(dbJob.input_data) : dbJob.input_data) as Record<string, any>,
+      resultData: dbJob.result_data ? (typeof dbJob.result_data === 'string' ? JSON.parse(dbJob.result_data) : dbJob.result_data) as Record<string, any> : undefined,
+      errorMessage: dbJob.error_message,
+      priority: dbJob.priority,
+      scheduledAt: dbJob.scheduled_at,
+      startedAt: dbJob.started_at,
+      completedAt: dbJob.completed_at,
+      createdBy: dbJob.created_by,
+      createdAt: dbJob.created_at
+    };
+  }
+
+  /**
    * Get job status and results
    */
   async getJobStatus(jobId: string): Promise<KeywordJob | null> {
@@ -318,21 +339,7 @@ class KeywordJobProcessorService {
         return null;
       }
 
-      return {
-        id: data.id,
-        organizationId: data.organization_id,
-        jobType: data.job_type,
-        status: data.status,
-        inputData: data.input_data,
-        resultData: data.result_data,
-        errorMessage: data.error_message,
-        priority: data.priority,
-        scheduledAt: data.scheduled_at,
-        startedAt: data.started_at,
-        completedAt: data.completed_at,
-        createdBy: data.created_by,
-        createdAt: data.created_at
-      };
+      return this.mapDatabaseJobToInterface(data);
 
     } catch (error) {
       console.error('❌ [JOB-PROCESSOR] Exception fetching job status:', error);
@@ -357,21 +364,7 @@ class KeywordJobProcessorService {
         return [];
       }
 
-      return data?.map(job => ({
-        id: job.id,
-        organizationId: job.organization_id,
-        jobType: job.job_type,
-        status: job.status,
-        inputData: job.input_data,
-        resultData: job.result_data,
-        errorMessage: job.error_message,
-        priority: job.priority,
-        scheduledAt: job.scheduled_at,
-        startedAt: job.started_at,
-        completedAt: job.completed_at,
-        createdBy: job.created_by,
-        createdAt: job.created_at
-      })) || [];
+      return data?.map(job => this.mapDatabaseJobToInterface(job)) || [];
 
     } catch (error) {
       console.error('❌ [JOB-PROCESSOR] Exception fetching job queue:', error);

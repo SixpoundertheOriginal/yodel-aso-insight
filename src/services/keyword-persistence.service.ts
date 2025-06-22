@@ -116,20 +116,7 @@ class KeywordPersistenceService {
         return [];
       }
 
-      return data?.map(record => ({
-        id: record.id,
-        organizationId: record.organization_id,
-        appId: record.app_id,
-        keyword: record.keyword,
-        position: record.position,
-        volume: record.volume,
-        trend: record.trend,
-        searchResults: record.search_results,
-        confidence: record.confidence,
-        metadata: record.metadata || {},
-        createdAt: record.created_at,
-        createdBy: record.created_by
-      })) || [];
+      return data?.map(record => this.mapDatabaseHistoryToInterface(record)) || [];
 
     } catch (error) {
       console.error('❌ [PERSISTENCE] Exception fetching ranking history:', error);
@@ -200,20 +187,47 @@ class KeywordPersistenceService {
         return [];
       }
 
-      return data?.map(record => ({
-        id: record.id,
-        organizationId: record.organization_id,
-        metricName: record.metric_name,
-        metricValue: record.metric_value,
-        metricUnit: record.metric_unit,
-        tags: record.tags || {},
-        recordedAt: record.recorded_at
-      })) || [];
+      return data?.map(record => this.mapDatabaseMetricToInterface(record)) || [];
 
     } catch (error) {
       console.error('❌ [PERSISTENCE] Exception fetching metrics:', error);
       return [];
     }
+  }
+
+  /**
+   * Map database record to KeywordRankingHistory interface
+   */
+  private mapDatabaseHistoryToInterface(dbRecord: any): KeywordRankingHistory {
+    return {
+      id: dbRecord.id,
+      organizationId: dbRecord.organization_id,
+      appId: dbRecord.app_id,
+      keyword: dbRecord.keyword,
+      position: dbRecord.position,
+      volume: dbRecord.volume as 'Low' | 'Medium' | 'High' | null,
+      trend: dbRecord.trend as 'up' | 'down' | 'stable' | null,
+      searchResults: dbRecord.search_results,
+      confidence: dbRecord.confidence as 'estimated' | 'actual' | null,
+      metadata: (typeof dbRecord.metadata === 'string' ? JSON.parse(dbRecord.metadata) : dbRecord.metadata) as Record<string, any> || {},
+      createdAt: dbRecord.created_at,
+      createdBy: dbRecord.created_by
+    };
+  }
+
+  /**
+   * Map database record to ServiceMetric interface
+   */
+  private mapDatabaseMetricToInterface(dbRecord: any): ServiceMetric {
+    return {
+      id: dbRecord.id,
+      organizationId: dbRecord.organization_id,
+      metricName: dbRecord.metric_name,
+      metricValue: dbRecord.metric_value,
+      metricUnit: dbRecord.metric_unit,
+      tags: (typeof dbRecord.tags === 'string' ? JSON.parse(dbRecord.tags) : dbRecord.tags) as Record<string, any> || {},
+      recordedAt: dbRecord.recorded_at
+    };
   }
 
   /**
