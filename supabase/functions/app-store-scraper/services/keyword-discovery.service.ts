@@ -1,4 +1,3 @@
-
 export interface KeywordDiscoveryOptions {
   organizationId: string;
   targetApp?: {
@@ -28,62 +27,110 @@ export class KeywordDiscoveryService {
   private baseUrl = 'https://itunes.apple.com/search';
 
   /**
-   * Main keyword discovery orchestrator with improved app-specific focus
+   * Main keyword discovery orchestrator with real App Store integration
    */
   async discoverKeywords(options: KeywordDiscoveryOptions): Promise<DiscoveredKeyword[]> {
     const allKeywords: DiscoveredKeyword[] = [];
     const maxKeywords = options.maxKeywords || 100;
     
-    console.log(`🔍 [DISCOVERY] Starting enhanced keyword discovery for org: ${options.organizationId}`);
+    console.log(`🔍 [DISCOVERY] Starting real app-specific keyword discovery for org: ${options.organizationId}`);
     
-    // 1. Extract keywords from target app metadata (highest priority - 50% of results)
-    if (options.targetApp) {
-      console.log('📱 [DISCOVERY] Extracting app-specific keywords...');
-      const appKeywords = await this.extractAppSpecificKeywords(options.targetApp, options.country);
-      allKeywords.push(...appKeywords.slice(0, Math.floor(maxKeywords * 0.5)));
+    // Get fresh app metadata from App Store if we have app store ID
+    let enhancedAppData = options.targetApp;
+    if (options.targetApp?.appId) {
+      const freshMetadata = await this.getFreshAppMetadata(options.targetApp.appId, options.country);
+      if (freshMetadata) {
+        enhancedAppData = {
+          ...options.targetApp,
+          description: freshMetadata.description || options.targetApp.description,
+          subtitle: freshMetadata.subtitle || options.targetApp.subtitle
+        };
+        console.log('🔄 [DISCOVERY] Enhanced app data with fresh App Store metadata');
+      }
     }
     
-    // 2. Generate semantic variations of app name and core terms (20% of results)
-    if (options.targetApp) {
-      console.log('🧠 [DISCOVERY] Generating semantic variations...');
-      const semanticKeywords = await this.generateSemanticVariations(options.targetApp);
-      allKeywords.push(...semanticKeywords.slice(0, Math.floor(maxKeywords * 0.2)));
+    // 1. Extract keywords from real app metadata (60% of results)
+    if (enhancedAppData) {
+      console.log('📱 [DISCOVERY] Extracting real app-specific keywords...');
+      const appKeywords = await this.extractRealAppKeywords(enhancedAppData, options.country);
+      allKeywords.push(...appKeywords.slice(0, Math.floor(maxKeywords * 0.6)));
     }
     
-    // 3. Harvest from competitor apps (20% of results)
-    if (options.competitorApps && options.competitorApps.length > 0) {
-      console.log('🏢 [DISCOVERY] Analyzing competitor keywords...');
-      const competitorKeywords = await this.analyzeCompetitorKeywords(
-        options.competitorApps,
-        options.country,
-        options.targetApp
-      );
-      allKeywords.push(...competitorKeywords.slice(0, Math.floor(maxKeywords * 0.2)));
+    // 2. Generate intelligent semantic variations (25% of results)
+    if (enhancedAppData) {
+      console.log('🧠 [DISCOVERY] Generating intelligent semantic variations...');
+      const semanticKeywords = await this.generateIntelligentSemanticVariations(enhancedAppData);
+      allKeywords.push(...semanticKeywords.slice(0, Math.floor(maxKeywords * 0.25)));
     }
     
-    // 4. Category-specific trending keywords (10% of results)
-    if (options.targetApp?.category) {
-      console.log('📈 [DISCOVERY] Finding trending category keywords...');
-      const trendingKeywords = await this.findTrendingCategoryKeywords(
-        options.targetApp.category,
-        options.country
-      );
-      allKeywords.push(...trendingKeywords.slice(0, Math.floor(maxKeywords * 0.1)));
+    // 3. Add contextual trending keywords (15% of results)
+    if (enhancedAppData) {
+      console.log('📈 [DISCOVERY] Finding contextual trending keywords...');
+      const trendingKeywords = await this.findContextualTrendingKeywords(enhancedAppData);
+      allKeywords.push(...trendingKeywords.slice(0, Math.floor(maxKeywords * 0.15)));
     }
     
     // Deduplicate, score relevance, and prioritize
-    const uniqueKeywords = this.deduplicateAndScore(allKeywords, options.targetApp);
-    const finalKeywords = this.prioritizeByRelevance(uniqueKeywords);
+    const uniqueKeywords = this.deduplicateAndScore(allKeywords, enhancedAppData);
+    const finalKeywords = this.prioritizeByAppRelevance(uniqueKeywords, enhancedAppData);
     
-    console.log(`✅ [DISCOVERY] Discovered ${finalKeywords.length} relevant keywords`);
+    console.log(`✅ [DISCOVERY] Discovered ${finalKeywords.length} app-specific keywords`);
     
     return finalKeywords.slice(0, maxKeywords);
   }
 
   /**
-   * Extract app-specific keywords from metadata with intelligent parsing
+   * Get fresh app metadata from App Store
    */
-  private async extractAppSpecificKeywords(
+  private async getFreshAppMetadata(appStoreId: string, country: string = 'us'): Promise<any> {
+    try {
+      const lookupUrl = `${this.baseUrl}?id=${appStoreId}&country=${country}&entity=software`;
+      const response = await fetch(lookupUrl);
+      
+      if (!response.ok) return null;
+      
+      const data = await response.json();
+      if (data.results && data.results.length > 0) {
+        const app = data.results[0];
+        return {
+          description: app.description,
+          subtitle: app.trackName.includes(' - ') ? app.trackName.split(' - ').slice(1).join(' - ') : '',
+          currentKeywords: this.extractKeywordsFromAppStore(app),
+          reviews: app.userRatingCount,
+          rating: app.averageUserRating
+        };
+      }
+    } catch (error) {
+      console.warn('[DISCOVERY] Failed to get fresh metadata:', error);
+    }
+    return null;
+  }
+
+  /**
+   * Extract keywords from real App Store metadata
+   */
+  private extractKeywordsFromAppStore(appData: any): string[] {
+    const keywords: string[] = [];
+    
+    // Extract from app name
+    if (appData.trackName) {
+      const nameWords = this.extractMeaningfulWords(appData.trackName);
+      keywords.push(...nameWords);
+    }
+    
+    // Extract from description key phrases
+    if (appData.description) {
+      const descKeywords = this.extractKeyPhrasesFromDescription(appData.description);
+      keywords.push(...descKeywords);
+    }
+    
+    return [...new Set(keywords)];
+  }
+
+  /**
+   * Extract real app-specific keywords with intelligent analysis
+   */
+  private async extractRealAppKeywords(
     targetApp: KeywordDiscoveryOptions['targetApp'],
     country: string = 'us'
   ): Promise<DiscoveredKeyword[]> {
@@ -91,37 +138,8 @@ export class KeywordDiscoveryService {
     
     if (!targetApp) return keywords;
     
-    // Extract from app name components
-    const nameKeywords = this.extractFromAppName(targetApp.name);
-    keywords.push(...nameKeywords);
-    
-    // Extract from subtitle if available
-    if (targetApp.subtitle) {
-      const subtitleKeywords = this.extractFromText(targetApp.subtitle, 'app_metadata');
-      keywords.push(...subtitleKeywords);
-    }
-    
-    // Extract from description if available
-    if (targetApp.description) {
-      const descKeywords = this.extractFromDescription(targetApp.description);
-      keywords.push(...descKeywords);
-    }
-    
-    // Add brand and functionality keywords
-    const brandKeywords = this.generateBrandKeywords(targetApp.name, targetApp.category);
-    keywords.push(...brandKeywords);
-    
-    return keywords;
-  }
-
-  /**
-   * Extract meaningful keywords from app name
-   */
-  private extractFromAppName(appName: string): DiscoveredKeyword[] {
-    const keywords: DiscoveredKeyword[] = [];
-    const cleanName = appName.toLowerCase();
-    
-    // Full app name as primary keyword
+    // Primary app name keyword
+    const cleanName = targetApp.name.toLowerCase();
     keywords.push({
       keyword: cleanName,
       estimatedVolume: 5000,
@@ -131,12 +149,8 @@ export class KeywordDiscoveryService {
     });
     
     // Extract meaningful words from app name
-    const words = cleanName
-      .replace(/[^\w\s]/g, ' ')
-      .split(/\s+/)
-      .filter(word => word.length > 2 && !this.isCommonWord(word));
-    
-    words.forEach(word => {
+    const nameKeywords = this.extractMeaningfulWords(targetApp.name);
+    nameKeywords.forEach(word => {
       keywords.push({
         keyword: word,
         estimatedVolume: 3000,
@@ -146,71 +160,94 @@ export class KeywordDiscoveryService {
       });
     });
     
-    // Combine significant words
-    if (words.length >= 2) {
-      for (let i = 0; i < words.length - 1; i++) {
+    // Extract from real description
+    if (targetApp.description) {
+      const descKeywords = this.extractKeyPhrasesFromDescription(targetApp.description);
+      descKeywords.forEach(phrase => {
         keywords.push({
-          keyword: `${words[i]} ${words[i + 1]}`,
+          keyword: phrase,
           estimatedVolume: 2000,
-          difficulty: 3.5,
+          difficulty: 4.5,
           source: 'app_metadata',
           relevanceScore: 7.0
         });
-      }
+      });
+    }
+    
+    // Extract from subtitle if available
+    if (targetApp.subtitle) {
+      const subtitleKeywords = this.extractMeaningfulWords(targetApp.subtitle);
+      subtitleKeywords.forEach(word => {
+        keywords.push({
+          keyword: word,
+          estimatedVolume: 1500,
+          difficulty: 4.0,
+          source: 'app_metadata',
+          relevanceScore: 6.5
+        });
+      });
     }
     
     return keywords;
   }
 
   /**
-   * Extract keywords from app description with NLP-like processing
+   * Extract meaningful words from text, filtering out generic terms
    */
-  private extractFromDescription(description: string): DiscoveredKeyword[] {
-    const keywords: DiscoveredKeyword[] = [];
-    const sentences = description.split(/[.!?]+/).slice(0, 3); // First 3 sentences
+  private extractMeaningfulWords(text: string): string[] {
+    return text
+      .toLowerCase()
+      .replace(/[^\w\s]/g, ' ')
+      .split(/\s+/)
+      .filter(word => 
+        word.length > 2 && 
+        !this.isGenericWord(word) &&
+        !this.isCommonWord(word)
+      )
+      .slice(0, 5);
+  }
+
+  /**
+   * Extract key phrases from app description using intelligent analysis
+   */
+  private extractKeyPhrasesFromDescription(description: string): string[] {
+    const phrases: string[] = [];
+    
+    // Split into sentences and analyze first few
+    const sentences = description.split(/[.!?]+/).slice(0, 3);
     
     sentences.forEach(sentence => {
+      // Extract 2-3 word meaningful phrases
       const words = sentence
         .toLowerCase()
         .replace(/[^\w\s]/g, ' ')
         .split(/\s+/)
-        .filter(word => word.length > 3 && !this.isCommonWord(word));
+        .filter(word => word.length > 2 && !this.isCommonWord(word));
       
-      // Extract 2-3 word phrases
+      // Create 2-word phrases
       for (let i = 0; i < words.length - 1; i++) {
-        const twoWordPhrase = `${words[i]} ${words[i + 1]}`;
-        if (this.isRelevantPhrase(twoWordPhrase)) {
-          keywords.push({
-            keyword: twoWordPhrase,
-            estimatedVolume: 1500,
-            difficulty: 5.0,
-            source: 'app_metadata',
-            relevanceScore: 6.0
-          });
+        const phrase = `${words[i]} ${words[i + 1]}`;
+        if (this.isValuablePhrase(phrase)) {
+          phrases.push(phrase);
         }
-        
-        if (i < words.length - 2) {
-          const threeWordPhrase = `${words[i]} ${words[i + 1]} ${words[i + 2]}`;
-          if (this.isRelevantPhrase(threeWordPhrase)) {
-            keywords.push({
-              keyword: threeWordPhrase,
-              estimatedVolume: 800,
-              difficulty: 4.0,
-              source: 'app_metadata',
-              relevanceScore: 5.5
-            });
-          }
+      }
+      
+      // Create 3-word phrases for more specific targeting
+      for (let i = 0; i < words.length - 2; i++) {
+        const phrase = `${words[i]} ${words[i + 1]} ${words[i + 2]}`;
+        if (this.isValuablePhrase(phrase)) {
+          phrases.push(phrase);
         }
       }
     });
     
-    return keywords;
+    return [...new Set(phrases)].slice(0, 10);
   }
 
   /**
-   * Generate semantic variations and synonyms
+   * Generate intelligent semantic variations based on app context
    */
-  private async generateSemanticVariations(
+  private async generateIntelligentSemanticVariations(
     targetApp: KeywordDiscoveryOptions['targetApp']
   ): Promise<DiscoveredKeyword[]> {
     const keywords: DiscoveredKeyword[] = [];
@@ -218,108 +255,108 @@ export class KeywordDiscoveryService {
     if (!targetApp) return keywords;
     
     const appName = targetApp.name.toLowerCase();
-    const category = targetApp.category.toLowerCase();
+    const appContext = this.analyzeAppContext(targetApp);
     
-    // Category-specific semantic variations
-    const semanticMap: Record<string, string[]> = {
-      'education': ['learning', 'study', 'course', 'lesson', 'tutorial', 'training'],
-      'productivity': ['efficiency', 'organization', 'management', 'workflow', 'planning'],
-      'health & fitness': ['wellness', 'workout', 'exercise', 'nutrition', 'mindfulness'],
-      'lifestyle': ['lifestyle', 'habits', 'personal', 'daily', 'routine'],
-      'entertainment': ['fun', 'game', 'play', 'entertainment', 'leisure'],
-      'social networking': ['social', 'connect', 'community', 'friends', 'network']
-    };
+    // Generate context-aware variations
+    const contextVariations = this.getContextualVariations(appContext);
     
-    const variations = semanticMap[category] || [];
-    
-    variations.forEach(variation => {
-      // Variation + app name
+    contextVariations.forEach(variation => {
+      // App name + variation
       keywords.push({
-        keyword: `${variation} ${appName}`,
+        keyword: `${appName} ${variation}`,
         estimatedVolume: 1200,
         difficulty: 4.5,
         source: 'semantic',
         relevanceScore: 7.5
       });
       
-      // App name + variation
-      keywords.push({
-        keyword: `${appName} ${variation}`,
-        estimatedVolume: 1000,
-        difficulty: 4.0,
-        source: 'semantic',
-        relevanceScore: 7.0
-      });
+      // Variation + core function
+      if (appContext.coreFunction) {
+        keywords.push({
+          keyword: `${variation} ${appContext.coreFunction}`,
+          estimatedVolume: 1000,
+          difficulty: 4.0,
+          source: 'semantic',
+          relevanceScore: 7.0
+        });
+      }
     });
     
     return keywords;
   }
 
   /**
-   * Analyze competitor keywords with better extraction
+   * Analyze app context to understand what it actually does
    */
-  private async analyzeCompetitorKeywords(
-    competitorApps: string[],
-    country: string = 'us',
-    targetApp?: KeywordDiscoveryOptions['targetApp']
-  ): Promise<DiscoveredKeyword[]> {
-    const keywords: DiscoveredKeyword[] = [];
+  private analyzeAppContext(targetApp: KeywordDiscoveryOptions['targetApp']): {
+    type: string;
+    coreFunction: string;
+    targetAudience: string;
+  } {
+    const name = targetApp.name.toLowerCase();
+    const description = (targetApp.description || '').toLowerCase();
+    const category = (targetApp.category || '').toLowerCase();
     
-    for (const appId of competitorApps.slice(0, 3)) { // Limit to 3 competitors
-      try {
-        const appData = await this.getAppMetadata(appId, country);
-        if (!appData) continue;
-        
-        // Extract competitor app name variations
-        const nameKeywords = this.extractFromAppName(appData.trackName);
-        nameKeywords.forEach(kw => {
-          keywords.push({
-            ...kw,
-            source: 'competitor',
-            competitorApp: appData.trackName,
-            relevanceScore: kw.relevanceScore * 0.7 // Lower relevance for competitor terms
-          });
-        });
-        
-        // Extract from competitor description
-        if (appData.description) {
-          const descKeywords = this.extractFromDescription(appData.description);
-          descKeywords.forEach(kw => {
-            keywords.push({
-              ...kw,
-              source: 'competitor',
-              competitorApp: appData.trackName,
-              relevanceScore: kw.relevanceScore * 0.6
-            });
-          });
-        }
-      } catch (error) {
-        console.warn(`Failed to analyze competitor ${appId}:`, error);
-      }
+    let type = 'general';
+    let coreFunction = 'app';
+    let targetAudience = 'users';
+    
+    // Analyze based on actual app content
+    if (name.includes('mind') || description.includes('personal development') || description.includes('growth')) {
+      type = 'personal_development';
+      coreFunction = 'growth';
+      targetAudience = 'learners';
+    } else if (description.includes('fitness') || description.includes('workout')) {
+      type = 'fitness';
+      coreFunction = 'training';
+      targetAudience = 'fitness enthusiasts';
+    } else if (description.includes('productivity') || description.includes('task')) {
+      type = 'productivity';
+      coreFunction = 'organization';
+      targetAudience = 'professionals';
+    } else if (description.includes('learn') || category.includes('education')) {
+      type = 'education';
+      coreFunction = 'learning';
+      targetAudience = 'students';
     }
     
-    return keywords;
+    return { type, coreFunction, targetAudience };
   }
 
   /**
-   * Find trending keywords for category
+   * Get contextual variations based on app analysis
    */
-  private async findTrendingCategoryKeywords(
-    category: string,
-    country: string = 'us'
-  ): Promise<DiscoveredKeyword[]> {
-    const trendingTerms: Record<string, string[]> = {
-      'education': ['ai learning', 'personalized education', 'skill development', 'online courses'],
-      'productivity': ['remote work', 'time management', 'task automation', 'digital workspace'],
-      'health & fitness': ['mental health', 'home workout', 'nutrition tracking', 'wellness coach'],
-      'lifestyle': ['mindfulness', 'habit tracking', 'personal growth', 'life coaching'],
-      'entertainment': ['interactive content', 'streaming', 'social gaming', 'virtual reality'],
-      'social networking': ['video chat', 'community building', 'content creation', 'live streaming']
+  private getContextualVariations(context: { type: string; coreFunction: string }): string[] {
+    const variationMap: Record<string, string[]> = {
+      'personal_development': ['coaching', 'transformation', 'mindset', 'self improvement'],
+      'fitness': ['workout', 'training', 'exercise', 'wellness'],
+      'productivity': ['efficiency', 'organization', 'management', 'workflow'],
+      'education': ['learning', 'course', 'tutorial', 'skill building'],
+      'general': ['tool', 'solution', 'platform', 'system']
     };
     
-    const terms = trendingTerms[category.toLowerCase()] || [];
+    return variationMap[context.type] || variationMap['general'];
+  }
+
+  /**
+   * Find contextual trending keywords based on app type
+   */
+  private async findContextualTrendingKeywords(
+    targetApp: KeywordDiscoveryOptions['targetApp']
+  ): Promise<DiscoveredKeyword[]> {
+    const context = this.analyzeAppContext(targetApp);
     
-    return terms.map(term => ({
+    const trendingByContext: Record<string, string[]> = {
+      'personal_development': ['mindfulness app', 'self care', 'mental wellness', 'life coaching'],
+      'fitness': ['home workout', 'fitness tracking', 'wellness journey', 'health monitor'],
+      'productivity': ['remote work', 'digital workspace', 'time management', 'task automation'],
+      'education': ['online learning', 'skill development', 'knowledge platform', 'study companion'],
+      'general': ['mobile solution', 'digital tool', 'smart platform', 'innovative app']
+    };
+    
+    const trendingTerms = trendingByContext[context.type] || trendingByContext['general'];
+    
+    return trendingTerms.map(term => ({
       keyword: term,
       estimatedVolume: 2500,
       difficulty: 6.0,
@@ -329,25 +366,49 @@ export class KeywordDiscoveryService {
   }
 
   /**
-   * Generate brand-specific keywords
+   * Check if a phrase is valuable for keyword targeting
    */
-  private generateBrandKeywords(appName: string, category: string): DiscoveredKeyword[] {
-    const keywords: DiscoveredKeyword[] = [];
-    const cleanName = appName.toLowerCase();
+  private isValuablePhrase(phrase: string): boolean {
+    // Filter out phrases that are too generic or not valuable
+    const lowValuePhrases = [
+      'app store', 'mobile app', 'download now', 'get started', 'sign up',
+      'easy to', 'simple to', 'designed for', 'perfect for'
+    ];
     
-    // Brand + common action words
-    const actionWords = ['app', 'download', 'free', 'premium', 'pro', 'plus'];
-    actionWords.forEach(action => {
-      keywords.push({
-        keyword: `${cleanName} ${action}`,
-        estimatedVolume: 800,
-        difficulty: 3.0,
-        source: 'app_metadata',
-        relevanceScore: 6.0
-      });
+    return !lowValuePhrases.some(lowValue => phrase.includes(lowValue)) && 
+           phrase.length >= 6 && 
+           phrase.length <= 25;
+  }
+
+  /**
+   * Enhanced prioritization based on app relevance
+   */
+  private prioritizeByAppRelevance(
+    keywords: DiscoveredKeyword[], 
+    targetApp?: KeywordDiscoveryOptions['targetApp']
+  ): DiscoveredKeyword[] {
+    if (!targetApp) return keywords.sort((a, b) => b.relevanceScore - a.relevanceScore);
+    
+    const appName = targetApp.name.toLowerCase();
+    
+    return keywords.sort((a, b) => {
+      let scoreA = a.relevanceScore;
+      let scoreB = b.relevanceScore;
+      
+      // Boost keywords that contain app name
+      if (a.keyword.includes(appName) || appName.includes(a.keyword)) scoreA += 3;
+      if (b.keyword.includes(appName) || appName.includes(b.keyword)) scoreB += 3;
+      
+      // Boost app metadata keywords
+      if (a.source === 'app_metadata') scoreA += 2;
+      if (b.source === 'app_metadata') scoreB += 2;
+      
+      // Consider search volume/difficulty ratio
+      const ratioA = a.estimatedVolume / (a.difficulty + 1);
+      const ratioB = b.estimatedVolume / (b.difficulty + 1);
+      
+      return (scoreB + ratioB * 0.001) - (scoreA + ratioA * 0.001);
     });
-    
-    return keywords;
   }
 
   // Utility methods
@@ -369,17 +430,18 @@ export class KeywordDiscoveryService {
   private isCommonWord(word: string): boolean {
     const commonWords = [
       'the', 'and', 'for', 'with', 'your', 'you', 'are', 'can', 'will', 'this', 'that',
-      'app', 'application', 'mobile', 'phone', 'device', 'free', 'best', 'new', 'top'
+      'app', 'application', 'mobile', 'phone', 'device', 'free', 'best', 'new', 'top',
+      'get', 'use', 'make', 'help', 'now', 'all', 'more', 'most', 'one', 'way'
     ];
     return commonWords.includes(word.toLowerCase());
   }
 
-  private isRelevantPhrase(phrase: string): boolean {
-    // Filter out phrases that are too generic
-    const irrelevantPhrases = [
-      'app store', 'mobile app', 'download now', 'get started', 'sign up'
+  private isGenericWord(word: string): boolean {
+    const genericWords = [
+      'software', 'platform', 'solution', 'system', 'service', 'product',
+      'digital', 'online', 'internet', 'web', 'technology'
     ];
-    return !irrelevantPhrases.includes(phrase.toLowerCase()) && phrase.length >= 6;
+    return genericWords.includes(word.toLowerCase());
   }
 
   private deduplicateAndScore(
@@ -398,24 +460,15 @@ export class KeywordDiscoveryService {
     return Array.from(seen.values());
   }
 
-  private prioritizeByRelevance(keywords: DiscoveredKeyword[]): DiscoveredKeyword[] {
-    return keywords.sort((a, b) => {
-      // Priority: relevance score, then volume/difficulty ratio
-      const scoreA = a.relevanceScore + (a.estimatedVolume / (a.difficulty + 1));
-      const scoreB = b.relevanceScore + (b.estimatedVolume / (b.difficulty + 1));
-      return scoreB - scoreA;
-    });
-  }
-
-  private async getAppMetadata(appId: string, country: string): Promise<any> {
+  private async getAppMetadata(appId: string): Promise<any> {
     try {
-      const url = `${this.baseUrl}?id=${appId}&country=${country}&entity=software`;
-      const response = await fetch(url);
-      
-      if (!response.ok) return null;
-      
-      const data = await response.json();
-      return data.results?.[0] || null;
+      const { data } = await supabase
+        .from('apps')
+        .select('app_name, category')
+        .eq('id', appId)
+        .single();
+
+      return data;
     } catch {
       return null;
     }
