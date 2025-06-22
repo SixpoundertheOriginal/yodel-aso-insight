@@ -1,10 +1,11 @@
-
 import React, { useState, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { appStoreService } from '@/services';
 import { ScrapedMetadata } from '@/types/aso';
+import { AmbiguousSearchError } from '@/types/search-errors';
 import { DataImporter } from '@/components/shared/DataImporter';
+import { AppSearchResultsModal } from './AppSearchResultsModal';
 import { Sparkles, AlertCircle, Search, Zap, Loader2 } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -19,6 +20,12 @@ export const MetadataImporter: React.FC<MetadataImporterProps> = ({ onImportSucc
   const [lastError, setLastError] = useState<string | null>(null);
   const [searchType, setSearchType] = useState<'auto' | 'keyword' | 'brand' | 'url'>('auto');
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
+  
+  // New state for app selection modal
+  const [showAppSelection, setShowAppSelection] = useState(false);
+  const [appCandidates, setAppCandidates] = useState<ScrapedMetadata[]>([]);
+  const [pendingSearchTerm, setPendingSearchTerm] = useState<string>('');
+  
   const { toast } = useToast();
 
   useEffect(() => {
@@ -92,6 +99,7 @@ export const MetadataImporter: React.FC<MetadataImporterProps> = ({ onImportSucc
 
     setIsImporting(true);
     setLastError(null);
+    setPendingSearchTerm(trimmedInput);
 
     // Add to search history
     setSearchHistory(prev => {
@@ -143,10 +151,19 @@ export const MetadataImporter: React.FC<MetadataImporterProps> = ({ onImportSucc
     } catch (error: any) {
       console.error('❌ [METADATA-IMPORTER] Import failed:', error);
       
+      // NEW: Handle AmbiguousSearchError specifically
+      if (error instanceof AmbiguousSearchError) {
+        console.log('🎯 [METADATA-IMPORTER] Handling ambiguous search - showing selection modal');
+        setAppCandidates(error.candidates);
+        setShowAppSelection(true);
+        setIsImporting(false); // Stop loading state
+        return; // Don't show error toast - let user select instead
+      }
+      
       const errorMessage = error.message || 'An unknown error occurred during import.';
       setLastError(errorMessage);
       
-      // Enhanced error handling
+      // Enhanced error handling for other errors
       let title = 'Import Failed';
       let description = errorMessage;
       let suggestions: string[] = [];
@@ -189,8 +206,52 @@ export const MetadataImporter: React.FC<MetadataImporterProps> = ({ onImportSucc
       });
 
     } finally {
-      setIsImporting(false);
+      if (!showAppSelection) {
+        setIsImporting(false);
+      }
     }
+  };
+
+  // NEW: Handle app selection from modal
+  const handleAppSelection = async (selectedApp: ScrapedMetadata) => {
+    setShowAppSelection(false);
+    setIsImporting(true);
+    
+    try {
+      console.log('✅ [METADATA-IMPORTER] User selected app:', selectedApp.name);
+      
+      toast({
+        title: 'App Selected! 🎉',
+        description: `Successfully imported ${selectedApp.name}`,
+      });
+
+      onImportSuccess(selectedApp, organizationId!);
+      
+    } catch (error: any) {
+      console.error('❌ [METADATA-IMPORTER] App selection processing failed:', error);
+      toast({
+        title: 'Processing Failed',
+        description: 'Failed to process selected app. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsImporting(false);
+      setAppCandidates([]);
+      setPendingSearchTerm('');
+    }
+  };
+
+  // NEW: Handle modal cancel
+  const handleAppSelectionCancel = () => {
+    setShowAppSelection(false);
+    setIsImporting(false);
+    setAppCandidates([]);
+    setPendingSearchTerm('');
+    
+    toast({
+      title: 'Search Cancelled',
+      description: 'App selection was cancelled. Try a more specific search term.',
+    });
   };
 
   const getSearchTypeDescription = () => {
@@ -275,6 +336,15 @@ export const MetadataImporter: React.FC<MetadataImporterProps> = ({ onImportSucc
         icon={isImporting ? <Loader2 className="w-4 h-4 ml-2 animate-spin" /> : <Sparkles className="w-4 h-4 ml-2" />}
       />
 
+      {/* NEW: App Selection Modal */}
+      <AppSearchResultsModal
+        isOpen={showAppSelection}
+        results={appCandidates}
+        searchTerm={pendingSearchTerm}
+        onSelect={handleAppSelection}
+        onCancel={handleAppSelectionCancel}
+      />
+
       {/* Quick Search Suggestions */}
       {!isImporting && searchHistory.length === 0 && (
         <div className="space-y-3">
@@ -337,14 +407,16 @@ export const MetadataImporter: React.FC<MetadataImporterProps> = ({ onImportSucc
       {/* Development Debug Info */}
       {process.env.NODE_ENV === 'development' && (
         <div className="mt-4 bg-zinc-800/50 p-3 rounded text-xs text-zinc-300 space-y-1">
-          <div><strong>ASO Intelligence Platform v5.0.1-emergency-stabilized</strong></div>
+          <div><strong>ASO Intelligence Platform v5.1.0-ambiguity-fix</strong></div>
           <div>Organization ID: {organizationId || 'Not loaded'}</div>
           <div>Search Type: {searchType}</div>
           <div>Is Importing: {isImporting ? 'Yes' : 'No'}</div>
+          <div>Show App Selection: {showAppSelection ? 'Yes' : 'No'}</div>
+          <div>App Candidates: {appCandidates.length}</div>
           <div className="text-green-400">✅ Emergency stabilization active</div>
           <div className="text-green-400">✅ Enhanced error handling</div>
-          <div className="text-green-400">✅ Fallback search strategies</div>
-          <div className="text-green-400">✅ Comprehensive logging</div>
+          <div className="text-green-400">✅ App selection modal implemented</div>
+          <div className="text-green-400">✅ AmbiguousSearchError handling fixed</div>
           {lastError && <div className="text-red-400">❌ Last Error: {lastError}</div>}
         </div>
       )}
