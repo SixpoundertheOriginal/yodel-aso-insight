@@ -248,6 +248,65 @@ export type Database = {
         }
         Relationships: []
       }
+      error_logs: {
+        Row: {
+          api_endpoint: string | null
+          context: Json | null
+          created_at: string | null
+          error_code: string | null
+          error_message: string | null
+          error_type: string
+          id: string
+          ip_address: unknown | null
+          organization_id: string | null
+          request_data: Json | null
+          resolved: boolean | null
+          severity: string | null
+          user_agent: string | null
+          user_id: string | null
+        }
+        Insert: {
+          api_endpoint?: string | null
+          context?: Json | null
+          created_at?: string | null
+          error_code?: string | null
+          error_message?: string | null
+          error_type: string
+          id?: string
+          ip_address?: unknown | null
+          organization_id?: string | null
+          request_data?: Json | null
+          resolved?: boolean | null
+          severity?: string | null
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          api_endpoint?: string | null
+          context?: Json | null
+          created_at?: string | null
+          error_code?: string | null
+          error_message?: string | null
+          error_type?: string
+          id?: string
+          ip_address?: unknown | null
+          organization_id?: string | null
+          request_data?: Json | null
+          resolved?: boolean | null
+          severity?: string | null
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "error_logs_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       keyword_rankings: {
         Row: {
           app_store_id: string
@@ -421,6 +480,56 @@ export type Database = {
           },
         ]
       }
+      rate_limits: {
+        Row: {
+          daily_ai_calls: number | null
+          daily_metadata_generations: number | null
+          hourly_ai_calls: number | null
+          last_daily_reset: string | null
+          last_hourly_reset: string | null
+          last_monthly_reset: string | null
+          monthly_ai_calls: number | null
+          organization_id: string | null
+          updated_at: string | null
+          user_id: string
+          user_tier: string | null
+        }
+        Insert: {
+          daily_ai_calls?: number | null
+          daily_metadata_generations?: number | null
+          hourly_ai_calls?: number | null
+          last_daily_reset?: string | null
+          last_hourly_reset?: string | null
+          last_monthly_reset?: string | null
+          monthly_ai_calls?: number | null
+          organization_id?: string | null
+          updated_at?: string | null
+          user_id: string
+          user_tier?: string | null
+        }
+        Update: {
+          daily_ai_calls?: number | null
+          daily_metadata_generations?: number | null
+          hourly_ai_calls?: number | null
+          last_daily_reset?: string | null
+          last_hourly_reset?: string | null
+          last_monthly_reset?: string | null
+          monthly_ai_calls?: number | null
+          organization_id?: string | null
+          updated_at?: string | null
+          user_id?: string
+          user_tier?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rate_limits_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       role_permissions: {
         Row: {
           created_at: string
@@ -547,6 +656,53 @@ export type Database = {
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_usage: {
+        Row: {
+          action_type: string
+          ai_calls_used: number | null
+          api_endpoint: string | null
+          created_at: string | null
+          id: string
+          metadata_generated: Json | null
+          organization_id: string | null
+          processing_time_ms: number | null
+          success: boolean | null
+          user_id: string | null
+        }
+        Insert: {
+          action_type: string
+          ai_calls_used?: number | null
+          api_endpoint?: string | null
+          created_at?: string | null
+          id?: string
+          metadata_generated?: Json | null
+          organization_id?: string | null
+          processing_time_ms?: number | null
+          success?: boolean | null
+          user_id?: string | null
+        }
+        Update: {
+          action_type?: string
+          ai_calls_used?: number | null
+          api_endpoint?: string | null
+          created_at?: string | null
+          id?: string
+          metadata_generated?: Json | null
+          organization_id?: string | null
+          processing_time_ms?: number | null
+          success?: boolean | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_usage_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
