@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { MainLayout } from '@/layouts';
-import { AdvancedKeywordIntelligence } from '@/components/KeywordIntelligence';
+import { UnifiedKeywordIntelligence } from '@/components/KeywordIntelligence/UnifiedKeywordIntelligence';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useApp } from '@/context/AppContext';
@@ -86,14 +86,13 @@ const KeywordIntelligencePage: React.FC = () => {
         <div>
           <h1 className="text-3xl font-bold text-white mb-2">Keyword Intelligence</h1>
           <p className="text-zinc-400">
-            Advanced keyword analysis with competitor gap analysis, search volume trends, and difficulty scoring for{' '}
-            <span className="text-yodel-orange font-medium">{selectedApp.app_name}</span>
+            Unified keyword analysis and optimization platform
           </p>
         </div>
         
-        <AdvancedKeywordIntelligence
+        <UnifiedKeywordIntelligence
           organizationId={userContext.organizationId}
-          targetAppId={selectedApp.id}
+          selectedAppId={selectedApp.id}
         />
       </div>
     </MainLayout>

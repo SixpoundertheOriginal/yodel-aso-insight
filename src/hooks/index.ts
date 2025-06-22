@@ -26,3 +26,6 @@ export { useEnhancedQueries } from './useEnhancedQueries';
 
 // Add enhanced keyword analytics
 export { useEnhancedKeywordAnalytics } from './useEnhancedKeywordAnalytics';
+
+// Add unified keyword intelligence manager
+export { useKeywordIntelligenceManager } from './useKeywordIntelligenceManager';
