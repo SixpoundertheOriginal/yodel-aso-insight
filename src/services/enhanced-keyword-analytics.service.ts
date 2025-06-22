@@ -276,7 +276,9 @@ class EnhancedKeywordAnalyticsService {
       return (data || []).map(pool => ({
         ...pool,
         pool_type: pool.pool_type as 'category' | 'competitor' | 'trending' | 'custom',
-        metadata: (pool.metadata as Record<string, any>) || {}
+        metadata: (pool.metadata && typeof pool.metadata === 'object' && pool.metadata !== null) 
+          ? pool.metadata as Record<string, any> 
+          : {}
       }));
 
     } catch (error) {
@@ -318,7 +320,9 @@ class EnhancedKeywordAnalyticsService {
       return {
         ...data,
         pool_type: data.pool_type as 'category' | 'competitor' | 'trending' | 'custom',
-        metadata: (data.metadata as Record<string, any>) || {}
+        metadata: (data.metadata && typeof data.metadata === 'object' && data.metadata !== null) 
+          ? data.metadata as Record<string, any> 
+          : {}
       };
 
     } catch (error) {
