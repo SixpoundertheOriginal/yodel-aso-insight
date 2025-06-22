@@ -1,7 +1,7 @@
 
 import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { enhancedKeywordAnalyticsService, KeywordTrend, RankDistribution, KeywordAnalytics } from '@/services/enhanced-keyword-analytics.service';
+import { enhancedKeywordAnalyticsService, KeywordTrend, RankDistribution, KeywordAnalytics, UsageStats, KeywordPool } from '@/services/enhanced-keyword-analytics.service';
 
 interface UseEnhancedKeywordAnalyticsProps {
   organizationId: string;
@@ -15,6 +15,7 @@ export const useEnhancedKeywordAnalytics = ({
   enabled = true
 }: UseEnhancedKeywordAnalyticsProps) => {
   const [lastSuccessfulLoad, setLastSuccessfulLoad] = useState<Date | null>(null);
+  const [selectedTimeframe, setSelectedTimeframe] = useState<string>('30d');
 
   // Keyword trends query with enhanced error handling
   const {
@@ -23,14 +24,15 @@ export const useEnhancedKeywordAnalytics = ({
     error: trendsError,
     refetch: refetchTrends
   } = useQuery({
-    queryKey: ['keyword-trends', organizationId, appId],
+    queryKey: ['keyword-trends', organizationId, appId, selectedTimeframe],
     queryFn: async () => {
       if (!appId) return [];
       
+      const daysBack = selectedTimeframe === '7d' ? 7 : selectedTimeframe === '90d' ? 90 : 30;
       const trends = await enhancedKeywordAnalyticsService.getKeywordTrends(
         organizationId,
         appId,
-        30
+        daysBack
       );
       
       if (trends.length > 0) {
@@ -40,12 +42,10 @@ export const useEnhancedKeywordAnalytics = ({
       return trends;
     },
     enabled: enabled && !!appId,
-    staleTime: 5 * 60 * 1000, // 5 minutes
+    staleTime: 5 * 60 * 1000,
     retry: (failureCount, error) => {
-      // Retry up to 2 times for network errors, but not for SQL errors
       if (failureCount >= 2) return false;
       if (error && typeof error === 'object' && 'code' in error) {
-        // Don't retry SQL errors like ambiguous columns
         return false;
       }
       return true;
@@ -75,7 +75,7 @@ export const useEnhancedKeywordAnalytics = ({
       return distribution;
     },
     enabled: enabled && !!appId,
-    staleTime: 10 * 60 * 1000, // 10 minutes
+    staleTime: 10 * 60 * 1000,
     retry: 2
   });
 
@@ -88,14 +88,41 @@ export const useEnhancedKeywordAnalytics = ({
     queryKey: ['collection-jobs', organizationId],
     queryFn: () => enhancedKeywordAnalyticsService.getCollectionJobs(organizationId),
     enabled: enabled,
-    staleTime: 30 * 1000, // 30 seconds
+    staleTime: 30 * 1000,
     retry: 1
   });
 
-  // Calculate analytics from trends and distribution
+  // Usage stats query
+  const {
+    data: usageStats = [],
+    isLoading: usageLoading,
+    refetch: refetchUsage
+  } = useQuery({
+    queryKey: ['usage-stats', organizationId],
+    queryFn: () => enhancedKeywordAnalyticsService.getUsageStats(organizationId),
+    enabled: enabled,
+    staleTime: 5 * 60 * 1000,
+    retry: 1
+  });
+
+  // Keyword pools query
+  const {
+    data: keywordPools = [],
+    isLoading: poolsLoading,
+    refetch: refetchPools
+  } = useQuery({
+    queryKey: ['keyword-pools', organizationId],
+    queryFn: () => enhancedKeywordAnalyticsService.getKeywordPools(organizationId),
+    enabled: enabled,
+    staleTime: 2 * 60 * 1000,
+    retry: 1
+  });
+
+  // Calculate analytics from trends, distribution, and usage
   const analytics: KeywordAnalytics = enhancedKeywordAnalyticsService.calculateAnalytics(
     keywordTrends,
-    rankDistribution
+    rankDistribution,
+    usageStats
   );
 
   // Create collection job function
@@ -110,15 +137,47 @@ export const useEnhancedKeywordAnalytics = ({
     );
     
     if (jobId) {
-      // Refresh jobs list after creating
       refetchJobs();
     }
     
     return jobId;
   };
 
+  // Save keyword snapshots function
+  const saveKeywordSnapshots = async (snapshots: Array<{
+    keyword: string;
+    rank_position: number;
+    search_volume: number;
+    difficulty_score: number;
+    volume_trend: 'up' | 'down' | 'stable';
+  }>) => {
+    if (!appId) return { success: false, saved: 0 };
+    
+    return await enhancedKeywordAnalyticsService.saveKeywordSnapshots(
+      organizationId,
+      appId,
+      snapshots
+    );
+  };
+
+  // Save keyword pool function
+  const saveKeywordPool = async (
+    poolName: string,
+    poolType: 'category' | 'competitor' | 'trending' | 'custom',
+    keywords: string[],
+    metadata: Record<string, any> = {}
+  ) => {
+    return await enhancedKeywordAnalyticsService.saveKeywordPool(
+      organizationId,
+      poolName,
+      poolType,
+      keywords,
+      metadata
+    );
+  };
+
   // Combined loading state
-  const isLoading = trendsLoading || distributionLoading || jobsLoading;
+  const isLoading = trendsLoading || distributionLoading || jobsLoading || usageLoading || poolsLoading;
 
   // Error state with graceful degradation
   const hasErrors = trendsError || distributionError;
@@ -130,6 +189,8 @@ export const useEnhancedKeywordAnalytics = ({
     rankDistribution,
     analytics,
     collectionJobs,
+    usageStats,
+    keywordPools,
     lastSuccessfulLoad,
     
     // Loading states
@@ -137,6 +198,7 @@ export const useEnhancedKeywordAnalytics = ({
     trendsLoading,
     distributionLoading,
     jobsLoading,
+    isLoadingPools: poolsLoading,
     
     // Error states (non-blocking)
     hasErrors,
@@ -144,18 +206,27 @@ export const useEnhancedKeywordAnalytics = ({
     trendsError,
     distributionError,
     
+    // Timeframe selection
+    selectedTimeframe,
+    setSelectedTimeframe,
+    
     // Actions
     createCollectionJob,
+    saveKeywordSnapshots,
+    saveKeywordPool,
     refetchTrends,
     refetchRankDist,
     refetchJobs,
+    refetchPools,
     
     // Refresh all data
     refreshAll: async () => {
       await Promise.all([
         refetchTrends(),
         refetchRankDist(),
-        refetchJobs()
+        refetchJobs(),
+        refetchUsage(),
+        refetchPools()
       ]);
     }
   };
