@@ -1,3 +1,4 @@
+
 // src/pages/dashboard.tsx
 import React, { useState, useEffect } from "react";
 import { MainLayout } from "../layouts";
@@ -5,6 +6,7 @@ import KpiCard from "../components/KpiCard";
 import TimeSeriesChart from "../components/TimeSeriesChart";
 import ComparisonChart from "../components/ComparisonChart";
 import { DataSourceIndicator } from "../components/DataSourceIndicator";
+import { AiInsightsPanel } from "../components/AiInsightsPanel";
 import { useAsoData } from "../context/AsoDataContext";
 import { useComparisonData } from "../hooks/useComparisonData";
 import { Toggle } from "@/components/ui/toggle";
@@ -48,6 +50,11 @@ const Dashboard: React.FC = () => {
   if (loading || !data) {
     return (
       <MainLayout>
+        {/* AI Insights Loading State */}
+        <div className="mb-6">
+          <AiInsightsPanel />
+        </div>
+
         <div className="flex justify-between items-center mb-6">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 flex-1">
             {[...Array(4)].map((_, i) => (
@@ -78,6 +85,11 @@ const Dashboard: React.FC = () => {
 
   return (
     <MainLayout>
+      {/* AI Insights Panel - Top Priority */}
+      <div className="mb-6">
+        <AiInsightsPanel maxDisplayed={3} />
+      </div>
+
       {/* KPI Cards with Data Source Indicator */}
       <div className="flex justify-between items-start mb-6">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 flex-1">
