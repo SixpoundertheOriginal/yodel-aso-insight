@@ -5,6 +5,7 @@ import { SidebarTrigger } from "@/components/ui/sidebar";
 import DatePicker from "./DatePicker";
 import ResetButton from "./ResetButton";
 import { UserMenu } from "./UserMenu";
+import { AppSelector } from "./AppSelector";
 import { Heading3 } from "./ui/design-system";
 
 const TopBar: React.FC = React.memo(() => {
@@ -22,6 +23,8 @@ const TopBar: React.FC = React.memo(() => {
         return 'ASO AI Hub';
       case '/keyword-intelligence':
         return 'Keyword Intelligence';
+      case '/apps':
+        return 'Apps';
       case '/profile':
         return 'Profile';
       case '/settings':
@@ -34,6 +37,7 @@ const TopBar: React.FC = React.memo(() => {
   };
 
   const showDateControls = ['/dashboard', '/overview', '/conversion-analysis'].includes(location.pathname);
+  const showAppSelector = !['/auth/sign-in', '/auth/sign-up', '/', '/profile', '/settings', '/admin'].includes(location.pathname);
 
   return (
     <header className="sticky top-0 z-40 border-b border-zinc-700 bg-zinc-900/80 backdrop-blur-sm">
@@ -49,6 +53,11 @@ const TopBar: React.FC = React.memo(() => {
         </div>
         
         <div className="flex items-center gap-4">
+          {showAppSelector && (
+            <div className="hidden md:block">
+              <AppSelector />
+            </div>
+          )}
           {showDateControls && (
             <div className="flex items-center gap-2 sm:gap-4">
               <div className="hidden sm:block">
@@ -61,12 +70,13 @@ const TopBar: React.FC = React.memo(() => {
         </div>
       </div>
       
-      {/* Mobile date controls - show below header on mobile when needed */}
-      {showDateControls && (
-        <div className="border-t border-zinc-800 px-4 py-3 sm:hidden">
-          <DatePicker />
+      {/* Mobile controls - show below header on mobile when needed */}
+      <div className="border-t border-zinc-800 px-4 py-3 md:hidden">
+        <div className="flex items-center justify-between">
+          {showAppSelector && <AppSelector />}
+          {showDateControls && <DatePicker />}
         </div>
-      )}
+      </div>
     </header>
   );
 });

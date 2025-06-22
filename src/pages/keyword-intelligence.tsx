@@ -4,9 +4,14 @@ import { MainLayout } from '@/layouts';
 import { AdvancedKeywordIntelligence } from '@/components/KeywordIntelligence';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { useApp } from '@/context/AppContext';
+import { Card, CardContent } from '@/components/ui/card';
+import { Smartphone } from 'lucide-react';
 
 const KeywordIntelligencePage: React.FC = () => {
-  // Get current user's organization and a demo app
+  const { selectedApp, isLoading: isLoadingApps } = useApp();
+
+  // Get current user's organization
   const { data: userContext, isLoading } = useQuery({
     queryKey: ['user-context'],
     queryFn: async () => {
@@ -19,24 +24,13 @@ const KeywordIntelligencePage: React.FC = () => {
         .eq('id', user.id)
         .single();
 
-      if (!profile?.organization_id) return null;
-
-      // Get first app for this organization
-      const { data: apps } = await supabase
-        .from('apps')
-        .select('id, app_name')
-        .eq('organization_id', profile.organization_id)
-        .limit(1);
-
       return {
-        organizationId: profile.organization_id,
-        targetAppId: apps?.[0]?.id || 'demo-app',
-        appName: apps?.[0]?.app_name || 'Demo App'
+        organizationId: profile?.organization_id || null
       };
     },
   });
 
-  if (isLoading) {
+  if (isLoading || isLoadingApps) {
     return (
       <MainLayout>
         <div className="flex items-center justify-center h-64">
@@ -46,7 +40,7 @@ const KeywordIntelligencePage: React.FC = () => {
     );
   }
 
-  if (!userContext) {
+  if (!userContext?.organizationId) {
     return (
       <MainLayout>
         <div className="space-y-6">
@@ -61,19 +55,45 @@ const KeywordIntelligencePage: React.FC = () => {
     );
   }
 
+  if (!selectedApp) {
+    return (
+      <MainLayout>
+        <div className="space-y-6">
+          <div>
+            <h1 className="text-3xl font-bold text-white mb-2">Keyword Intelligence</h1>
+            <p className="text-zinc-400">
+              Advanced keyword analysis with competitor gap analysis, search volume trends, and difficulty scoring
+            </p>
+          </div>
+          
+          <Card className="bg-zinc-900/50 border-zinc-800">
+            <CardContent className="p-12 text-center">
+              <Smartphone className="h-12 w-12 text-zinc-600 mx-auto mb-4" />
+              <h3 className="text-lg font-semibold text-white mb-2">No App Selected</h3>
+              <p className="text-zinc-400 mb-4">
+                Please select an app from the app selector in the top bar to view keyword intelligence.
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      </MainLayout>
+    );
+  }
+
   return (
     <MainLayout>
       <div className="space-y-6">
         <div>
           <h1 className="text-3xl font-bold text-white mb-2">Keyword Intelligence</h1>
           <p className="text-zinc-400">
-            Advanced keyword analysis with competitor gap analysis, search volume trends, and difficulty scoring for {userContext.appName}
+            Advanced keyword analysis with competitor gap analysis, search volume trends, and difficulty scoring for{' '}
+            <span className="text-yodel-orange font-medium">{selectedApp.app_name}</span>
           </p>
         </div>
         
         <AdvancedKeywordIntelligence
           organizationId={userContext.organizationId}
-          targetAppId={userContext.targetAppId}
+          targetAppId={selectedApp.id}
         />
       </div>
     </MainLayout>

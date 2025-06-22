@@ -7,6 +7,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AsoDataProvider } from "./context/AsoDataContext";
 import { AuthProvider } from "./context/AuthContext";
+import { AppProvider } from "./context/AppContext";
 import Index from "./pages/Index";
 import SignInPage from "./pages/auth/sign-in";
 import SignUpPage from "./pages/auth/sign-up";
@@ -20,6 +21,7 @@ import KeywordIntelligencePage from './pages/keyword-intelligence';
 import ProfilePage from './pages/profile';
 import SettingsPage from './pages/settings';
 import AdminPage from './pages/admin';
+import AppsPage from './pages/apps';
 import NotFound from "./pages/NotFound";
 import { withAuth } from "./components/Auth/withAuth";
 
@@ -43,6 +45,7 @@ const ProtectedKeywordIntelligencePage = withAuth(KeywordIntelligencePage);
 const ProtectedProfilePage = withAuth(ProfilePage);
 const ProtectedSettingsPage = withAuth(SettingsPage);
 const ProtectedAdminPage = withAuth(AdminPage);
+const ProtectedAppsPage = withAuth(AppsPage);
 
 const App: React.FC = () => {
   return (
@@ -50,28 +53,31 @@ const App: React.FC = () => {
       <BrowserRouter>
         <TooltipProvider>
           <AuthProvider>
-            <AsoDataProvider>
-              <div className="min-h-screen bg-background">
-                <Routes>
-                  <Route path="/" element={<Index />} />
-                  <Route path="/auth/sign-in" element={<SignInPage />} />
-                  <Route path="/auth/sign-up" element={<SignUpPage />} />
-                  <Route path="/dashboard" element={<ProtectedDashboard />} />
-                  <Route path="/traffic-sources" element={<ProtectedTrafficSourcesPage />} />
-                  <Route path="/conversion-analysis" element={<ProtectedConversionAnalysisPage />} />
-                  <Route path="/overview" element={<ProtectedOverviewPage />} />
-                  <Route path="/aso-ai-hub" element={<ProtectedAsoAiHubPage />} />
-                  <Route path="/featuring-toolkit" element={<ProtectedFeaturingToolkitPage />} />
-                  <Route path="/keyword-intelligence" element={<ProtectedKeywordIntelligencePage />} />
-                  <Route path="/profile" element={<ProtectedProfilePage />} />
-                  <Route path="/settings" element={<ProtectedSettingsPage />} />
-                  <Route path="/admin" element={<ProtectedAdminPage />} />
-                  <Route path="*" element={<NotFound />} />
-                </Routes>
-              </div>
-              <Toaster />
-              <Sonner />
-            </AsoDataProvider>
+            <AppProvider>
+              <AsoDataProvider>
+                <div className="min-h-screen bg-background">
+                  <Routes>
+                    <Route path="/" element={<Index />} />
+                    <Route path="/auth/sign-in" element={<SignInPage />} />
+                    <Route path="/auth/sign-up" element={<SignUpPage />} />
+                    <Route path="/apps" element={<ProtectedAppsPage />} />
+                    <Route path="/dashboard" element={<ProtectedDashboard />} />
+                    <Route path="/traffic-sources" element={<ProtectedTrafficSourcesPage />} />
+                    <Route path="/conversion-analysis" element={<ProtectedConversionAnalysisPage />} />
+                    <Route path="/overview" element={<ProtectedOverviewPage />} />
+                    <Route path="/aso-ai-hub" element={<ProtectedAsoAiHubPage />} />
+                    <Route path="/featuring-toolkit" element={<ProtectedFeaturingToolkitPage />} />
+                    <Route path="/keyword-intelligence" element={<ProtectedKeywordIntelligencePage />} />
+                    <Route path="/profile" element={<ProtectedProfilePage />} />
+                    <Route path="/settings" element={<ProtectedSettingsPage />} />
+                    <Route path="/admin" element={<ProtectedAdminPage />} />
+                    <Route path="*" element={<NotFound />} />
+                  </Routes>
+                </div>
+                <Toaster />
+                <Sonner />
+              </AsoDataProvider>
+            </AppProvider>
           </AuthProvider>
         </TooltipProvider>
       </BrowserRouter>

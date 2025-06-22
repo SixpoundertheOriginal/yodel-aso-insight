@@ -10,7 +10,8 @@ import {
   Search,
   Shield,
   User,
-  Settings as SettingsIcon
+  Settings as SettingsIcon,
+  Smartphone
 } from "lucide-react";
 import {
   Sidebar,
@@ -29,8 +30,13 @@ import { usePermissions } from "@/hooks/usePermissions";
 
 const navigationItems = [
   {
-    title: "Dashboard",
+    title: "Apps & Analytics",
     items: [
+      {
+        title: "Apps",
+        url: "/apps",
+        icon: Smartphone,
+      },
       {
         title: "Overview",
         url: "/overview",
