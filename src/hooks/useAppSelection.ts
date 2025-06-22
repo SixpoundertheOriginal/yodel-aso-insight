@@ -21,6 +21,7 @@ export const useAppSelection = ({
   const queryClient = useQueryClient();
   const transitionLockRef = useRef<boolean>(false);
   const transitionTimeoutRef = useRef<NodeJS.Timeout>();
+  const lastProcessedAppRef = useRef<string | null>(null);
   
   const [state, setState] = useState<AppSelectionState>({
     selectedAppId: null,
@@ -41,7 +42,7 @@ export const useAppSelection = ({
   const invalidateAppQueries = useCallback((appId: string) => {
     const queriesToInvalidate = [
       ['keyword-gap-analysis', organizationId, appId],
-      ['keyword-clusters', organizationId, appId],
+      ['keyword-clusters', organizationId],
       ['keyword-volume-trends', organizationId],
       ['selected-app', appId, organizationId]
     ];
@@ -52,22 +53,30 @@ export const useAppSelection = ({
   }, [organizationId, queryClient]);
 
   const selectApp = useCallback(async (appId: string | null) => {
+    // Prevent processing the same app ID multiple times
+    if (appId === lastProcessedAppRef.current) {
+      console.log('🔄 [APP-SELECTION] App already processed:', appId);
+      return;
+    }
+
     // Prevent concurrent transitions
     if (transitionLockRef.current) {
       console.log('🔒 [APP-SELECTION] Transition already in progress, ignoring request');
       return;
     }
 
-    // Don't transition if already selected
-    if (state.selectedAppId === appId) {
-      console.log('🔄 [APP-SELECTION] App already selected:', appId);
+    // Don't transition if already selected and not transitioning
+    if (state.selectedAppId === appId && !state.isTransitioning) {
+      console.log('🔄 [APP-SELECTION] App already selected and stable:', appId);
+      lastProcessedAppRef.current = appId;
       return;
     }
 
     console.log('🎯 [APP-SELECTION] Starting app transition:', state.selectedAppId, '->', appId);
 
-    // Set transition lock
+    // Set transition lock and update processed ref
     transitionLockRef.current = true;
+    lastProcessedAppRef.current = appId;
 
     // Clear any existing timeout
     if (transitionTimeoutRef.current) {
@@ -93,7 +102,7 @@ export const useAppSelection = ({
         onAppChange(appId);
       }
 
-      // Debounced transition completion
+      // Shorter, immediate transition completion
       transitionTimeoutRef.current = setTimeout(() => {
         setState(prev => ({
           ...prev,
@@ -104,7 +113,7 @@ export const useAppSelection = ({
 
         transitionLockRef.current = false;
         console.log('✅ [APP-SELECTION] App transition completed:', appId);
-      }, 150); // Reduced debounce time for better UX
+      }, 100); // Much shorter delay
 
     } catch (error) {
       console.error('❌ [APP-SELECTION] App transition failed:', error);
@@ -117,10 +126,12 @@ export const useAppSelection = ({
       }));
 
       transitionLockRef.current = false;
+      lastProcessedAppRef.current = state.selectedAppId; // Reset to previous
     }
-  }, [state.selectedAppId, organizationId, invalidateAppQueries, onAppChange]);
+  }, [state.selectedAppId, state.isTransitioning, organizationId, invalidateAppQueries, onAppChange]);
 
   const clearSelection = useCallback(() => {
+    lastProcessedAppRef.current = null;
     selectApp(null);
   }, [selectApp]);
 

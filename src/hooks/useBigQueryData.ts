@@ -57,6 +57,8 @@ export const useBigQueryData = (
           limit: 100
         };
 
+        console.log('📤 [BigQuery] Making request to edge function...');
+
         const { data: response, error: functionError } = await supabase.functions.invoke(
           'bigquery-aso-data',
           {
@@ -65,12 +67,14 @@ export const useBigQueryData = (
         );
 
         if (functionError) {
+          console.error('❌ [BigQuery] Edge function error:', functionError);
           throw new Error(`BigQuery function error: ${functionError.message}`);
         }
 
         const bigQueryResponse = response as BigQueryResponse;
 
         if (!bigQueryResponse.success) {
+          console.error('❌ [BigQuery] Service error:', bigQueryResponse.error);
           throw new Error(bigQueryResponse.error || 'BigQuery request failed');
         }
 
@@ -87,6 +91,18 @@ export const useBigQueryData = (
 
       } catch (err) {
         console.error('❌ [BigQuery] Error fetching data:', err);
+        
+        // Enhanced error logging for BigQuery issues
+        if (err instanceof Error) {
+          if (err.message.includes('403') || err.message.includes('permission')) {
+            console.error('🔐 [BigQuery] Permission denied - check BigQuery credentials and table access');
+          } else if (err.message.includes('404')) {
+            console.error('🔍 [BigQuery] Table not found - verify table name and project ID');
+          } else if (err.message.includes('non-2xx status')) {
+            console.error('🚫 [BigQuery] Edge function failed - check edge function logs');
+          }
+        }
+        
         setError(err instanceof Error ? err : new Error('Unknown BigQuery error'));
       } finally {
         setLoading(false);

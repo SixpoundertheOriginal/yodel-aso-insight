@@ -17,43 +17,85 @@ export const useEnhancedQueries = ({
 }: UseEnhancedQueriesProps) => {
   const queryClient = useQueryClient();
 
-  // Selected app query with proper error handling
+  // Selected app query with proper error handling and app store ID resolution
   const selectedAppQuery = useQuery({
     queryKey: appId ? queryKeys.keywordIntelligence.selectedApp(appId, organizationId) : ['no-app'],
     queryFn: async () => {
       if (!appId) return null;
 
-      const { data, error } = await supabase
+      console.log('🔍 [ENHANCED-QUERIES] Looking up app:', appId);
+
+      // First try to find by UUID (internal app ID)
+      let { data: appByUuid, error: uuidError } = await supabase
         .from('apps')
         .select('*')
         .eq('organization_id', organizationId)
         .eq('id', appId)
-        .single();
+        .maybeSingle();
 
-      if (error) {
-        console.error('❌ [ENHANCED-QUERIES] App fetch error:', error);
-        throw error;
+      if (appByUuid && !uuidError) {
+        console.log('✅ [ENHANCED-QUERIES] Found app by UUID:', appByUuid.app_name);
+        return appByUuid;
       }
 
-      console.log('🔍 [ENHANCED-QUERIES] Selected app loaded:', data?.app_name);
-      return data;
+      // If not found by UUID, try by app_store_id (external App Store ID)
+      let { data: appByStoreId, error: storeIdError } = await supabase
+        .from('apps')
+        .select('*')
+        .eq('organization_id', organizationId)
+        .eq('app_store_id', appId)
+        .maybeSingle();
+
+      if (appByStoreId && !storeIdError) {
+        console.log('✅ [ENHANCED-QUERIES] Found app by App Store ID:', appByStoreId.app_name);
+        return appByStoreId;
+      }
+
+      // Log the specific errors for debugging
+      console.error('❌ [ENHANCED-QUERIES] App lookup failed:', {
+        appId,
+        uuidError: uuidError?.message,
+        storeIdError: storeIdError?.message,
+        organizationId
+      });
+
+      // Check if there are any apps in the organization for debugging
+      const { data: allApps } = await supabase
+        .from('apps')
+        .select('id, app_store_id, app_name')
+        .eq('organization_id', organizationId)
+        .limit(5);
+
+      console.log('🔍 [ENHANCED-QUERIES] Available apps in org:', allApps);
+
+      throw new Error(`App not found: ${appId}. Check if the app exists in organization ${organizationId}`);
     },
     enabled: !!appId && !!organizationId && enabled,
-    staleTime: 1000 * 60 * 10, // 10 minutes
-    gcTime: 1000 * 60 * 15, // 15 minutes
-    retry: 2,
-    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
+    staleTime: 1000 * 60 * 5, // 5 minutes - shorter for better updates
+    gcTime: 1000 * 60 * 10, // 10 minutes
+    retry: (failureCount, error) => {
+      // Don't retry if it's a "not found" error
+      if (error?.message?.includes('App not found')) {
+        return false;
+      }
+      return failureCount < 2;
+    },
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 5000),
   });
 
-  // Gap analysis query with optimized fetching
+  // Gap analysis query with improved app ID handling
   const gapAnalysisQuery = useQuery({
     queryKey: appId ? queryKeys.keywordIntelligence.gapAnalysis(organizationId, appId) : ['no-gaps'],
     queryFn: async () => {
-      if (!appId) return [];
+      if (!appId || !selectedAppQuery.data) return [];
       
       try {
-        console.log('🔍 [ENHANCED-QUERIES] Fetching gap analysis for app:', selectedAppQuery.data?.app_name || appId);
-        const data = await competitorKeywordAnalysisService.getKeywordGapAnalysis(organizationId, appId);
+        console.log('🔍 [ENHANCED-QUERIES] Fetching gap analysis for app:', selectedAppQuery.data.app_name);
+        
+        // Use the correct app ID (UUID) for gap analysis
+        const targetAppId = selectedAppQuery.data.id;
+        const data = await competitorKeywordAnalysisService.getKeywordGapAnalysis(organizationId, targetAppId);
+        
         console.log('✅ [ENHANCED-QUERIES] Gap analysis data:', data.length);
         return data;
       } catch (error) {
@@ -61,16 +103,16 @@ export const useEnhancedQueries = ({
         return []; // Return empty array instead of throwing
       }
     },
-    enabled: enabled && !!appId && !!organizationId && !!selectedAppQuery.data,
-    staleTime: 1000 * 60 * 5, // 5 minutes
-    gcTime: 1000 * 60 * 10, // 10 minutes
+    enabled: enabled && !!appId && !!organizationId && !!selectedAppQuery.data && !selectedAppQuery.isLoading,
+    staleTime: 1000 * 60 * 10, // 10 minutes
+    gcTime: 1000 * 60 * 15, // 15 minutes
     retry: 1,
     refetchOnWindowFocus: false,
   });
 
-  // Clusters query with app-specific optimization
+  // Clusters query - organization level, not app specific
   const clustersQuery = useQuery({
-    queryKey: queryKeys.keywordIntelligence.clusters(organizationId, appId || undefined),
+    queryKey: queryKeys.keywordIntelligence.clusters(organizationId, undefined),
     queryFn: async () => {
       try {
         console.log('🔍 [ENHANCED-QUERIES] Fetching clusters');
@@ -83,13 +125,13 @@ export const useEnhancedQueries = ({
       }
     },
     enabled: enabled && !!organizationId,
-    staleTime: 1000 * 60 * 10, // 10 minutes
-    gcTime: 1000 * 60 * 15, // 15 minutes
+    staleTime: 1000 * 60 * 15, // 15 minutes - clusters change less frequently
+    gcTime: 1000 * 60 * 20, // 20 minutes
     retry: 1,
     refetchOnWindowFocus: false,
   });
 
-  // Invalidation helpers
+  // Invalidation helpers with correct app ID handling
   const invalidateAppData = (targetAppId: string) => {
     const queries = queryKeys.keywordIntelligence.allForApp(organizationId, targetAppId);
     queries.forEach(queryKey => {
@@ -104,17 +146,29 @@ export const useEnhancedQueries = ({
     });
   };
 
-  // Prefetch next app data for better UX
+  // Prefetch app data with improved lookup
   const prefetchAppData = (targetAppId: string) => {
     queryClient.prefetchQuery({
       queryKey: queryKeys.keywordIntelligence.selectedApp(targetAppId, organizationId),
       queryFn: async () => {
-        const { data } = await supabase
+        // Try UUID first, then app_store_id
+        let { data } = await supabase
           .from('apps')
           .select('*')
           .eq('organization_id', organizationId)
           .eq('id', targetAppId)
-          .single();
+          .maybeSingle();
+
+        if (!data) {
+          const result = await supabase
+            .from('apps')
+            .select('*')
+            .eq('organization_id', organizationId)
+            .eq('app_store_id', targetAppId)
+            .maybeSingle();
+          data = result.data;
+        }
+
         return data;
       },
       staleTime: 1000 * 60 * 5,
@@ -132,7 +186,7 @@ export const useEnhancedQueries = ({
     isLoadingClusters: clustersQuery.isLoading,
     isLoading: selectedAppQuery.isLoading || gapAnalysisQuery.isLoading || clustersQuery.isLoading,
     
-    // Error states
+    // Error states with better error info
     appError: selectedAppQuery.error,
     gapError: gapAnalysisQuery.error,
     clusterError: clustersQuery.error,
