@@ -12,6 +12,7 @@ interface KeywordIntelligenceState {
   lastSuccessfulLoad: Date | null;
   errorCount: number;
   fallbackMode: boolean;
+  hasAttemptedLoad: boolean;
 }
 
 interface UseKeywordIntelligenceManagerProps {
@@ -26,13 +27,15 @@ export const useKeywordIntelligenceManager = ({
   const queryClient = useQueryClient();
   const transitionTimeoutRef = useRef<NodeJS.Timeout>();
   const errorCountRef = useRef(0);
+  const initializationTimeoutRef = useRef<NodeJS.Timeout>();
   
   const [state, setState] = useState<KeywordIntelligenceState>({
     isInitialized: false,
     isTransitioning: false,
     lastSuccessfulLoad: null,
     errorCount: 0,
-    fallbackMode: false
+    fallbackMode: false,
+    hasAttemptedLoad: false
   });
 
   // Use both hooks but manage their coordination
@@ -53,11 +56,14 @@ export const useKeywordIntelligenceManager = ({
     if (targetAppId && !state.isInitialized) {
       console.log('🚀 [KI-MANAGER] Initializing enhanced intelligence for app:', targetAppId);
       
-      setState(prev => ({ ...prev, isTransitioning: true }));
+      setState(prev => ({ ...prev, isTransitioning: true, hasAttemptedLoad: true }));
       
-      // Clear any existing timeout
+      // Clear any existing timeouts
       if (transitionTimeoutRef.current) {
         clearTimeout(transitionTimeoutRef.current);
+      }
+      if (initializationTimeoutRef.current) {
+        clearTimeout(initializationTimeoutRef.current);
       }
       
       // Set transition timeout to prevent stuck states
@@ -70,37 +76,67 @@ export const useKeywordIntelligenceManager = ({
         }));
       }, 8000); // Longer timeout for enhanced processing
       
-      // Mark as initialized after processing
-      setTimeout(() => {
+      // Give services time to initialize before marking as complete
+      initializationTimeoutRef.current = setTimeout(() => {
         setState(prev => ({
           ...prev,
           isInitialized: true,
           isTransitioning: false,
-          lastSuccessfulLoad: new Date()
+          lastSuccessfulLoad: new Date(),
+          hasAttemptedLoad: true
         }));
         
         if (transitionTimeoutRef.current) {
           clearTimeout(transitionTimeoutRef.current);
         }
-      }, 1000); // Slightly longer for enhanced processing
+      }, 2000); // Longer initialization time
     }
   }, [targetAppId, state.isInitialized]);
 
-  // Monitor for errors and enable fallback mode
+  // Improved error detection - only check for errors after initialization attempt
   useEffect(() => {
-    const hasErrors = advancedKI.hasErrors || enhancedAnalytics.isLoading === false && 
-      (!enhancedAnalytics.rankDistribution && !enhancedAnalytics.keywordTrends.length);
+    // Don't check for errors if we haven't attempted to load yet or are still loading
+    if (!state.hasAttemptedLoad || advancedKI.isLoading || enhancedAnalytics.isLoading || state.isTransitioning) {
+      return;
+    }
+
+    // Only consider it an error if we have actual error states from the hooks
+    const hasRealErrors = advancedKI.hasErrors || enhancedAnalytics.isLoading === false && 
+      enhancedAnalytics.rankDistribution === null && 
+      enhancedAnalytics.keywordTrends.length === 0 &&
+      advancedKI.keywordData.length === 0;
     
-    if (hasErrors && errorCountRef.current < 3) {
+    if (hasRealErrors && errorCountRef.current < 3) {
       errorCountRef.current++;
       console.warn(`⚠️ [KI-MANAGER] Error detected (${errorCountRef.current}/3)`);
       
       if (errorCountRef.current >= 3) {
-        console.log('🔄 [KI-MANAGER] Enabling fallback mode');
+        console.log('🔄 [KI-MANAGER] Enabling fallback mode after 3 errors');
         setState(prev => ({ ...prev, fallbackMode: true }));
       }
+    } else if (!hasRealErrors && advancedKI.keywordData.length > 0) {
+      // Reset error count when we have successful data
+      if (errorCountRef.current > 0) {
+        console.log('✅ [KI-MANAGER] Resetting error count - data loaded successfully');
+        errorCountRef.current = 0;
+        setState(prev => ({ 
+          ...prev, 
+          fallbackMode: false, 
+          errorCount: 0,
+          lastSuccessfulLoad: new Date()
+        }));
+      }
     }
-  }, [advancedKI.hasErrors, enhancedAnalytics.rankDistribution, enhancedAnalytics.keywordTrends.length, enhancedAnalytics.isLoading]);
+  }, [
+    state.hasAttemptedLoad,
+    state.isTransitioning,
+    advancedKI.isLoading,
+    advancedKI.hasErrors,
+    advancedKI.keywordData.length,
+    enhancedAnalytics.isLoading,
+    enhancedAnalytics.rankDistribution,
+    enhancedAnalytics.keywordTrends.length
+  ]);
 
   // Enhanced refresh function
   const refreshAllData = useCallback(async () => {
@@ -157,6 +193,9 @@ export const useKeywordIntelligenceManager = ({
     return () => {
       if (transitionTimeoutRef.current) {
         clearTimeout(transitionTimeoutRef.current);
+      }
+      if (initializationTimeoutRef.current) {
+        clearTimeout(initializationTimeoutRef.current);
       }
     };
   }, []);

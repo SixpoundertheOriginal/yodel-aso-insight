@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -34,6 +35,16 @@ export const ProgressiveKeywordLoader: React.FC<ProgressiveKeywordLoaderProps> =
     startProgressiveLoading();
   }, [organizationId, appId]);
 
+  // Handle keyword loading with proper timing to avoid render cycle issues
+  useEffect(() => {
+    if (allKeywords.length > 0) {
+      // Use setTimeout to defer the state update to the next tick
+      setTimeout(() => {
+        onKeywordsLoaded(allKeywords);
+      }, 0);
+    }
+  }, [allKeywords, onKeywordsLoaded]);
+
   const startProgressiveLoading = useCallback(async () => {
     try {
       // Stage 1: Load cached keywords immediately
@@ -44,7 +55,6 @@ export const ProgressiveKeywordLoader: React.FC<ProgressiveKeywordLoaderProps> =
       setTimeout(() => {
         const cachedKeywords = generateMockKeywords('cached', 10);
         setAllKeywords(cachedKeywords);
-        onKeywordsLoaded(cachedKeywords);
         
         // Stage 2: Start background discovery jobs
         setLoadingStage('background');
@@ -56,7 +66,7 @@ export const ProgressiveKeywordLoader: React.FC<ProgressiveKeywordLoaderProps> =
       console.error('❌ [PROGRESSIVE-LOADER] Loading failed:', error);
       toast.error('Failed to load keywords');
     }
-  }, [organizationId, appId, onKeywordsLoaded]);
+  }, [organizationId, appId]);
 
   const startDiscoveryJobs = async () => {
     const jobTypes = [
@@ -113,13 +123,11 @@ export const ProgressiveKeywordLoader: React.FC<ProgressiveKeywordLoaderProps> =
               : j
           ));
           
-          // Load fresh keywords for this job
-          const freshKeywords = generateMockKeywords(job.type, Math.floor(Math.random() * 10) + 5);
-          setAllKeywords(prev => {
-            const updated = [...prev, ...freshKeywords];
-            onKeywordsLoaded(updated);
-            return updated;
-          });
+          // Load fresh keywords for this job - use setTimeout to avoid render cycle issues
+          setTimeout(() => {
+            const freshKeywords = generateMockKeywords(job.type, Math.floor(Math.random() * 10) + 5);
+            setAllKeywords(prev => [...prev, ...freshKeywords]);
+          }, 0);
           
           // Check if all jobs are complete
           setTimeout(() => {
