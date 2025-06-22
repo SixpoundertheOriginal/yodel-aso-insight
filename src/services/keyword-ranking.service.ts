@@ -2,6 +2,11 @@
 import { supabase } from '@/integrations/supabase/client';
 import { asoSearchService } from './aso-search.service';
 import { keywordIntelligenceService } from './keyword-intelligence.service';
+import { keywordValidationService } from './keyword-validation.service';
+import { keywordCacheService } from './keyword-cache.service';
+import { keywordRankingCalculatorService } from './keyword-ranking-calculator.service';
+import { securityService } from './security.service';
+import { CircuitBreaker } from '@/lib/utils/circuit-breaker';
 import { ScrapedMetadata } from '@/types/aso';
 
 export interface KeywordRanking {
@@ -22,173 +27,266 @@ export interface KeywordAnalysisConfig {
   maxKeywords?: number;
   includeCompetitors?: boolean;
   debugMode?: boolean;
+  cacheEnabled?: boolean;
+  batchProcessing?: boolean;
 }
 
-// Circuit breaker to prevent infinite failure loops
-class CircuitBreaker {
-  private failures = 0;
-  private lastFailureTime = 0;
-  private readonly maxFailures = 3;
-  private readonly resetTimeMs = 30000; // 30 seconds
-
-  isOpen(): boolean {
-    if (this.failures >= this.maxFailures) {
-      const timeSinceLastFailure = Date.now() - this.lastFailureTime;
-      if (timeSinceLastFailure < this.resetTimeMs) {
-        return true; // Circuit is open
-      } else {
-        // Reset circuit breaker
-        this.failures = 0;
-        return false;
-      }
-    }
-    return false;
-  }
-
-  recordFailure(): void {
-    this.failures++;
-    this.lastFailureTime = Date.now();
-  }
-
-  recordSuccess(): void {
-    this.failures = 0;
-  }
+export interface KeywordAnalysisResult {
+  rankings: KeywordRanking[];
+  metadata: {
+    totalProcessed: number;
+    actualRankings: number;
+    estimatedRankings: number;
+    cacheHits: number;
+    processingTime: number;
+    circuitBreakerTripped: boolean;
+  };
 }
 
 class KeywordRankingService {
-  private circuitBreaker = new CircuitBreaker();
-  
+  private circuitBreaker = new CircuitBreaker({
+    maxFailures: 3,
+    resetTimeMs: 30000,
+    name: 'KeywordRankingService'
+  });
+
   /**
-   * Check app ranking for a specific keyword with circuit breaker
+   * Enhanced keyword ranking check with validation and caching
    */
-  async checkKeywordRanking(keyword: string, targetAppId: string, config: KeywordAnalysisConfig): Promise<KeywordRanking | null> {
-    // Check circuit breaker
-    if (this.circuitBreaker.isOpen()) {
-      console.log(`🚫 [KEYWORD-RANKING] Circuit breaker open, skipping search for "${keyword}"`);
-      return null;
-    }
-    
+  async checkKeywordRanking(
+    keyword: string, 
+    targetAppId: string, 
+    config: KeywordAnalysisConfig
+  ): Promise<KeywordRanking | null> {
+    const startTime = Date.now();
+
     try {
-      console.log(`🔍 [KEYWORD-RANKING] Checking ranking for "${keyword}" for app ${targetAppId}`);
-      
-      // Use existing search service to find apps for this keyword
-      const searchResult = await asoSearchService.search(keyword, {
+      // Validate and sanitize keyword
+      const validation = keywordValidationService.validateKeyword(keyword, {
+        organizationId: config.organizationId,
+        maxKeywordLength: 100,
+        allowSpecialChars: false
+      });
+
+      if (!validation.isValid) {
+        console.warn(`⚠️ [KEYWORD-RANKING] Invalid keyword "${keyword}":`, validation.errors);
+        return null;
+      }
+
+      const sanitizedKeyword = validation.sanitizedKeyword;
+      const cacheKey = `ranking:${sanitizedKeyword}:${targetAppId}`;
+
+      // Check cache first if enabled
+      if (config.cacheEnabled) {
+        const cached = keywordCacheService.get<KeywordRanking>(cacheKey, config.organizationId);
+        if (cached) {
+          console.log(`💾 [KEYWORD-RANKING] Cache hit for "${sanitizedKeyword}"`);
+          return cached;
+        }
+      }
+
+      // Check circuit breaker
+      if (this.circuitBreaker.isOpen()) {
+        console.log(`🚫 [KEYWORD-RANKING] Circuit breaker open, skipping search for "${sanitizedKeyword}"`);
+        return null;
+      }
+
+      // Log audit entry for security
+      await securityService.logAuditEntry({
+        organizationId: config.organizationId,
+        userId: 'system',
+        action: 'keyword_ranking_check',
+        resourceType: 'keyword_analysis',
+        resourceId: sanitizedKeyword,
+        details: {
+          keyword: sanitizedKeyword,
+          targetAppId,
+          originalKeyword: keyword,
+          sanitized: validation.metadata.wasModified
+        },
+        ipAddress: '127.0.0.1',
+        userAgent: 'KeywordRankingService'
+      });
+
+      console.log(`🔍 [KEYWORD-RANKING] Checking ranking for "${sanitizedKeyword}" for app ${targetAppId}`);
+
+      // Use existing search service
+      const searchResult = await asoSearchService.search(sanitizedKeyword, {
         organizationId: config.organizationId,
         includeIntelligence: false,
         debugMode: config.debugMode
       });
-      
+
+      // Calculate ranking using the dedicated calculator
+      const allApps = [searchResult.targetApp, ...searchResult.competitors];
+      const calculationResult = keywordRankingCalculatorService.calculateRanking(
+        sanitizedKeyword,
+        targetAppId,
+        allApps,
+        {
+          includeCompetitorAnalysis: config.includeCompetitors || false,
+          maxResultsToAnalyze: 20,
+          confidenceThreshold: 0.7,
+          volumeEstimationAlgorithm: 'balanced'
+        }
+      );
+
+      if (!calculationResult.ranking) {
+        this.circuitBreaker.recordSuccess(); // Not a failure, just no result
+        return null;
+      }
+
+      const ranking = calculationResult.ranking;
+
+      // Cache the result if enabled
+      if (config.cacheEnabled) {
+        keywordCacheService.set(cacheKey, ranking, config.organizationId, 1800000); // 30 minutes
+      }
+
       // Record success
       this.circuitBreaker.recordSuccess();
-      
-      // Check if target app appears in search results
-      const allApps = [searchResult.targetApp, ...searchResult.competitors];
-      const appPosition = allApps.findIndex(app => 
-        app.appId === targetAppId || 
-        app.name.toLowerCase().includes(targetAppId.toLowerCase())
-      );
-      
-      if (appPosition === -1) {
-        return null; // App not found in top results
-      }
-      
-      const position = appPosition + 1;
-      
-      return {
-        keyword,
-        position,
-        volume: this.estimateSearchVolume(keyword, searchResult.competitors.length),
-        trend: 'stable',
-        searchResults: searchResult.competitors.length + 1,
-        lastChecked: new Date(),
-        confidence: 'actual'
-      };
-      
+
+      console.log(`✅ [KEYWORD-RANKING] Found ranking for "${sanitizedKeyword}": position ${ranking.position}`);
+      return ranking;
+
     } catch (error) {
       console.error(`❌ [KEYWORD-RANKING] Failed to check ranking for "${keyword}":`, error);
-      
-      // Record failure
       this.circuitBreaker.recordFailure();
-      
       return null;
     }
   }
-  
+
   /**
-   * Estimate search volume based on competition and keyword characteristics
+   * Enhanced keyword analysis with batch processing and caching
    */
-  private estimateSearchVolume(keyword: string, competitorCount: number): 'Low' | 'Medium' | 'High' {
-    const wordCount = keyword.split(' ').length;
-    
-    if (competitorCount > 15 && wordCount <= 2) return 'High';
-    if (competitorCount > 8 || (wordCount <= 2 && competitorCount > 5)) return 'Medium';
-    return 'Low';
-  }
-  
-  /**
-   * Enhanced keyword analysis using smart keyword intelligence
-   */
-  async analyzeAppKeywords(app: ScrapedMetadata, config: KeywordAnalysisConfig): Promise<KeywordRanking[]> {
-    console.log(`🎯 [KEYWORD-RANKING] Starting smart keyword analysis for ${app.name}`);
-    
-    // Generate smart keywords using the intelligence service
-    const smartKeywords = keywordIntelligenceService.generateSmartKeywords(app);
-    const rankings = keywordIntelligenceService.convertToRankingFormat(smartKeywords);
-    
-    console.log(`📊 [KEYWORD-RANKING] Generated ${rankings.length} intelligent keyword rankings`);
-    
-    // Try to get actual rankings for a few high-priority keywords
+  async analyzeAppKeywords(app: ScrapedMetadata, config: KeywordAnalysisConfig): Promise<KeywordAnalysisResult> {
+    const startTime = Date.now();
+    console.log(`🎯 [KEYWORD-RANKING] Starting enhanced keyword analysis for ${app.name}`);
+
+    let cacheHits = 0;
     let actualRankingsChecked = 0;
-    const maxActualChecks = 3; // Limit actual checks to prevent failures
-    
-    for (const ranking of rankings) {
-      if (actualRankingsChecked >= maxActualChecks) break;
-      if (ranking.priority !== 'high') continue;
-      if (this.circuitBreaker.isOpen()) break;
-      
-      try {
-        const actualRanking = await this.checkKeywordRanking(ranking.keyword, app.appId, config);
-        if (actualRanking) {
-          // Update with actual data
-          ranking.position = actualRanking.position;
-          ranking.confidence = 'actual';
-          ranking.searchResults = actualRanking.searchResults;
-          actualRankingsChecked++;
+    const maxActualChecks = 3;
+
+    try {
+      // Generate smart keywords using intelligence service
+      const smartKeywords = keywordIntelligenceService.generateSmartKeywords(app);
+      const rankings = keywordIntelligenceService.convertToRankingFormat(smartKeywords);
+
+      // Process high-priority keywords for actual ranking checks
+      const highPriorityKeywords = rankings
+        .filter(r => r.priority === 'high')
+        .slice(0, maxActualChecks);
+
+      // Batch process if enabled
+      if (config.batchProcessing && highPriorityKeywords.length > 1) {
+        console.log(`🔄 [KEYWORD-RANKING] Batch processing ${highPriorityKeywords.length} high-priority keywords`);
+        
+        const batchPromises = highPriorityKeywords.map(async (ranking, index) => {
+          // Add delay between requests to respect rate limits
+          await new Promise(resolve => setTimeout(resolve, index * 1000));
+          
+          const actualRanking = await this.checkKeywordRanking(ranking.keyword, app.appId, config);
+          if (actualRanking) {
+            // Update with actual data
+            ranking.position = actualRanking.position;
+            ranking.confidence = 'actual';
+            ranking.searchResults = actualRanking.searchResults;
+            return true;
+          }
+          return false;
+        });
+
+        const results = await Promise.allSettled(batchPromises);
+        actualRankingsChecked = results.filter(r => r.status === 'fulfilled' && r.value).length;
+
+      } else {
+        // Sequential processing for backward compatibility
+        for (const ranking of highPriorityKeywords) {
+          if (actualRankingsChecked >= maxActualChecks) break;
+          if (this.circuitBreaker.isOpen()) break;
+
+          try {
+            const actualRanking = await this.checkKeywordRanking(ranking.keyword, app.appId, config);
+            if (actualRanking) {
+              ranking.position = actualRanking.position;
+              ranking.confidence = 'actual';
+              ranking.searchResults = actualRanking.searchResults;
+              actualRankingsChecked++;
+            }
+
+            // Rate limiting between requests
+            await new Promise(resolve => setTimeout(resolve, 1000));
+
+          } catch (error) {
+            console.warn(`⚠️ [KEYWORD-RANKING] Failed to check actual ranking for "${ranking.keyword}":`, error);
+            break;
+          }
         }
-        
-        // Rate limiting between requests
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
-      } catch (error) {
-        console.warn(`⚠️ [KEYWORD-RANKING] Failed to check actual ranking for "${ranking.keyword}":`, error);
-        break; // Stop trying actual checks on error
       }
+
+      // Sort by ranking position (best first)
+      rankings.sort((a, b) => a.position - b.position);
+
+      const processingTime = Date.now() - startTime;
+      const estimatedRankings = rankings.length - actualRankingsChecked;
+
+      console.log(`✅ [KEYWORD-RANKING] Enhanced analysis complete: ${actualRankingsChecked} actual, ${estimatedRankings} estimated rankings (${processingTime}ms)`);
+
+      return {
+        rankings,
+        metadata: {
+          totalProcessed: rankings.length,
+          actualRankings: actualRankingsChecked,
+          estimatedRankings,
+          cacheHits,
+          processingTime,
+          circuitBreakerTripped: this.circuitBreaker.getState().isOpen
+        }
+      };
+
+    } catch (error) {
+      console.error('❌ [KEYWORD-RANKING] Enhanced analysis failed:', error);
+      throw error;
     }
-    
-    // Sort by ranking position (best first)
-    rankings.sort((a, b) => a.position - b.position);
-    
-    console.log(`✅ [KEYWORD-RANKING] Analysis complete: ${actualRankingsChecked} actual, ${rankings.length - actualRankingsChecked} estimated rankings`);
-    return rankings;
   }
-  
+
   /**
-   * Get keyword rankings with smart analysis and fallbacks
+   * Get keyword rankings with enhanced features and fallback
    */
   async getAppKeywordRankings(app: ScrapedMetadata, config: KeywordAnalysisConfig): Promise<KeywordRanking[]> {
     try {
-      return await this.analyzeAppKeywords(app, config);
+      // Set default configuration
+      const enhancedConfig: KeywordAnalysisConfig = {
+        cacheEnabled: true,
+        batchProcessing: true,
+        ...config
+      };
+
+      const result = await this.analyzeAppKeywords(app, enhancedConfig);
+      return result.rankings;
+
     } catch (error) {
-      console.error('❌ [KEYWORD-RANKING] Complete analysis failure, providing fallback rankings:', error);
-      
-      // Provide basic fallback rankings with proper typing
+      console.error('❌ [KEYWORD-RANKING] Complete analysis failure, providing secure fallback rankings:', error);
+
+      // Provide basic fallback rankings with proper typing and validation
       const fallbackKeywords: Array<{ keyword: string; priority: 'high' | 'medium' | 'low' }> = [
         { keyword: app.name.toLowerCase(), priority: 'high' },
         { keyword: 'mobile app', priority: 'low' },
         { keyword: app.applicationCategory?.toLowerCase() || 'app', priority: 'medium' }
       ];
-      
-      return fallbackKeywords.map((item, index) => ({
+
+      // Validate fallback keywords
+      const validatedKeywords = fallbackKeywords
+        .map(item => {
+          const validation = keywordValidationService.validateKeyword(item.keyword, {
+            organizationId: config.organizationId,
+            maxKeywordLength: 100
+          });
+          return validation.isValid ? { ...item, keyword: validation.sanitizedKeyword } : null;
+        })
+        .filter(Boolean) as Array<{ keyword: string; priority: 'high' | 'medium' | 'low' }>;
+
+      return validatedKeywords.map((item, index) => ({
         keyword: item.keyword,
         position: (index + 1) * 10,
         volume: 'Low' as const,
@@ -198,9 +296,39 @@ class KeywordRankingService {
         confidence: 'estimated' as const,
         priority: item.priority,
         type: 'fallback',
-        reason: 'Fallback keyword due to analysis failure'
+        reason: 'Secure fallback keyword due to analysis failure'
       }));
     }
+  }
+
+  /**
+   * Get service health status
+   */
+  getHealthStatus() {
+    const circuitBreakerState = this.circuitBreaker.getState();
+    const cacheStats = keywordCacheService.getStats();
+
+    return {
+      circuitBreaker: circuitBreakerState,
+      cache: cacheStats,
+      status: circuitBreakerState.isOpen ? 'degraded' : 'healthy',
+      timestamp: new Date().toISOString()
+    };
+  }
+
+  /**
+   * Reset circuit breaker manually
+   */
+  resetCircuitBreaker(): void {
+    this.circuitBreaker.reset();
+    console.log('🔄 [KEYWORD-RANKING] Circuit breaker manually reset');
+  }
+
+  /**
+   * Clear cache for organization
+   */
+  clearCache(organizationId: string): number {
+    return keywordCacheService.clearOrganization(organizationId);
   }
 }
 
