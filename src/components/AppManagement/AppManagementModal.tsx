@@ -54,7 +54,7 @@ export const AppManagementModal: React.FC<AppManagementModalProps> = ({
   
   const [formData, setFormData] = useState({
     app_name: '',
-    platform: 'ios' as 'ios' | 'android',
+    platform: 'iOS' as 'iOS' | 'Android',
     app_store_id: '',
     bundle_id: '',
     category: '',
@@ -71,7 +71,7 @@ export const AppManagementModal: React.FC<AppManagementModalProps> = ({
     if (app && mode === 'edit') {
       setFormData({
         app_name: app.app_name || '',
-        platform: (app.platform?.toLowerCase() as 'ios' | 'android') || 'ios',
+        platform: (app.platform?.toLowerCase() === 'ios' ? 'iOS' : 'Android') as 'iOS' | 'Android',
         app_store_id: app.app_store_id || '',
         bundle_id: app.bundle_id || '',
         category: app.category || '',
@@ -81,7 +81,7 @@ export const AppManagementModal: React.FC<AppManagementModalProps> = ({
     } else {
       setFormData({
         app_name: '',
-        platform: 'ios',
+        platform: 'iOS',
         app_store_id: '',
         bundle_id: '',
         category: '',
@@ -167,20 +167,23 @@ export const AppManagementModal: React.FC<AppManagementModalProps> = ({
 
       const result = await AppStoreIntegrationService.validateAppStoreId(
         appStoreId,
-        formData.platform === 'ios' ? 'iOS' : 'Android',
+        formData.platform === 'iOS' ? 'iOS' : 'Android',
         profile.organization_id
       );
 
       if (result.success && result.data) {
-        // Auto-fill some fields if validation succeeds
-        setFormData(prev => ({
-          ...prev,
-          app_name: result.data!.name || prev.app_name,
-          developer_name: result.data!.developer || prev.developer_name,
-          category: result.data!.applicationCategory || prev.category,
-          app_icon_url: result.data!.icon || prev.app_icon_url,
-          bundle_id: result.data!.appId || prev.bundle_id
-        }));
+        // Get the first result from the array
+        const firstResult = Array.isArray(result.data) ? result.data[0] : result.data;
+        if (firstResult) {
+          setFormData(prev => ({
+            ...prev,
+            app_name: firstResult.name || prev.app_name,
+            developer_name: firstResult.developer || prev.developer_name,
+            category: firstResult.applicationCategory || prev.category,
+            app_icon_url: firstResult.icon || prev.app_icon_url,
+            bundle_id: firstResult.appId || prev.bundle_id
+          }));
+        }
       }
     } catch (error) {
       // Silent validation - don't show errors for this
@@ -208,7 +211,7 @@ export const AppManagementModal: React.FC<AppManagementModalProps> = ({
 
     const submitData = {
       app_name: formData.app_name.trim(),
-      platform: formData.platform,
+      platform: formData.platform.toLowerCase() as 'ios' | 'android', // Convert to lowercase for database
       app_store_id: formData.app_store_id || undefined,
       bundle_id: formData.bundle_id || undefined,
       category: formData.category || undefined,
@@ -265,8 +268,8 @@ export const AppManagementModal: React.FC<AppManagementModalProps> = ({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="bg-zinc-800 border-zinc-700">
-                    <SelectItem value="ios">iOS</SelectItem>
-                    <SelectItem value="android">Android</SelectItem>
+                    <SelectItem value="iOS">iOS</SelectItem>
+                    <SelectItem value="Android">Android</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -364,7 +367,7 @@ export const AppManagementModal: React.FC<AppManagementModalProps> = ({
                   value={formData.app_store_id}
                   onChange={(e) => handleInputChange('app_store_id', e.target.value)}
                   className="bg-zinc-800 border-zinc-700 text-white"
-                  placeholder={formData.platform === 'ios' ? '123456789' : 'com.company.app'}
+                  placeholder={formData.platform === 'iOS' ? '123456789' : 'com.company.app'}
                 />
               </div>
               <div>
