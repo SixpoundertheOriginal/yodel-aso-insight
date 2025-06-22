@@ -151,9 +151,10 @@ export const MetadataImporter: React.FC<MetadataImporterProps> = ({ onImportSucc
     } catch (error: any) {
       console.error('❌ [METADATA-IMPORTER] Import failed:', error);
       
-      // NEW: Handle AmbiguousSearchError specifically
+      // Handle AmbiguousSearchError as expected user selection flow
       if (error instanceof AmbiguousSearchError) {
-        console.log('🎯 [METADATA-IMPORTER] Handling ambiguous search - showing selection modal');
+        console.log('🎯 [METADATA-IMPORTER] Multiple apps found - showing selection modal');
+        console.log(`📋 [METADATA-IMPORTER] User can choose from ${error.candidates.length} options`);
         setAppCandidates(error.candidates);
         setShowAppSelection(true);
         setIsImporting(false); // Stop loading state

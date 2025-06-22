@@ -1,4 +1,3 @@
-
 import { supabase } from '@/integrations/supabase/client';
 import { ScrapedMetadata, ValidationResult, ImportConfig, CompetitorData } from '@/types/aso';
 import { asoSearchService, SearchResult } from './aso-search.service';
@@ -98,9 +97,10 @@ class AppStoreService {
     } catch (error: any) {
       console.error('❌ [APP-STORE-SERVICE] Import failed:', error);
       
-      // CRITICAL FIX: Preserve AmbiguousSearchError instead of converting to generic Error
+      // Handle AmbiguousSearchError as expected behavior
       if (error instanceof AmbiguousSearchError) {
-        console.log('🎯 [APP-STORE-SERVICE] Re-throwing AmbiguousSearchError for user selection');
+        console.log('🎯 [APP-STORE-SERVICE] Multiple apps found - presenting selection to user');
+        console.log(`📋 [APP-STORE-SERVICE] Found ${error.candidates.length} candidates for "${trimmedInput}"`);
         throw error; // Re-throw as-is to preserve type and candidates data
       }
       

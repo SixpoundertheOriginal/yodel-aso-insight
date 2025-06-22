@@ -1,6 +1,5 @@
-
 import React from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -56,6 +55,9 @@ export const AppSearchResultsModal: React.FC<AppSearchResultsModalProps> = React
               <X className="w-4 h-4" />
             </Button>
           </DialogTitle>
+          <DialogDescription className="text-zinc-400">
+            We found multiple apps matching your search. Please select the one you want to analyze.
+          </DialogDescription>
         </DialogHeader>
         
         <div className="overflow-y-auto max-h-[60vh] pr-2">
