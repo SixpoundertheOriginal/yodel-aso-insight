@@ -1,4 +1,3 @@
-
 export { appStoreService } from './app-store.service';
 export { competitorAnalysisService } from './competitor-analysis.service';
 export { competitiveIntelligenceService } from './competitive-intelligence.service';
@@ -28,3 +27,11 @@ export type { RankingCalculationConfig } from './keyword-ranking-calculator.serv
 
 // Re-export utilities
 export { CircuitBreaker } from '@/lib/utils/circuit-breaker';
+
+// Re-export new persistence and monitoring services
+export { keywordPersistenceService } from './keyword-persistence.service';
+export { keywordJobProcessorService } from './keyword-job-processor.service';
+
+// Re-export new types
+export type { KeywordRankingHistory, ServiceMetric } from './keyword-persistence.service';
+export type { KeywordJob, BatchAnalysisInput, CompetitorResearchInput } from './keyword-job-processor.service';

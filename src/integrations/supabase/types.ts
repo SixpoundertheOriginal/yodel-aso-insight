@@ -307,6 +307,99 @@ export type Database = {
           },
         ]
       }
+      keyword_ranking_history: {
+        Row: {
+          app_id: string
+          confidence: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          keyword: string
+          metadata: Json | null
+          organization_id: string
+          position: number | null
+          search_results: number | null
+          trend: string | null
+          volume: string | null
+        }
+        Insert: {
+          app_id: string
+          confidence?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          keyword: string
+          metadata?: Json | null
+          organization_id: string
+          position?: number | null
+          search_results?: number | null
+          trend?: string | null
+          volume?: string | null
+        }
+        Update: {
+          app_id?: string
+          confidence?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          keyword?: string
+          metadata?: Json | null
+          organization_id?: string
+          position?: number | null
+          search_results?: number | null
+          trend?: string | null
+          volume?: string | null
+        }
+        Relationships: []
+      }
+      keyword_ranking_jobs: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          created_by: string | null
+          error_message: string | null
+          id: string
+          input_data: Json
+          job_type: string
+          organization_id: string
+          priority: number | null
+          result_data: Json | null
+          scheduled_at: string
+          started_at: string | null
+          status: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          error_message?: string | null
+          id?: string
+          input_data: Json
+          job_type: string
+          organization_id: string
+          priority?: number | null
+          result_data?: Json | null
+          scheduled_at?: string
+          started_at?: string | null
+          status?: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          error_message?: string | null
+          id?: string
+          input_data?: Json
+          job_type?: string
+          organization_id?: string
+          priority?: number | null
+          result_data?: Json | null
+          scheduled_at?: string
+          started_at?: string | null
+          status?: string
+        }
+        Relationships: []
+      }
       keyword_rankings: {
         Row: {
           app_store_id: string
@@ -334,6 +427,36 @@ export type Database = {
           keyword?: string
           organization_id?: string
           rank?: number | null
+        }
+        Relationships: []
+      }
+      keyword_service_metrics: {
+        Row: {
+          id: string
+          metric_name: string
+          metric_unit: string
+          metric_value: number
+          organization_id: string
+          recorded_at: string
+          tags: Json | null
+        }
+        Insert: {
+          id?: string
+          metric_name: string
+          metric_unit: string
+          metric_value: number
+          organization_id: string
+          recorded_at?: string
+          tags?: Json | null
+        }
+        Update: {
+          id?: string
+          metric_name?: string
+          metric_unit?: string
+          metric_value?: number
+          organization_id?: string
+          recorded_at?: string
+          tags?: Json | null
         }
         Relationships: []
       }
@@ -721,6 +844,10 @@ export type Database = {
         Returns: boolean
       }
       clean_expired_cache: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
+      cleanup_old_keyword_metrics: {
         Args: Record<PropertyKey, never>
         Returns: undefined
       }

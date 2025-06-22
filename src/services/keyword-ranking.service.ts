@@ -5,6 +5,8 @@ import { keywordIntelligenceService } from './keyword-intelligence.service';
 import { keywordValidationService } from './keyword-validation.service';
 import { keywordCacheService } from './keyword-cache.service';
 import { keywordRankingCalculatorService } from './keyword-ranking-calculator.service';
+import { keywordPersistenceService } from './keyword-persistence.service';
+import { keywordJobProcessorService } from './keyword-job-processor.service';
 import { securityService } from './security.service';
 import { CircuitBreaker } from '@/lib/utils/circuit-breaker';
 import { ScrapedMetadata } from '@/types/aso';
@@ -50,8 +52,13 @@ class KeywordRankingService {
     name: 'KeywordRankingService'
   });
 
+  constructor() {
+    // Start background job processor on service initialization
+    keywordJobProcessorService.startProcessor();
+  }
+
   /**
-   * Enhanced keyword ranking check with validation and caching
+   * Enhanced keyword ranking check with validation, caching, and persistence
    */
   async checkKeywordRanking(
     keyword: string, 
@@ -81,6 +88,16 @@ class KeywordRankingService {
         const cached = keywordCacheService.get<KeywordRanking>(cacheKey, config.organizationId);
         if (cached) {
           console.log(`💾 [KEYWORD-RANKING] Cache hit for "${sanitizedKeyword}"`);
+          
+          // Record cache hit metric
+          await keywordPersistenceService.recordMetric(
+            config.organizationId,
+            'cache_hit',
+            1,
+            'count',
+            { keyword: sanitizedKeyword, appId: targetAppId }
+          );
+          
           return cached;
         }
       }
@@ -88,6 +105,16 @@ class KeywordRankingService {
       // Check circuit breaker
       if (this.circuitBreaker.isOpen()) {
         console.log(`🚫 [KEYWORD-RANKING] Circuit breaker open, skipping search for "${sanitizedKeyword}"`);
+        
+        // Record circuit breaker activation
+        await keywordPersistenceService.recordMetric(
+          config.organizationId,
+          'circuit_breaker_open',
+          1,
+          'count',
+          { keyword: sanitizedKeyword }
+        );
+        
         return null;
       }
 
@@ -143,6 +170,16 @@ class KeywordRankingService {
         keywordCacheService.set(cacheKey, ranking, config.organizationId, 1800000); // 30 minutes
       }
 
+      // Record performance metrics
+      const processingTime = Date.now() - startTime;
+      await keywordPersistenceService.recordMetric(
+        config.organizationId,
+        'ranking_check_time',
+        processingTime,
+        'milliseconds',
+        { keyword: sanitizedKeyword, confidence: ranking.confidence }
+      );
+
       // Record success
       this.circuitBreaker.recordSuccess();
 
@@ -152,12 +189,22 @@ class KeywordRankingService {
     } catch (error) {
       console.error(`❌ [KEYWORD-RANKING] Failed to check ranking for "${keyword}":`, error);
       this.circuitBreaker.recordFailure();
+      
+      // Record error metrics
+      await keywordPersistenceService.recordMetric(
+        config.organizationId,
+        'ranking_check_error',
+        1,
+        'count',
+        { keyword, error: error instanceof Error ? error.message : 'Unknown error' }
+      );
+      
       return null;
     }
   }
 
   /**
-   * Enhanced keyword analysis with batch processing and caching
+   * Enhanced keyword analysis with persistence and background processing
    */
   async analyzeAppKeywords(app: ScrapedMetadata, config: KeywordAnalysisConfig): Promise<KeywordAnalysisResult> {
     const startTime = Date.now();
@@ -227,8 +274,32 @@ class KeywordRankingService {
       // Sort by ranking position (best first)
       rankings.sort((a, b) => a.position - b.position);
 
+      // Save results to persistent storage
+      if (rankings.length > 0) {
+        await keywordPersistenceService.saveRankingHistory(
+          rankings,
+          config.organizationId,
+          app.appId,
+          'system'
+        );
+      }
+
       const processingTime = Date.now() - startTime;
       const estimatedRankings = rankings.length - actualRankingsChecked;
+
+      // Record overall analysis metrics
+      await keywordPersistenceService.recordMetric(
+        config.organizationId,
+        'keyword_analysis_complete',
+        rankings.length,
+        'rankings',
+        {
+          appId: app.appId,
+          actualRankings: actualRankingsChecked,
+          estimatedRankings,
+          processingTime
+        }
+      );
 
       console.log(`✅ [KEYWORD-RANKING] Enhanced analysis complete: ${actualRankingsChecked} actual, ${estimatedRankings} estimated rankings (${processingTime}ms)`);
 
@@ -246,8 +317,39 @@ class KeywordRankingService {
 
     } catch (error) {
       console.error('❌ [KEYWORD-RANKING] Enhanced analysis failed:', error);
+      
+      // Record analysis failure
+      await keywordPersistenceService.recordMetric(
+        config.organizationId,
+        'keyword_analysis_error',
+        1,
+        'count',
+        { appId: app.appId, error: error instanceof Error ? error.message : 'Unknown error' }
+      );
+      
       throw error;
     }
+  }
+
+  /**
+   * Queue background analysis job
+   */
+  async queueBatchAnalysis(
+    apps: ScrapedMetadata[],
+    config: KeywordAnalysisConfig,
+    userId?: string
+  ): Promise<{ success: boolean; jobId?: string; error?: string }> {
+    return keywordJobProcessorService.queueJob(
+      config.organizationId,
+      'batch_analysis',
+      {
+        apps,
+        maxKeywords: config.maxKeywords,
+        includeCompetitors: config.includeCompetitors
+      },
+      7, // High priority for batch analysis
+      userId
+    );
   }
 
   /**
@@ -302,7 +404,7 @@ class KeywordRankingService {
   }
 
   /**
-   * Get service health status
+   * Get service health status with enhanced metrics
    */
   getHealthStatus() {
     const circuitBreakerState = this.circuitBreaker.getState();
@@ -312,7 +414,11 @@ class KeywordRankingService {
       circuitBreaker: circuitBreakerState,
       cache: cacheStats,
       status: circuitBreakerState.isOpen ? 'degraded' : 'healthy',
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      persistence: {
+        enabled: true,
+        backgroundJobs: true
+      }
     };
   }
 
