@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -109,7 +110,7 @@ Do not use formatting, just return a single line of comma-separated keywords. Ex
 
         const validation = metadataEngine.validateMetadata(metadata);
         if (!validation.isValid) {
-          console.warn("Generated metadata has validation issues:", validation.errors);
+          console.warn("Generated metadata has validation issues:", validation.issues);
         }
         
         return metadata;

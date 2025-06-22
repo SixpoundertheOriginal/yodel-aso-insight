@@ -1,11 +1,5 @@
 import { MetadataField, MetadataScore, CompetitorKeywordAnalysis, KeywordData, CompetitorData, ValidationResult } from '@/types/aso';
 
-interface ValidationResult {
-  isValid: boolean;
-  issues: string[];
-  sanitized: any;
-}
-
 class MetadataEngine {
   /**
    * Validate metadata against App Store requirements
