@@ -1,8 +1,7 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { RefreshCw, Save, Sparkles } from 'lucide-react';
+import { RefreshCw, Save, Sparkles, Edit3 } from 'lucide-react';
 import { MetadataGenerationForm } from './MetadataGenerationForm';
 import { MetadataPreview } from './MetadataPreview';
 import { useCopilotChat } from '@/hooks/useCopilotChat';
@@ -14,13 +13,21 @@ import { ScrapedMetadata, MetadataField, MetadataScore, CompetitorKeywordAnalysi
 import { supabase } from '@/integrations/supabase/client';
 import { ExportManager } from '@/components/shared/ExportManager';
 import { Badge } from '@/components/ui/badge';
+import { GenerationType } from './GenerationTypeSelector';
 
 interface SuggestedMetadataPanelProps {
   initialData: ScrapedMetadata;
   organizationId: string;
+  onEditResults?: () => void;
+  onGenerationSuccess?: (metadata: MetadataField) => void;
 }
 
-export const SuggestedMetadataPanel: React.FC<SuggestedMetadataPanelProps> = ({ initialData, organizationId }) => {
+export const SuggestedMetadataPanel: React.FC<SuggestedMetadataPanelProps> = ({ 
+  initialData, 
+  organizationId, 
+  onEditResults,
+  onGenerationSuccess 
+}) => {
   const [generatedMetadata, setGeneratedMetadata] = useState<MetadataField | null>(null);
   const [metadataScore, setMetadataScore] = useState<MetadataScore | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -74,8 +81,21 @@ Do not use formatting, just return a single line of comma-separated keywords. Ex
     }
   }, [initialData?.appId, initialData?.description]);
 
-  const parseAIResponse = (response: string): MetadataField | null => {
+  const parseAIResponse = (response: string, generationType: GenerationType): MetadataField | null => {
     try {
+      // For single field generation, return simpler parsing
+      if (generationType !== 'complete') {
+        const cleanResponse = response.trim();
+        const currentMetadata = generatedMetadata || { title: '', subtitle: '', keywords: '' };
+        
+        return {
+          ...currentMetadata,
+          [generationType === 'title' ? 'title' : 
+           generationType === 'subtitle' ? 'subtitle' : 'keywords']: cleanResponse
+        };
+      }
+
+      // Complete package parsing (existing logic)
       const titleMatch = response.match(/TITLE:\s*(.+)/);
       const subtitleMatch = response.match(/SUBTITLE:\s*(.+)/);
       const keywordsMatch = response.match(/KEYWORDS:\s*(.+)/);
@@ -110,6 +130,7 @@ Do not use formatting, just return a single line of comma-separated keywords. Ex
   const handleGenerate = async (formData: {
     keywordData: string;
     targetAudience?: string;
+    generationType: GenerationType;
   }) => {
     setIsGenerating(true);
 
@@ -118,18 +139,18 @@ Do not use formatting, just return a single line of comma-separated keywords. Ex
       
       const seedKeywordObjects: KeywordData[] = seedKeywords.map(k => ({
         keyword: k,
-        relevancy: 50 // Assign a default relevancy
+        relevancy: 50
       }));
 
-      // Combine and deduplicate keywords
       const combinedKeywords = [...userKeywords, ...seedKeywordObjects];
       const uniqueKeywords = Array.from(new Map(combinedKeywords.map(item => [item.keyword, item])).values());
-
       const enhancedKeywords = metadataEngine.filterAndPrioritizeKeywords(uniqueKeywords);
-      
       const competitorInsight = competitorAnalysisService.generateCompetitorInsights(competitorKeywords);
-        
-      const prompt = `Generate App Store optimized metadata for:
+
+      let prompt = '';
+
+      if (formData.generationType === 'complete') {
+        prompt = `Generate App Store optimized metadata for:
 
 App Name: ${initialData.title}
 Current Description Summary: ${cleanDescription?.substring(0, 200)}...
@@ -145,22 +166,45 @@ STRICT REQUIREMENTS:
 - Subtitle: Maximum 30 characters. Complementary to title, use different keywords.
 - Keywords: Maximum 100 characters total. Comma-separated, no spaces. Do not repeat words from title or subtitle.
 
-Analyze the competitor keywords and your provided keywords to generate a unique and powerful metadata set that stands out.
 Format as:
 TITLE: [your title]
 SUBTITLE: [your subtitle]
 KEYWORDS: [keyword1,keyword2,keyword3]`;
+      } else {
+        const fieldName = formData.generationType;
+        const charLimit = fieldName === 'title' || fieldName === 'subtitle' ? '30' : '100';
+        const requirements = fieldName === 'keywords' ? 'Comma-separated, no spaces' : 'Catchy and compelling';
+        
+        prompt = `Generate an optimized ${fieldName} for this App Store listing:
+
+App Name: ${initialData.title}
+Category: ${initialData.applicationCategory}
+Target Audience: ${formData.targetAudience || 'General'}
+Top Keywords: ${enhancedKeywords.slice(0, 10).map(k => k.keyword).join(', ')}
+
+Requirements:
+- Maximum ${charLimit} characters
+- ${requirements}
+- App Store optimized for discoverability
+
+Respond with ONLY the ${fieldName}, no formatting or labels.`;
+      }
 
       const aiResponse = await sendMessage(prompt, 'metadata-copilot');
 
       if (aiResponse) {
-        const parsed = parseAIResponse(aiResponse);
+        const parsed = parseAIResponse(aiResponse, formData.generationType);
         if (parsed) {
           setGeneratedMetadata(parsed);
           const score = metadataEngine.calculateMetadataScore(parsed, enhancedKeywords);
           setMetadataScore(score);
+          
+          if (onGenerationSuccess) {
+            onGenerationSuccess(parsed);
+          }
+          
           toast({
-            title: "Metadata Generated!",
+            title: `${formData.generationType === 'complete' ? 'Complete Package' : formData.generationType} Generated!`,
             description: "Preview your new metadata below.",
           });
         } else {
@@ -265,6 +309,18 @@ KEYWORDS: [keyword1,keyword2,keyword3]`;
           <div className="flex justify-between items-center">
             <h3 className="text-xl font-semibold text-white">Suggested Metadata</h3>
             <div className="flex space-x-2">
+              {onEditResults && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={onEditResults}
+                  className="border-yodel-orange text-yodel-orange hover:bg-yodel-orange/10"
+                  disabled={isGenerating || isChatLoading || isSaving}
+                >
+                  <Edit3 className="w-4 h-4 mr-2" />
+                  Edit Results
+                </Button>
+              )}
               <Button
                 variant="default"
                 size="sm"

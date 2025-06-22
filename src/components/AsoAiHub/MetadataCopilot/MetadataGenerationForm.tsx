@@ -6,11 +6,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Upload, FileText } from 'lucide-react';
+import { GenerationTypeSelector, GenerationType } from './GenerationTypeSelector';
 
 interface MetadataGenerationFormProps {
   onGenerate: (data: {
     keywordData: string;
     targetAudience?: string;
+    generationType: GenerationType;
   }) => void;
   isLoading?: boolean;
   appName: string;
@@ -40,7 +42,8 @@ export const MetadataGenerationForm: React.FC<MetadataGenerationFormProps> = ({
 }) => {
   const [formData, setFormData] = useState({
     keywordData: '',
-    targetAudience: ''
+    targetAudience: '',
+    generationType: 'complete' as GenerationType
   });
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -67,11 +70,18 @@ export const MetadataGenerationForm: React.FC<MetadataGenerationFormProps> = ({
       <CardHeader>
         <CardTitle className="text-white flex items-center space-x-2">
           <FileText className="w-5 h-5 text-yodel-orange" />
-          <span>Metadata Generation Setup</span>
+          <span>AI Metadata Generation</span>
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-6">
+          {/* Generation Type Selector */}
+          <GenerationTypeSelector
+            value={formData.generationType}
+            onChange={(value) => setFormData(prev => ({ ...prev, generationType: value }))}
+            disabled={isLoading}
+          />
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="locale" className="text-zinc-300">Target Locale</Label>
@@ -156,7 +166,7 @@ export const MetadataGenerationForm: React.FC<MetadataGenerationFormProps> = ({
             className="w-full bg-yodel-orange hover:bg-yodel-orange/90 text-white"
             disabled={isLoading || !formData.keywordData}
           >
-            {isLoading ? 'Generating Metadata...' : 'Generate Optimized Metadata'}
+            {isLoading ? `Generating ${formData.generationType === 'complete' ? 'Complete Package' : formData.generationType}...` : `Generate ${formData.generationType === 'complete' ? 'Complete Package' : formData.generationType}`}
           </Button>
         </form>
       </CardContent>
