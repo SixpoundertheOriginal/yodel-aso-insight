@@ -12,7 +12,7 @@ export interface AuditLogEntry {
   organizationId: string;
   userId: string;
   action: string;
-  resourceType: 'cpp-analysis' | 'screenshot-analysis' | 'theme-generation' | 'app-store-import';
+  resourceType: 'cpp-analysis' | 'screenshot-analysis' | 'theme-generation' | 'app-store-import' | 'keyword_analysis';
   resourceId?: string;
   details: Record<string, any>;
   ipAddress?: string;
