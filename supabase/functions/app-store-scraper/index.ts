@@ -1,12 +1,11 @@
-
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { KeywordDiscoveryService } from './services/keyword-discovery.service.ts'
 
-const VERSION = '8.3.0-stabilized'
+const VERSION = '8.4.0-transmission-debug'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-correlation-id',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-correlation-id, x-transmission-method, x-payload-data',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
 }
 
@@ -52,13 +51,16 @@ interface AppData {
 serve(async (req: Request) => {
   const startTime = Date.now()
   const correlationId = req.headers.get('x-correlation-id') || crypto.randomUUID()
+  const transmissionMethod = req.headers.get('x-transmission-method') || 'unknown'
 
-  console.log(`🔍 [${correlationId}] REQUEST RECEIVED:`, {
+  console.log(`🔍 [${correlationId}] ENHANCED REQUEST RECEIVED:`, {
     method: req.method,
     url: req.url,
     timestamp: new Date().toISOString(),
     contentType: req.headers.get('content-type'),
-    contentLength: req.headers.get('content-length')
+    contentLength: req.headers.get('content-length'),
+    transmissionMethod,
+    hasPayloadHeader: !!req.headers.get('x-payload-data')
   })
 
   try {
@@ -72,94 +74,137 @@ serve(async (req: Request) => {
     }
 
     // Health Check Endpoint
-    if (req.method === 'GET') {
+    if (req.method === 'GET' && !req.url.includes('?')) {
       console.log(`🏥 [${correlationId}] Health check requested`)
       return new Response(JSON.stringify({
         status: 'ok',
         version: VERSION,
         timestamp: new Date().toISOString(),
-        mode: 'stabilized-routing',
+        mode: 'transmission-debug',
         correlationId,
-        message: 'App Store scraper with stabilized routing ready'
+        message: 'App Store scraper with enhanced transmission debugging ready'
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 200
       })
     }
 
-    if (req.method !== 'POST') {
-      console.warn(`❌ [${correlationId}] Invalid method: ${req.method}`)
-      return new Response(JSON.stringify({
-        success: false,
-        error: 'Method Not Allowed',
-        correlationId,
-        allowedMethods: ['GET', 'POST', 'OPTIONS']
-      }), {
-        status: 405,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      })
-    }
-
-    // STABILIZED REQUEST BODY PARSING with detailed debugging
+    // Enhanced request body parsing with multiple format support
     let requestBody: string | null = null
     let requestData: any = null
     
     try {
-      // First, get the raw body text
-      requestBody = await req.text()
-      console.log(`📝 [${correlationId}] RAW REQUEST BODY:`, {
-        length: requestBody?.length || 0,
-        isEmpty: !requestBody || requestBody.trim() === '',
-        firstChars: requestBody?.substring(0, 100) || 'EMPTY',
-        lastChars: requestBody?.length > 100 ? requestBody.substring(requestBody.length - 50) : 'N/A'
-      })
+      console.log(`📡 [${correlationId}] PARSING REQUEST (Method: ${transmissionMethod})`);
 
-      // Check if body is empty or invalid
-      if (!requestBody || requestBody.trim() === '') {
-        console.error(`💥 [${correlationId}] EMPTY REQUEST BODY`)
-        return new Response(JSON.stringify({
-          success: false,
-          error: 'Request body is empty',
-          correlationId,
-          debug: {
-            bodyLength: requestBody?.length || 0,
-            contentType: req.headers.get('content-type')
+      if (req.method === 'GET' && req.url.includes('?')) {
+        // Handle URL parameters transmission
+        console.log(`🔗 [${correlationId}] Processing URL parameters transmission`);
+        const url = new URL(req.url);
+        requestData = {
+          searchTerm: url.searchParams.get('searchTerm'),
+          organizationId: url.searchParams.get('organizationId'),
+          searchType: url.searchParams.get('searchType') || 'keyword',
+          includeCompetitorAnalysis: url.searchParams.get('includeCompetitorAnalysis') === 'true',
+          searchParameters: {
+            country: url.searchParams.get('country') || 'us',
+            limit: parseInt(url.searchParams.get('limit') || '25')
           }
-        }), {
-          status: 400,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        })
-      }
-
-      // Parse JSON with error handling
-      try {
-        requestData = JSON.parse(requestBody)
-        console.log(`✅ [${correlationId}] JSON PARSED SUCCESSFULLY:`, {
+        };
+        console.log(`✅ [${correlationId}] URL PARAMS PARSED:`, {
           hasSearchTerm: !!requestData.searchTerm,
-          hasTargetApp: !!requestData.targetApp,
-          hasCompetitorApps: !!requestData.competitorApps,
-          hasSeedKeywords: !!requestData.seedKeywords,
-          includeCompetitorAnalysis: requestData.includeCompetitorAnalysis,
-          organizationId: requestData.organizationId?.substring(0, 8) + '...'
-        })
-      } catch (jsonError: any) {
-        console.error(`💥 [${correlationId}] JSON PARSING FAILED:`, {
-          error: jsonError.message,
-          bodyPreview: requestBody.substring(0, 200),
-          bodyLength: requestBody.length
-        })
-        return new Response(JSON.stringify({
-          success: false,
-          error: 'Invalid JSON in request body',
-          correlationId,
-          debug: {
-            jsonError: jsonError.message,
-            bodyPreview: requestBody.substring(0, 100)
+          hasOrgId: !!requestData.organizationId
+        });
+      } else if (req.headers.get('x-payload-data')) {
+        // Handle headers-based transmission
+        console.log(`📋 [${correlationId}] Processing headers-based transmission`);
+        const encodedPayload = req.headers.get('x-payload-data');
+        if (encodedPayload) {
+          const decodedPayload = atob(encodedPayload);
+          requestData = JSON.parse(decodedPayload);
+          console.log(`✅ [${correlationId}] HEADERS PAYLOAD DECODED:`, {
+            hasSearchTerm: !!requestData.searchTerm,
+            hasOrgId: !!requestData.organizationId
+          });
+        }
+      } else {
+        // Handle standard body transmission (JSON or FormData)
+        const contentType = req.headers.get('content-type') || '';
+        
+        if (contentType.includes('multipart/form-data')) {
+          console.log(`📝 [${correlationId}] Processing form data transmission`);
+          const formData = await req.formData();
+          requestData = {
+            searchTerm: formData.get('searchTerm')?.toString(),
+            organizationId: formData.get('organizationId')?.toString(),
+            searchType: formData.get('searchType')?.toString() || 'keyword',
+            includeCompetitorAnalysis: formData.get('includeCompetitorAnalysis') === 'true',
+            searchParameters: formData.get('searchParameters') ? 
+              JSON.parse(formData.get('searchParameters')?.toString() || '{}') : {}
+          };
+          console.log(`✅ [${correlationId}] FORM DATA PARSED:`, {
+            hasSearchTerm: !!requestData.searchTerm,
+            hasOrgId: !!requestData.organizationId
+          });
+        } else {
+          // Standard JSON body
+          requestBody = await req.text()
+          console.log(`📝 [${correlationId}] RAW REQUEST BODY:`, {
+            length: requestBody?.length || 0,
+            isEmpty: !requestBody || requestBody.trim() === '',
+            firstChars: requestBody?.substring(0, 100) || 'EMPTY',
+            lastChars: requestBody?.length > 100 ? requestBody.substring(requestBody.length - 50) : 'N/A'
+          })
+
+          // Check if body is empty or invalid
+          if (!requestBody || requestBody.trim() === '') {
+            console.error(`💥 [${correlationId}] EMPTY REQUEST BODY DETECTED`)
+            return new Response(JSON.stringify({
+              success: false,
+              error: 'Request body is empty - this is the core transmission issue',
+              correlationId,
+              debug: {
+                bodyLength: requestBody?.length || 0,
+                contentType: req.headers.get('content-type'),
+                transmissionMethod,
+                allHeaders: Object.fromEntries(req.headers.entries())
+              }
+            }), {
+              status: 400,
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+            })
           }
-        }), {
-          status: 400,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        })
+
+          // Parse JSON with error handling
+          try {
+            requestData = JSON.parse(requestBody)
+            console.log(`✅ [${correlationId}] JSON PARSED SUCCESSFULLY:`, {
+              hasSearchTerm: !!requestData.searchTerm,
+              hasTargetApp: !!requestData.targetApp,
+              hasCompetitorApps: !!requestData.competitorApps,
+              hasSeedKeywords: !!requestData.seedKeywords,
+              includeCompetitorAnalysis: requestData.includeCompetitorAnalysis,
+              organizationId: requestData.organizationId?.substring(0, 8) + '...'
+            })
+          } catch (jsonError: any) {
+            console.error(`💥 [${correlationId}] JSON PARSING FAILED:`, {
+              error: jsonError.message,
+              bodyPreview: requestBody.substring(0, 200),
+              bodyLength: requestBody.length
+            })
+            return new Response(JSON.stringify({
+              success: false,
+              error: 'Invalid JSON in request body',
+              correlationId,
+              debug: {
+                jsonError: jsonError.message,
+                bodyPreview: requestBody.substring(0, 100)
+              }
+            }), {
+              status: 400,
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+            })
+          }
+        }
       }
     } catch (bodyError: any) {
       console.error(`💥 [${correlationId}] BODY READING FAILED:`, bodyError.message)
@@ -174,16 +219,16 @@ serve(async (req: Request) => {
       })
     }
 
-    // STABILIZED ROUTING LOGIC with clear criteria
+    // Enhanced routing logic with transmission method logging
     const hasSearchTerm = !!(requestData.searchTerm && typeof requestData.searchTerm === 'string' && requestData.searchTerm.trim().length > 0)
     const hasOrganizationId = !!(requestData.organizationId && typeof requestData.organizationId === 'string')
     const hasKeywordDiscoveryFields = !!(requestData.seedKeywords || requestData.competitorApps || requestData.targetApp)
     
-    // Clear routing decision logic
     const isAppSearch = hasSearchTerm && hasOrganizationId && !hasKeywordDiscoveryFields
     const isKeywordDiscovery = hasKeywordDiscoveryFields || (!hasSearchTerm && hasOrganizationId)
 
-    console.log(`🔀 [${correlationId}] STABILIZED ROUTING DECISION:`, {
+    console.log(`🔀 [${correlationId}] ENHANCED ROUTING DECISION:`, {
+      transmissionMethod,
       hasSearchTerm,
       hasOrganizationId,
       hasKeywordDiscoveryFields,
@@ -201,6 +246,7 @@ serve(async (req: Request) => {
         error: 'Invalid request: Cannot determine request type',
         correlationId,
         debug: {
+          transmissionMethod,
           hasSearchTerm,
           hasOrganizationId,
           hasKeywordDiscoveryFields,
@@ -217,17 +263,17 @@ serve(async (req: Request) => {
     }
 
     if (isKeywordDiscovery) {
-      console.log(`🔍 [${correlationId}] ROUTING TO: Keyword Discovery`)
+      console.log(`🔍 [${correlationId}] ROUTING TO: Keyword Discovery (via ${transmissionMethod})`)
       return await handleKeywordDiscovery(requestData as KeywordDiscoveryRequest, correlationId, startTime)
     }
 
     if (isAppSearch) {
-      console.log(`📱 [${correlationId}] ROUTING TO: App Search`)
+      console.log(`📱 [${correlationId}] ROUTING TO: App Search (via ${transmissionMethod})`)
       return await handleAppSearch(requestData as AppSearchRequest, correlationId, startTime)
     }
 
-    // This should never be reached due to validation above
-    console.error(`❌ [${correlationId}] ROUTING FALLTHROUGH - This should not happen`)
+    // This should never be reached
+    console.error(`❌ [${correlationId}] ROUTING FALLTHROUGH`)
     return new Response(JSON.stringify({
       success: false,
       error: 'Internal routing error',
@@ -242,7 +288,8 @@ serve(async (req: Request) => {
     console.error(`💥 [${correlationId}] CRITICAL ERROR:`, {
       error: error.message,
       stack: error.stack,
-      processingTime: `${processingTime}ms`
+      processingTime: `${processingTime}ms`,
+      transmissionMethod
     })
     
     return new Response(JSON.stringify({
@@ -250,7 +297,8 @@ serve(async (req: Request) => {
       error: 'Service temporarily unavailable',
       correlationId,
       details: error.message,
-      version: VERSION
+      version: VERSION,
+      transmissionMethod
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }

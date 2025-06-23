@@ -1,9 +1,9 @@
-
 import { supabase } from '@/integrations/supabase/client';
 import { inputDetectionService, SearchParameters } from './input-detection.service';
 import { bypassPatternsService } from './bypass-patterns.service';
 import { correlationTracker } from './correlation-tracker.service';
 import { directItunesService, SearchResultsResponse } from './direct-itunes.service';
+import { requestTransmissionService } from './request-transmission.service';
 import { AmbiguousSearchError } from '@/types/search-errors';
 import { ScrapedMetadata } from '@/types/aso';
 import { CircuitBreaker } from '@/lib/utils/circuit-breaker';
@@ -45,17 +45,17 @@ class AsoSearchService {
   });
 
   /**
-   * Enhanced search with comprehensive fallback mechanisms
+   * Enhanced search with comprehensive transmission debugging
    */
   async search(input: string, config: SearchConfig): Promise<SearchResult> {
     const correlationContext = correlationTracker.createContext('aso-search', config.organizationId);
     
-    console.group(`🚀 [ASO-SEARCH] Enhanced reliable search starting`);
+    console.group(`🚀 [ASO-SEARCH] Enhanced transmission-debugged search starting`);
     console.log('Input:', input);
     console.log('Config:', config);
     console.log('Circuit Breaker State:', this.edgeFunctionCircuitBreaker.getState());
     
-    correlationTracker.log('info', 'Enhanced ASO search initiated', { input, config });
+    correlationTracker.log('info', 'Enhanced ASO search with transmission debugging initiated', { input, config });
 
     try {
       // PHASE 1: Enhanced bypass analysis
@@ -68,22 +68,23 @@ class AsoSearchService {
         return await this.executeBypassSearch(input, config, bypassAnalysis);
       }
 
-      // ROUTE 2: Edge function with circuit breaker protection
+      // ROUTE 2: Enhanced edge function with comprehensive transmission testing
       if (!this.edgeFunctionCircuitBreaker.isOpen()) {
-        console.log('🔄 [EDGE-FUNCTION] Attempting edge function with circuit breaker protection');
+        console.log('🔄 [EDGE-FUNCTION] Attempting edge function with enhanced transmission');
         try {
-          const result = await this.executeEdgeFunctionSearch(input, config);
+          const result = await this.executeEnhancedEdgeFunctionSearch(input, config);
           this.edgeFunctionCircuitBreaker.recordSuccess();
           console.groupEnd();
           return result;
         } catch (error: any) {
-          console.warn('⚠️ [EDGE-FUNCTION] Edge function failed, checking for fallback', error.message);
+          console.warn('⚠️ [EDGE-FUNCTION] Enhanced edge function failed, checking for fallback', error.message);
           
-          // Check if it's an empty body error (400)
-          if (error.message.includes('400') || error.message.includes('empty') || error.message.includes('validation')) {
-            console.log('🚫 [CIRCUIT-BREAKER] Recording edge function failure');
+          // Check if it's a transmission-related error
+          if (error.message.includes('400') || error.message.includes('empty') || 
+              error.message.includes('validation') || error.message.includes('transmission')) {
+            console.log('🚫 [CIRCUIT-BREAKER] Recording transmission failure');
             this.edgeFunctionCircuitBreaker.recordFailure();
-            bypassPatternsService.addFailurePattern(input, 'edge-function-400-error');
+            bypassPatternsService.addFailurePattern(input, 'transmission-failure');
           }
           
           // Fall through to bypass fallback
@@ -145,10 +146,10 @@ class AsoSearchService {
   }
 
   /**
-   * Execute edge function search with validation
+   * Execute enhanced edge function search with comprehensive transmission testing
    */
-  private async executeEdgeFunctionSearch(input: string, config: SearchConfig): Promise<SearchResult> {
-    const requestBody = {
+  private async executeEnhancedEdgeFunctionSearch(input: string, config: SearchConfig): Promise<SearchResult> {
+    const requestPayload = {
       searchTerm: input.trim(),
       searchType: 'keyword' as const,
       organizationId: config.organizationId,
@@ -159,23 +160,27 @@ class AsoSearchService {
       }
     };
 
-    // VALIDATION: Ensure request body is valid before transmission
-    this.validateRequestBody(requestBody);
+    console.log('📡 [ENHANCED-TRANSMISSION] Starting comprehensive transmission test');
 
-    console.log('📤 [EDGE-FUNCTION] Validated request body, calling edge function');
+    const transmissionResult = await requestTransmissionService.transmitRequest(
+      'app-store-scraper',
+      requestPayload,
+      correlationTracker.getContext()?.id || crypto.randomUUID()
+    );
 
-    const { data, error } = await supabase.functions.invoke('app-store-scraper', {
-      body: requestBody,
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Correlation-ID': correlationTracker.getContext()?.id || crypto.randomUUID()
-      }
-    });
-
-    if (error) {
-      throw new Error(`Edge function error: ${error.message}`);
+    if (!transmissionResult.success) {
+      console.error('❌ [ENHANCED-TRANSMISSION] All transmission methods failed:', transmissionResult.error);
+      throw new Error(`Transmission failed: ${transmissionResult.error}`);
     }
 
+    console.log('✅ [ENHANCED-TRANSMISSION] Success via method:', transmissionResult.method);
+    console.log('📊 [ENHANCED-TRANSMISSION] Stats:', {
+      method: transmissionResult.method,
+      attempts: transmissionResult.attempts,
+      responseTime: transmissionResult.responseTime
+    });
+
+    const data = transmissionResult.data;
     if (!data || !data.success) {
       throw new Error(data?.error || 'Edge function returned unsuccessful response');
     }
@@ -215,30 +220,6 @@ class AsoSearchService {
       
       correlationTracker.log('error', 'Fallback search failed', { error: error.message });
       throw new Error(`All search methods failed for "${input}". Please try different keywords.`);
-    }
-  }
-
-  /**
-   * Validate request body before transmission
-   */
-  private validateRequestBody(requestBody: any): void {
-    if (!requestBody.searchTerm || requestBody.searchTerm.trim() === '') {
-      throw new Error('Search term cannot be empty');
-    }
-
-    if (!requestBody.organizationId) {
-      throw new Error('Organization ID is required');
-    }
-
-    // Test JSON serialization
-    try {
-      const serialized = JSON.stringify(requestBody);
-      if (serialized.length === 0) {
-        throw new Error('Request body serialization failed');
-      }
-      console.log(`✅ [VALIDATION] Request body validated (${serialized.length} bytes)`);
-    } catch (serError) {
-      throw new Error('Request body cannot be serialized');
     }
   }
 
@@ -322,6 +303,13 @@ class AsoSearchService {
   resetCircuitBreaker() {
     this.edgeFunctionCircuitBreaker.reset();
     console.log('🔄 [MANUAL-RESET] Circuit breaker manually reset');
+  }
+
+  /**
+   * Get transmission statistics
+   */
+  getTransmissionStats() {
+    return requestTransmissionService.getTransmissionStats();
   }
 
   private getUserFriendlyError(error: any): string {
