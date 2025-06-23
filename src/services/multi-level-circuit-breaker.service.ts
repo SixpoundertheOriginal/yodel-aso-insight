@@ -1,4 +1,3 @@
-
 /**
  * Multi-Level Circuit Breaker Service
  * Implements cascading circuit breakers for different components
@@ -48,11 +47,13 @@ class MultiLevelCircuitBreakerService {
    */
   private initializeBreakers() {
     const components = [
+      { name: 'enhanced-edge-function', config: { failureThreshold: 3, recoveryTimeMs: 30000 } },
       { name: 'edge-function', config: { failureThreshold: 3, recoveryTimeMs: 30000 } },
       { name: 'transmission-json', config: { failureThreshold: 5, recoveryTimeMs: 15000 } },
       { name: 'transmission-url-params', config: { failureThreshold: 3, recoveryTimeMs: 10000 } },
       { name: 'transmission-form-data', config: { failureThreshold: 3, recoveryTimeMs: 10000 } },
       { name: 'direct-itunes-api', config: { failureThreshold: 8, recoveryTimeMs: 120000 } },
+      { name: 'bypass-search', config: { failureThreshold: 5, recoveryTimeMs: 60000 } },
       { name: 'cache-service', config: { failureThreshold: 2, recoveryTimeMs: 5000 } }
     ];
 
@@ -78,11 +79,10 @@ class MultiLevelCircuitBreakerService {
   isAvailable(component: string): boolean {
     const breaker = this.breakers.get(component);
     if (!breaker) {
-      console.warn(`⚠️ [CIRCUIT-BREAKER] Unknown component: ${component}`);
-      return true; // Default to available for unknown components
+      console.warn(`⚠️ [CIRCUIT-BREAKER] Unknown component: ${component} - defaulting to available`);
+      return true;
     }
 
-    // Check if circuit breaker should transition from OPEN to HALF_OPEN
     if (breaker.state === 'OPEN') {
       const config = this.configs.get(component)!;
       const timeSinceLastFailure = Date.now() - breaker.lastFailureTime;
@@ -121,7 +121,6 @@ class MultiLevelCircuitBreakerService {
       console.log(`✅ [CIRCUIT-BREAKER] ${component} recovered - circuit CLOSED`);
     }
 
-    // Reset failure count on successful operation in CLOSED state
     if (breaker.state === 'CLOSED') {
       breaker.failures = Math.max(0, breaker.failures - 1);
     }
@@ -143,7 +142,6 @@ class MultiLevelCircuitBreakerService {
     console.log(`❌ [CIRCUIT-BREAKER] ${component} failure recorded (${breaker.failures}/${config.failureThreshold})`, 
       error?.message ? { error: error.message } : {});
 
-    // Transition to OPEN if failure threshold exceeded
     if (breaker.failures >= config.failureThreshold && breaker.state !== 'OPEN') {
       breaker.state = 'OPEN';
       breaker.isOpen = true;
@@ -182,10 +180,9 @@ class MultiLevelCircuitBreakerService {
     const timeSinceLastSuccess = Date.now() - breaker.lastSuccessTime;
     
     if (timeSinceLastSuccess > config.monitoringWindowMs) {
-      return 1.0; // 100% error rate if no success in monitoring window
+      return 1.0;
     }
 
-    // Simple error rate calculation
     const totalOperations = breaker.failures + breaker.successCount;
     return totalOperations > 0 ? breaker.failures / totalOperations : 0;
   }

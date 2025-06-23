@@ -277,7 +277,9 @@ class AsoSearchService {
         bypassReason: 'bulletproof-fallback-direct-api'
       });
 
-      if (ambiguityResult.isAmbiguous) {
+      // FIXED: Handle ambiguous results properly
+      if (ambiguityResult.isAmbiguous && ambiguityResult.results.length > 1) {
+        console.log(`🎯 [DIRECT-API] Found ${ambiguityResult.results.length} ambiguous results`);
         throw new AmbiguousSearchError(ambiguityResult.results, ambiguityResult.searchTerm);
       }
 
@@ -312,8 +314,14 @@ class AsoSearchService {
         bypassReason: 'bulletproof-bypass-search'
       });
 
-      if (ambiguityResult.isAmbiguous) {
+      // FIXED: Handle ambiguous results properly
+      if (ambiguityResult.isAmbiguous && ambiguityResult.results.length > 1) {
+        console.log(`🎯 [BYPASS-SEARCH] Found ${ambiguityResult.results.length} ambiguous results`);
         throw new AmbiguousSearchError(ambiguityResult.results, ambiguityResult.searchTerm);
+      }
+
+      if (ambiguityResult.results.length === 0) {
+        throw new Error(`No apps found for "${input}". Try different keywords or check the spelling.`);
       }
 
       return this.wrapDirectResult(ambiguityResult.results[0], input, 'bulletproof-bypass');
@@ -526,7 +534,7 @@ class AsoSearchService {
    */
   triggerRecovery() {
     // Reset circuit breakers
-    const components = ['edge-function', 'direct-itunes-api', 'transmission-json', 'transmission-url-params'];
+    const components = ['enhanced-edge-function', 'edge-function', 'direct-itunes-api', 'bypass-search', 'transmission-json', 'transmission-url-params'];
     components.forEach(component => {
       multiLevelCircuitBreakerService.reset(component);
     });
