@@ -1,5 +1,5 @@
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useAdvancedKeywordIntelligence } from './useAdvancedKeywordIntelligence';
 import { useEnhancedKeywordAnalytics } from './useEnhancedKeywordAnalytics';
@@ -46,6 +46,12 @@ export const useEnhancedAppAudit = ({
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isAuditRunning, setIsAuditRunning] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  
+  // Add refs to prevent infinite loops
+  const auditRunningRef = useRef(false);
+  const lastAuditMetadataRef = useRef<string>('');
+  const auditCooldownRef = useRef(0);
+  const auditCooldown = 3000; // 3 second cooldown between audits
 
   // Use existing intelligence hooks
   const advancedKI = useAdvancedKeywordIntelligence({
@@ -79,35 +85,69 @@ export const useEnhancedAppAudit = ({
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
 
-  // Memoize stable dependencies to prevent infinite re-renders
-  const stableDependencies = useMemo(() => ({
-    hasMetadata: !!metadata,
-    hasAppId: !!appId,
-    metadataAppId: metadata?.appId,
-    metadataName: metadata?.name,
-    keywordDataLength: advancedKI.keywordData.length,
-    hasRankDistribution: !!enhancedAnalytics.rankDistribution,
-    competitorDataLength: competitorData?.length || 0,
-    isLoadingComplete: !advancedKI.isLoading && !enhancedAnalytics.isLoading
-  }), [
+  // FIXED: Create truly stable dependencies to prevent infinite re-renders
+  const stableDependencies = useMemo(() => {
+    const currentMetadataSignature = metadata ? `${metadata.appId}-${metadata.name}-${metadata.title}` : '';
+    
+    return {
+      hasValidData: !!metadata && !!appId && !!organizationId,
+      metadataSignature: currentMetadataSignature,
+      keywordDataReady: advancedKI.keywordData.length > 0 && !advancedKI.isLoading,
+      analyticsReady: !!enhancedAnalytics.rankDistribution && !enhancedAnalytics.isLoading,
+      competitorDataReady: !!competitorData,
+      lastSignature: lastAuditMetadataRef.current
+    };
+  }, [
     metadata?.appId,
-    metadata?.name,
+    metadata?.name, 
+    metadata?.title,
     appId,
+    organizationId,
     advancedKI.keywordData.length,
     advancedKI.isLoading,
-    enhancedAnalytics.rankDistribution,
+    enhancedAnalytics.rankDistribution?.visibility_score, // Use specific property to avoid object reference issues
     enhancedAnalytics.isLoading,
     competitorData?.length
   ]);
 
   const generateEnhancedAudit = useCallback(async () => {
-    if (!metadata || !appId || isAuditRunning) {
+    // CRITICAL: Multiple guard checks to prevent infinite loops
+    if (!stableDependencies.hasValidData) {
+      console.log('🚫 [ENHANCED-AUDIT] Skipping - invalid data');
       return;
     }
 
+    if (auditRunningRef.current || isAuditRunning) {
+      console.log('🚫 [ENHANCED-AUDIT] Skipping - audit already running');
+      return;
+    }
+
+    // Check if metadata changed
+    if (stableDependencies.metadataSignature === stableDependencies.lastSignature) {
+      console.log('🚫 [ENHANCED-AUDIT] Skipping - metadata unchanged');
+      return;
+    }
+
+    // Check cooldown
+    const now = Date.now();
+    if (now - auditCooldownRef.current < auditCooldown) {
+      console.log('🚫 [ENHANCED-AUDIT] Skipping - cooldown active');
+      return;
+    }
+
+    // Check if we have enough data to proceed
+    if (!stableDependencies.keywordDataReady && !stableDependencies.analyticsReady) {
+      console.log('🚫 [ENHANCED-AUDIT] Skipping - waiting for data to load');
+      return;
+    }
+
+    auditRunningRef.current = true;
     setIsAuditRunning(true);
+    auditCooldownRef.current = now;
+    lastAuditMetadataRef.current = stableDependencies.metadataSignature;
+
     try {
-      console.log('🔍 [ENHANCED-AUDIT] Generating comprehensive audit for', metadata.name);
+      console.log('🔍 [ENHANCED-AUDIT] Starting audit for', metadata?.name);
 
       // Generate semantic clusters from real keyword data
       const clusteringResult = await semanticClusteringService.generateClusters(
@@ -117,8 +157,8 @@ export const useEnhancedAppAudit = ({
 
       // Analyze metadata quality
       const metadataAnalysis = await metadataScoringService.analyzeMetadata(
-        metadata,
-        metadata.competitorData || [],
+        metadata!,
+        metadata?.competitorData || [],
         advancedKI.keywordData.map(k => k.keyword)
       );
 
@@ -128,7 +168,7 @@ export const useEnhancedAppAudit = ({
           Math.round(advancedKI.keywordData.reduce((sum, k) => sum + (k.rank <= 10 ? 10 : k.rank <= 50 ? 5 : 1), 0) / advancedKI.keywordData.length * 10) : 0);
       
       const metadataScore = metadataAnalysis.scores.overall;
-      const competitorScore = Math.round((competitorData?.length || 0) > 0 ? 65 : 45); // Based on competitive analysis depth
+      const competitorScore = Math.round((competitorData?.length || 0) > 0 ? 65 : 45);
       const overallScore = Math.round((keywordScore * 0.4 + metadataScore * 0.35 + competitorScore * 0.25));
 
       // Calculate opportunities
@@ -191,28 +231,53 @@ export const useEnhancedAppAudit = ({
     } catch (error) {
       console.error('❌ [ENHANCED-AUDIT] Failed to generate audit:', error);
     } finally {
+      auditRunningRef.current = false;
       setIsAuditRunning(false);
     }
-  }, [metadata, appId, organizationId, advancedKI.keywordData, enhancedAnalytics.rankDistribution, competitorData]);
+  }, [
+    stableDependencies.hasValidData,
+    stableDependencies.metadataSignature,
+    stableDependencies.keywordDataReady,
+    stableDependencies.analyticsReady,
+    metadata,
+    organizationId,
+    advancedKI.keywordData,
+    enhancedAnalytics.rankDistribution,
+    enhancedAnalytics.keywordTrends,
+    competitorData,
+    isAuditRunning
+  ]);
 
-  // Generate enhanced audit data when stable dependencies change
+  // FIXED: Controlled effect with proper dependencies and guards
   useEffect(() => {
-    if (!enabled || !stableDependencies.hasMetadata || !stableDependencies.hasAppId || !stableDependencies.isLoadingComplete || isAuditRunning) {
+    if (!enabled || !stableDependencies.hasValidData) {
       return;
     }
 
-    generateEnhancedAudit();
+    // Only trigger if data is ready and metadata changed
+    if (stableDependencies.keywordDataReady || stableDependencies.analyticsReady) {
+      if (stableDependencies.metadataSignature !== stableDependencies.lastSignature) {
+        const timeoutId = setTimeout(() => {
+          generateEnhancedAudit();
+        }, 1000); // Small delay to prevent rapid-fire execution
+
+        return () => clearTimeout(timeoutId);
+      }
+    }
   }, [
     enabled,
-    stableDependencies.hasMetadata,
-    stableDependencies.hasAppId,
-    stableDependencies.metadataAppId,
-    stableDependencies.isLoadingComplete,
+    stableDependencies.hasValidData,
+    stableDependencies.keywordDataReady,
+    stableDependencies.analyticsReady,
+    stableDependencies.metadataSignature,
     generateEnhancedAudit
   ]);
 
   const refreshAudit = useCallback(async () => {
-    if (!appId || isAuditRunning) return;
+    if (!appId || auditRunningRef.current || isAuditRunning) {
+      console.log('🚫 [ENHANCED-AUDIT] Refresh blocked - audit running or no appId');
+      return;
+    }
     
     setIsRefreshing(true);
     try {
@@ -221,6 +286,10 @@ export const useEnhancedAppAudit = ({
         advancedKI.refreshKeywordData(),
         enhancedAnalytics.refreshAll?.()
       ]);
+      
+      // Reset signature to force regeneration
+      lastAuditMetadataRef.current = '';
+      auditCooldownRef.current = 0;
       
       // Regenerate audit
       await generateEnhancedAudit();
@@ -264,6 +333,7 @@ export const useEnhancedAppAudit = ({
     auditData,
     isLoading,
     isRefreshing,
+    isAuditRunning, // Expose this for external components
     lastUpdated,
     refreshAudit,
     generateAuditReport,
