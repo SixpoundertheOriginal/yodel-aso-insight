@@ -8,6 +8,13 @@ import { AmbiguousSearchError } from '@/types/search-errors';
 import { ScrapedMetadata } from '@/types/aso';
 import { CircuitBreaker } from '@/lib/utils/circuit-breaker';
 
+// Import new bulletproof error handling services
+import { retryStrategyService, RetryResult } from './retry-strategy.service';
+import { multiLevelCircuitBreakerService } from './multi-level-circuit-breaker.service';
+import { cacheFallbackService } from './cache-fallback.service';
+import { userExperienceShieldService, LoadingState, UserFriendlyError } from './user-experience-shield.service';
+import { failureAnalyticsService } from './failure-analytics.service';
+
 export interface SearchResult {
   targetApp: ScrapedMetadata;
   competitors: ScrapedMetadata[];
@@ -17,6 +24,9 @@ export interface SearchResult {
     totalResults: number;
     category: string;
     country: string;
+    source: 'primary' | 'fallback' | 'cache' | 'similar';
+    responseTime: number;
+    backgroundRetries: number;
   };
   intelligence: {
     keywordDifficulty?: number;
@@ -31,122 +41,294 @@ export interface SearchConfig {
   includeIntelligence?: boolean;
   cacheResults?: boolean;
   debugMode?: boolean;
+  onLoadingUpdate?: (state: LoadingState) => void;
 }
 
 class AsoSearchService {
   private maxRetries = 2;
   private baseDelay = 1000;
   
-  // Circuit breaker for edge function failures
+  // Legacy circuit breaker (keeping for compatibility)
   private edgeFunctionCircuitBreaker = new CircuitBreaker({
     maxFailures: 5,
-    resetTimeMs: 60000, // 1 minute
+    resetTimeMs: 60000,
     name: 'EdgeFunction'
   });
 
   /**
-   * Enhanced search with comprehensive transmission debugging
+   * Bulletproof search with comprehensive error handling and fallback chain
    */
   async search(input: string, config: SearchConfig): Promise<SearchResult> {
     const correlationContext = correlationTracker.createContext('aso-search', config.organizationId);
+    const startTime = Date.now();
     
-    console.group(`🚀 [ASO-SEARCH] Enhanced transmission-debugged search starting`);
+    console.group(`🚀 [ASO-SEARCH] Bulletproof search starting`);
     console.log('Input:', input);
     console.log('Config:', config);
-    console.log('Circuit Breaker State:', this.edgeFunctionCircuitBreaker.getState());
     
-    correlationTracker.log('info', 'Enhanced ASO search with transmission debugging initiated', { input, config });
+    // Start UX shield
+    const loadingState = userExperienceShieldService.startLoading(input);
+    config.onLoadingUpdate?.(loadingState);
+
+    correlationTracker.log('info', 'Bulletproof ASO search initiated', { input, config });
 
     try {
-      // PHASE 1: Enhanced bypass analysis
-      const bypassAnalysis = bypassPatternsService.analyzeForBypass(input);
-      correlationTracker.log('info', 'Enhanced bypass analysis completed', bypassAnalysis);
-
-      // ROUTE 1: Enhanced bypass path for high-confidence patterns
-      if (bypassAnalysis.shouldBypass && bypassAnalysis.confidence > 0.7) {
-        console.log(`🎯 [BYPASS] Taking enhanced bypass path (confidence: ${bypassAnalysis.confidence})`);
-        return await this.executeBypassSearch(input, config, bypassAnalysis);
+      // Check cache first for instant results
+      const cachedResult = cacheFallbackService.retrieve(input, config.organizationId);
+      if (cachedResult) {
+        const result = this.wrapCachedResult(cachedResult, input);
+        
+        const feedback = {
+          searchTerm: input,
+          resultSource: 'cache' as const,
+          responseTime: Date.now() - startTime,
+          userVisible: true,
+          backgroundRetries: 0
+        };
+        
+        const completeState = userExperienceShieldService.completeLoading(feedback);
+        config.onLoadingUpdate?.(completeState);
+        
+        console.groupEnd();
+        return result;
       }
 
-      // ROUTE 2: Enhanced edge function with comprehensive transmission testing
-      if (!this.edgeFunctionCircuitBreaker.isOpen()) {
-        console.log('🔄 [EDGE-FUNCTION] Attempting edge function with enhanced transmission');
-        try {
-          const result = await this.executeEnhancedEdgeFunctionSearch(input, config);
-          this.edgeFunctionCircuitBreaker.recordSuccess();
-          console.groupEnd();
-          return result;
-        } catch (error: any) {
-          console.warn('⚠️ [EDGE-FUNCTION] Enhanced edge function failed, checking for fallback', error.message);
-          
-          // Check if it's a transmission-related error
-          if (error.message.includes('400') || error.message.includes('empty') || 
-              error.message.includes('validation') || error.message.includes('transmission')) {
-            console.log('🚫 [CIRCUIT-BREAKER] Recording transmission failure');
-            this.edgeFunctionCircuitBreaker.recordFailure();
-            bypassPatternsService.addFailurePattern(input, 'transmission-failure');
-          }
-          
-          // Fall through to bypass fallback
-        }
-      } else {
-        console.log('🚫 [CIRCUIT-BREAKER] Edge function circuit breaker is OPEN, bypassing to direct API');
+      // Execute bulletproof search chain
+      const result = await this.executeBulletproofSearchChain(input, config, startTime);
+      
+      // Cache successful result
+      if (config.cacheResults !== false) {
+        cacheFallbackService.store(input, result.targetApp, config.organizationId);
       }
 
-      // ROUTE 3: Automatic fallback to direct iTunes API
-      console.log('🔄 [FALLBACK] Using direct iTunes API fallback');
-      return await this.executeFallbackSearch(input, config);
+      console.groupEnd();
+      return result;
 
     } catch (error: any) {
       console.groupEnd();
       
-      // Re-throw AmbiguousSearchError without modification
+      // Record failure for analytics
+      failureAnalyticsService.recordFailure({
+        component: 'aso-search-orchestrator',
+        method: 'bulletproof-search',
+        error: error.message,
+        searchTerm: input,
+        organizationId: config.organizationId,
+        context: { config, startTime }
+      });
+
+      // Handle with UX shield
       if (error instanceof AmbiguousSearchError) {
-        throw error;
+        userExperienceShieldService.reset();
+        throw error; // Let ambiguous errors bubble up for user selection
       }
-      
-      correlationTracker.log('error', 'All search paths failed', { error: error.message });
-      throw new Error(this.getUserFriendlyError(error));
+
+      const userError = userExperienceShieldService.handleError(error, {
+        searchTerm: input,
+        attempts: 3 // Assuming full fallback chain was attempted
+      });
+      config.onLoadingUpdate?.(userExperienceShieldService.getCurrentState());
+
+      // Try one final fallback to similar cached results
+      const similarResults = cacheFallbackService.findSimilarResults(input, config.organizationId, 1);
+      if (similarResults.length > 0) {
+        console.log(`🔍 [ASO-SEARCH] Emergency fallback to similar cached result`);
+        
+        const result = this.wrapCachedResult(similarResults[0], input, 'similar');
+        const feedback = {
+          searchTerm: input,
+          resultSource: 'similar' as const,
+          responseTime: Date.now() - startTime,
+          userVisible: true,
+          backgroundRetries: 3
+        };
+        
+        const completeState = userExperienceShieldService.completeLoading(feedback);
+        config.onLoadingUpdate?.(completeState);
+        
+        return result;
+      }
+
+      throw new Error(userError.message);
     }
   }
 
   /**
-   * Execute bypass search with ambiguity detection
+   * Execute the bulletproof search chain with intelligent fallbacks
    */
-  private async executeBypassSearch(input: string, config: SearchConfig, bypassAnalysis: any): Promise<SearchResult> {
-    correlationTracker.log('info', 'Executing enhanced bypass search', { reason: bypassAnalysis.reason });
+  private async executeBulletproofSearchChain(input: string, config: SearchConfig, startTime: number): Promise<SearchResult> {
+    const searchMethods = [
+      { name: 'enhanced-edge-function', handler: () => this.executeEnhancedEdgeFunctionSearch(input, config) },
+      { name: 'direct-itunes-api', handler: () => this.executeDirectApiSearch(input, config) },
+      { name: 'bypass-search', handler: () => this.executeBypassSearch(input, config) }
+    ];
+
+    let lastError: Error | undefined;
+    let totalRetries = 0;
+
+    for (const method of searchMethods) {
+      const isAvailable = multiLevelCircuitBreakerService.isAvailable(method.name);
+      
+      if (!isAvailable) {
+        console.log(`🚫 [BULLETPROOF-SEARCH] Skipping ${method.name} - circuit breaker open`);
+        continue;
+      }
+
+      // Update loading stage
+      const stage = method.name === 'enhanced-edge-function' ? 'searching' : 'fallback';
+      const stageState = userExperienceShieldService.updateStage(stage);
+      config.onLoadingUpdate?.(stageState);
+
+      console.log(`🎯 [BULLETPROOF-SEARCH] Attempting ${method.name}`);
+
+      try {
+        const retryResult: RetryResult<SearchResult> = await retryStrategyService.executeWithRetry(
+          method.handler,
+          method.name
+        );
+
+        if (retryResult.success && retryResult.data) {
+          // Record success
+          multiLevelCircuitBreakerService.recordSuccess(method.name);
+          
+          // Calculate final response time and retries
+          const responseTime = Date.now() - startTime;
+          totalRetries += retryResult.attempts - 1;
+
+          // Update search context with recovery info
+          retryResult.data.searchContext.source = method.name === 'enhanced-edge-function' ? 'primary' : 'fallback';
+          retryResult.data.searchContext.responseTime = responseTime;
+          retryResult.data.searchContext.backgroundRetries = totalRetries;
+
+          // Complete loading
+          const feedback = {
+            searchTerm: input,
+            resultSource: retryResult.data.searchContext.source,
+            responseTime,
+            userVisible: true,
+            backgroundRetries: totalRetries
+          };
+
+          const completeState = userExperienceShieldService.completeLoading(feedback);
+          config.onLoadingUpdate?.(completeState);
+
+          // Record recovery if there were previous failures
+          if (lastError) {
+            failureAnalyticsService.recordRecovery(
+              { component: method.name, searchTerm: input },
+              method.name,
+              responseTime
+            );
+          }
+
+          console.log(`✅ [BULLETPROOF-SEARCH] Success via ${method.name} (${retryResult.attempts} attempts, ${responseTime}ms)`);
+          return retryResult.data;
+        }
+
+        // Handle retry failure
+        lastError = retryResult.error || new Error(`${method.name} failed after retries`);
+        multiLevelCircuitBreakerService.recordFailure(method.name, lastError);
+        
+        // Record failure
+        failureAnalyticsService.recordFailure({
+          component: method.name,
+          method: 'bulletproof-search-method',
+          error: lastError.message,
+          searchTerm: input,
+          organizationId: config.organizationId,
+          context: { attempts: retryResult.attempts, totalTime: retryResult.totalTime }
+        });
+
+        totalRetries += retryResult.attempts;
+        console.log(`❌ [BULLETPROOF-SEARCH] ${method.name} failed after ${retryResult.attempts} attempts: ${lastError.message}`);
+
+      } catch (error: any) {
+        lastError = error;
+        multiLevelCircuitBreakerService.recordFailure(method.name, error);
+        
+        failureAnalyticsService.recordFailure({
+          component: method.name,
+          method: 'bulletproof-search-method',
+          error: error.message,
+          searchTerm: input,
+          organizationId: config.organizationId,
+          context: { totalRetries }
+        });
+
+        console.log(`💥 [BULLETPROOF-SEARCH] ${method.name} threw exception: ${error.message}`);
+      }
+    }
+
+    // All methods failed
+    throw lastError || new Error('All search methods exhausted');
+  }
+
+  /**
+   * Enhanced direct API search with retry logic
+   */
+  private async executeDirectApiSearch(input: string, config: SearchConfig): Promise<SearchResult> {
+    correlationTracker.log('info', 'Executing bulletproof direct API search');
+    
+    try {
+      const ambiguityResult: SearchResultsResponse = await directItunesService.searchWithAmbiguityDetection(input, {
+        organizationId: config.organizationId,
+        country: 'us',
+        limit: 15,
+        bypassReason: 'bulletproof-fallback-direct-api'
+      });
+
+      if (ambiguityResult.isAmbiguous) {
+        throw new AmbiguousSearchError(ambiguityResult.results, ambiguityResult.searchTerm);
+      }
+
+      if (ambiguityResult.results.length === 0) {
+        throw new Error(`No apps found for "${input}". Try different keywords or check the spelling.`);
+      }
+
+      return this.wrapDirectResult(ambiguityResult.results[0], input, 'bulletproof-direct-api');
+
+    } catch (error: any) {
+      if (error instanceof AmbiguousSearchError) {
+        throw error;
+      }
+      
+      correlationTracker.log('error', 'Bulletproof direct API search failed', { error: error.message });
+      throw new Error(`Direct API search failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Enhanced bypass search with retry logic
+   */
+  private async executeBypassSearch(input: string, config: SearchConfig): Promise<SearchResult> {
+    const bypassAnalysis = bypassPatternsService.analyzeForBypass(input);
+    correlationTracker.log('info', 'Executing bulletproof bypass search', bypassAnalysis);
     
     try {
       const ambiguityResult: SearchResultsResponse = await directItunesService.searchWithAmbiguityDetection(input, {
         organizationId: config.organizationId,
         country: 'us',
         limit: 25,
-        bypassReason: bypassAnalysis.reason
+        bypassReason: 'bulletproof-bypass-search'
       });
 
-      // Handle ambiguous results
       if (ambiguityResult.isAmbiguous) {
-        correlationTracker.log('info', 'Ambiguous search detected in bypass', {
-          candidateCount: ambiguityResult.results.length
-        });
         throw new AmbiguousSearchError(ambiguityResult.results, ambiguityResult.searchTerm);
       }
 
-      // Single result - wrap and return
-      return this.wrapDirectResult(ambiguityResult.results[0], input, bypassAnalysis.pattern);
+      return this.wrapDirectResult(ambiguityResult.results[0], input, 'bulletproof-bypass');
 
     } catch (error: any) {
       if (error instanceof AmbiguousSearchError) {
         throw error;
       }
       
-      console.warn('⚠️ [BYPASS] Bypass search failed, trying fallback', error.message);
-      throw error; // Let it fall through to main fallback
+      throw error;
     }
   }
 
   /**
-   * Execute enhanced edge function search with comprehensive transmission testing
+   * Enhanced edge function search with transmission debugging
    */
   private async executeEnhancedEdgeFunctionSearch(input: string, config: SearchConfig): Promise<SearchResult> {
     const requestPayload = {
@@ -160,7 +342,7 @@ class AsoSearchService {
       }
     };
 
-    console.log('📡 [ENHANCED-TRANSMISSION] Starting comprehensive transmission test');
+    console.log('📡 [BULLETPROOF-EDGE] Starting bulletproof transmission');
 
     const transmissionResult = await requestTransmissionService.transmitRequest(
       'app-store-scraper',
@@ -169,58 +351,45 @@ class AsoSearchService {
     );
 
     if (!transmissionResult.success) {
-      console.error('❌ [ENHANCED-TRANSMISSION] All transmission methods failed:', transmissionResult.error);
+      console.error('❌ [BULLETPROOF-EDGE] All transmission methods failed:', transmissionResult.error);
       throw new Error(`Transmission failed: ${transmissionResult.error}`);
     }
 
-    console.log('✅ [ENHANCED-TRANSMISSION] Success via method:', transmissionResult.method);
-    console.log('📊 [ENHANCED-TRANSMISSION] Stats:', {
-      method: transmissionResult.method,
-      attempts: transmissionResult.attempts,
-      responseTime: transmissionResult.responseTime
-    });
+    console.log('✅ [BULLETPROOF-EDGE] Success via method:', transmissionResult.method);
 
     const data = transmissionResult.data;
     if (!data || !data.success) {
       throw new Error(data?.error || 'Edge function returned unsuccessful response');
     }
 
-    // Transform and return result
     return this.transformEdgeFunctionResult(data, input);
   }
 
   /**
-   * Execute fallback search using direct iTunes API
+   * Wrap cached result for consistent interface
    */
-  private async executeFallbackSearch(input: string, config: SearchConfig): Promise<SearchResult> {
-    correlationTracker.log('info', 'Executing fallback search via direct iTunes API');
-    
-    try {
-      const ambiguityResult: SearchResultsResponse = await directItunesService.searchWithAmbiguityDetection(input, {
-        organizationId: config.organizationId,
+  private wrapCachedResult(app: ScrapedMetadata, input: string, source: 'cache' | 'similar' = 'cache'): SearchResult {
+    return {
+      targetApp: app,
+      competitors: [],
+      searchContext: {
+        query: input,
+        type: 'keyword',
+        totalResults: 1,
+        category: app.applicationCategory || 'Unknown',
         country: 'us',
-        limit: 15,
-        bypassReason: 'fallback-from-edge-function-failure'
-      });
-
-      if (ambiguityResult.isAmbiguous) {
-        throw new AmbiguousSearchError(ambiguityResult.results, ambiguityResult.searchTerm);
+        source,
+        responseTime: 0,
+        backgroundRetries: 0
+      },
+      intelligence: {
+        opportunities: [
+          source === 'similar' ? 
+            `Similar cached result for "${input}"` : 
+            `Cached result for "${input}"`
+        ]
       }
-
-      if (ambiguityResult.results.length === 0) {
-        throw new Error(`No apps found for "${input}". Try different keywords or check the spelling.`);
-      }
-
-      return this.wrapDirectResult(ambiguityResult.results[0], input, 'fallback-search');
-
-    } catch (error: any) {
-      if (error instanceof AmbiguousSearchError) {
-        throw error;
-      }
-      
-      correlationTracker.log('error', 'Fallback search failed', { error: error.message });
-      throw new Error(`All search methods failed for "${input}". Please try different keywords.`);
-    }
+    };
   }
 
   /**
@@ -251,7 +420,10 @@ class AsoSearchService {
         type: 'keyword' as const,
         totalResults: (responseData.competitors?.length || 0) + 1,
         category: responseData.applicationCategory || 'Unknown',
-        country: 'us'
+        country: 'us',
+        source: 'primary',
+        responseTime: 0,
+        backgroundRetries: 0
       },
       intelligence: { 
         opportunities: data.searchContext?.includeCompetitors ? 
@@ -278,12 +450,15 @@ class AsoSearchService {
         type: pattern.includes('brand') ? 'brand' : 'keyword',
         totalResults: 1,
         category: app.applicationCategory || 'Unknown',
-        country: 'us'
+        country: 'us',
+        source: 'fallback',
+        responseTime: 0,
+        backgroundRetries: 0
       },
       intelligence: {
         opportunities: [
           pattern.includes('fallback') ? 
-            `Direct match found via fallback for "${input}"` : 
+            `Fallback match found for "${input}"` : 
             `Direct match found for "${input}"`
         ]
       }
@@ -312,6 +487,52 @@ class AsoSearchService {
     return requestTransmissionService.getTransmissionStats();
   }
 
+  /**
+   * Get comprehensive system health
+   */
+  getSystemHealth() {
+    return {
+      circuitBreakers: multiLevelCircuitBreakerService.getSummary(),
+      failureAnalytics: failureAnalyticsService.getSystemHealth(),
+      recoveryStats: failureAnalyticsService.getRecoveryStats(),
+      cacheStats: cacheFallbackService.getStats(),
+      retryStats: retryStrategyService.getRetryStats(),
+      timestamp: new Date().toISOString()
+    };
+  }
+
+  /**
+   * Get failure predictions
+   */
+  getFailurePredictions() {
+    return failureAnalyticsService.predictFailures();
+  }
+
+  /**
+   * Manual recovery operations
+   */
+  triggerRecovery() {
+    // Reset circuit breakers
+    const components = ['edge-function', 'direct-itunes-api', 'transmission-json', 'transmission-url-params'];
+    components.forEach(component => {
+      multiLevelCircuitBreakerService.reset(component);
+    });
+
+    // Clean up cache
+    cacheFallbackService.cleanup();
+
+    console.log('🔄 [BULLETPROOF-RECOVERY] Manual recovery triggered');
+    
+    return {
+      message: 'Recovery operations completed',
+      timestamp: new Date().toISOString(),
+      resetComponents: components.length
+    };
+  }
+
+  /**
+   * Get user-friendly error message
+   */
   private getUserFriendlyError(error: any): string {
     const message = error.message?.toLowerCase() || '';
     

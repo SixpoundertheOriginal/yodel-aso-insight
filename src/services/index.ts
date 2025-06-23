@@ -1,4 +1,3 @@
-
 export { appStoreService } from './app-store.service';
 export { competitorAnalysisService } from './competitor-analysis.service';
 export { competitiveIntelligenceService } from './competitive-intelligence.service';
@@ -17,6 +16,14 @@ export { keywordValidationService } from './keyword-validation.service';
 export { keywordCacheService } from './keyword-cache.service';
 export { keywordRankingCalculatorService } from './keyword-ranking-calculator.service';
 
+// Add new bulletproof error handling services
+export { retryStrategyService } from './retry-strategy.service';
+export { multiLevelCircuitBreakerService } from './multi-level-circuit-breaker.service';
+export { cacheFallbackService } from './cache-fallback.service';
+export { userExperienceShieldService } from './user-experience-shield.service';
+export { failureAnalyticsService } from './failure-analytics.service';
+export { requestTransmissionService } from './request-transmission.service';
+
 // Re-export types for convenience
 export type { SearchResult, SearchConfig } from './aso-search.service';
 export type { SearchParameters } from './input-detection.service';
@@ -25,6 +32,14 @@ export type { KeywordRanking, KeywordAnalysisConfig } from './keyword-ranking.se
 export type { KeywordValidationResult } from './keyword-validation.service';
 export type { CacheConfig } from './keyword-cache.service';
 export type { RankingCalculationConfig } from './keyword-ranking-calculator.service';
+
+// Re-export new types
+export type { RetryConfig, RetryResult } from './retry-strategy.service';
+export type { CircuitBreakerState as MultiLevelCircuitBreakerState, ComponentHealth } from './multi-level-circuit-breaker.service';
+export type { CachedSearchResult, CacheStats } from './cache-fallback.service';
+export type { LoadingState, UserFriendlyError, SearchFeedback } from './user-experience-shield.service';
+export type { FailureEvent, FailurePattern, SystemHealth } from './failure-analytics.service';
+export type { TransmissionResult, RequestPayload } from './request-transmission.service';
 
 // Re-export utilities
 export { CircuitBreaker } from '@/lib/utils/circuit-breaker';
