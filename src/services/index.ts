@@ -24,6 +24,10 @@ export { userExperienceShieldService } from './user-experience-shield.service';
 export { failureAnalyticsService } from './failure-analytics.service';
 export { requestTransmissionService } from './request-transmission.service';
 
+// Add new enhanced audit services
+export { semanticClusteringService } from './semantic-clustering.service';
+export { metadataScoringService } from './metadata-scoring.service';
+
 // Re-export types for convenience
 export type { SearchResult, SearchConfig } from './aso-search.service';
 export type { SearchParameters } from './input-detection.service';
@@ -44,15 +48,15 @@ export type { TransmissionResult, RequestPayload } from './request-transmission.
 // Re-export utilities
 export { CircuitBreaker } from '@/lib/utils/circuit-breaker';
 
-// Re-export new persistence and monitoring services
+// Re-export persistence and monitoring services
 export { keywordPersistenceService } from './keyword-persistence.service';
 export { keywordJobProcessorService } from './keyword-job-processor.service';
 
-// Re-export new types
+// Re-export types
 export type { KeywordRankingHistory, ServiceMetric } from './keyword-persistence.service';
 export type { KeywordJob, BatchAnalysisInput, CompetitorResearchInput } from './keyword-job-processor.service';
 
-// Add new advanced keyword intelligence services
+// Add advanced keyword intelligence services
 export { competitorKeywordAnalysisService } from './competitor-keyword-analysis.service';
 
 // Re-export new types
@@ -63,3 +67,7 @@ export type {
   KeywordCluster, 
   KeywordGapAnalysis 
 } from './competitor-keyword-analysis.service';
+
+// Re-export new audit types
+export type { SemanticClusterConfig, ClusteringResult } from './semantic-clustering.service';
+export type { MetadataScores, MetadataAnalysis } from './metadata-scoring.service';

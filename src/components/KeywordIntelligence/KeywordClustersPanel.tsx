@@ -3,7 +3,7 @@ import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Network, Target, TrendingUp, Users } from 'lucide-react';
+import { Network, Target, TrendingUp, Users, Sparkles } from 'lucide-react';
 import { KeywordCluster } from '@/services/competitor-keyword-analysis.service';
 
 interface KeywordClustersPanelProps {
@@ -44,7 +44,7 @@ export const KeywordClustersPanel: React.FC<KeywordClustersPanelProps> = ({
       case 'category': return <Target className="w-4 h-4" />;
       case 'intent': return <TrendingUp className="w-4 h-4" />;
       case 'competitor': return <Users className="w-4 h-4" />;
-      default: return <Network className="w-4 h-4" />;
+      default: return <Sparkles className="w-4 h-4" />;
     }
   };
 
@@ -70,57 +70,28 @@ export const KeywordClustersPanel: React.FC<KeywordClustersPanelProps> = ({
     return 'text-red-400';
   };
 
-  // Generate mock clusters if none exist
-  const mockClusters: KeywordCluster[] = clusters.length > 0 ? clusters : [
-    {
-      id: '1',
-      clusterName: 'Fitness Tracking',
-      primaryKeyword: 'fitness tracker',
-      relatedKeywords: ['workout tracker', 'exercise monitor', 'activity tracker', 'health tracker'],
-      clusterType: 'semantic',
-      totalSearchVolume: 85000,
-      avgDifficulty: 6.2,
-      opportunityScore: 0.75,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    },
-    {
-      id: '2',
-      clusterName: 'Diet & Nutrition',
-      primaryKeyword: 'calorie counter',
-      relatedKeywords: ['diet tracker', 'nutrition app', 'food diary', 'meal planner'],
-      clusterType: 'category',
-      totalSearchVolume: 62000,
-      avgDifficulty: 5.8,
-      opportunityScore: 0.65,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    },
-    {
-      id: '3',
-      clusterName: 'Mindfulness',
-      primaryKeyword: 'meditation app',
-      relatedKeywords: ['mindfulness app', 'breathing exercise', 'stress relief', 'yoga app'],
-      clusterType: 'intent',
-      totalSearchVolume: 45000,
-      avgDifficulty: 4.5,
-      opportunityScore: 0.82,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    },
-    {
-      id: '4',
-      clusterName: 'Competitor Keywords',
-      primaryKeyword: 'gym workout',
-      relatedKeywords: ['strength training', 'muscle building', 'bodybuilding app', 'weight lifting'],
-      clusterType: 'competitor',
-      totalSearchVolume: 38000,
-      avgDifficulty: 7.1,
-      opportunityScore: 0.45,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    }
-  ];
+  // Show message when no clusters are available
+  if (clusters.length === 0) {
+    return (
+      <Card className="bg-zinc-900/50 border-zinc-800">
+        <CardHeader>
+          <CardTitle className="text-white flex items-center space-x-2">
+            <Network className="w-5 h-5 text-blue-400" />
+            <span>Keyword Clusters</span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="text-center py-8">
+            <Network className="w-12 h-12 text-zinc-600 mx-auto mb-4" />
+            <h3 className="text-lg font-semibold text-white mb-2">No Clusters Available</h3>
+            <p className="text-zinc-400">
+              Import an app to generate semantic keyword clusters and identify optimization opportunities.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -129,18 +100,21 @@ export const KeywordClustersPanel: React.FC<KeywordClustersPanelProps> = ({
           <CardTitle className="text-white flex items-center space-x-2">
             <Network className="w-5 h-5 text-blue-400" />
             <span>Keyword Clusters</span>
+            <Badge variant="outline" className="ml-2 text-zinc-400 border-zinc-600">
+              {clusters.length} clusters
+            </Badge>
           </CardTitle>
           <p className="text-zinc-400 text-sm">
-            Semantic groupings of related keywords to help identify content themes and optimization opportunities.
+            AI-generated semantic groupings of related keywords for strategic optimization.
           </p>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {mockClusters.map((cluster) => (
+            {clusters.map((cluster) => (
               <Card key={cluster.id} className="bg-zinc-800/50 border-zinc-700 hover:border-zinc-600 transition-colors">
                 <CardContent className="p-4">
                   <div className="flex items-start justify-between mb-3">
-                    <div>
+                    <div className="flex-1">
                       <h3 className="font-medium text-white mb-1">{cluster.clusterName}</h3>
                       <p className="text-sm text-zinc-400">
                         Primary: <span className="text-blue-400">{cluster.primaryKeyword}</span>
@@ -176,13 +150,13 @@ export const KeywordClustersPanel: React.FC<KeywordClustersPanelProps> = ({
                         <p className="text-lg font-semibold text-white">
                           {cluster.totalSearchVolume ? `${(cluster.totalSearchVolume / 1000).toFixed(0)}K` : 'N/A'}
                         </p>
-                        <p className="text-xs text-zinc-400">Total Volume</p>
+                        <p className="text-xs text-zinc-400">Volume</p>
                       </div>
                       <div>
                         <p className="text-lg font-semibold text-white">
                           {cluster.avgDifficulty?.toFixed(1) || 'N/A'}/10
                         </p>
-                        <p className="text-xs text-zinc-400">Avg Difficulty</p>
+                        <p className="text-xs text-zinc-400">Difficulty</p>
                       </div>
                       <div>
                         <p className={`text-lg font-semibold ${getOpportunityColor(cluster.opportunityScore)}`}>
@@ -191,6 +165,16 @@ export const KeywordClustersPanel: React.FC<KeywordClustersPanelProps> = ({
                         <p className="text-xs text-zinc-400">Opportunity</p>
                       </div>
                     </div>
+
+                    {/* Additional details for detailed view */}
+                    {detailed && (
+                      <div className="pt-2 border-t border-zinc-700">
+                        <div className="flex justify-between text-xs text-zinc-500">
+                          <span>Keywords: {cluster.relatedKeywords.length + 1}</span>
+                          <span>Created: {new Date(cluster.createdAt).toLocaleDateString()}</span>
+                        </div>
+                      </div>
+                    )}
 
                     {onClusterSelect && (
                       <Button
@@ -209,28 +193,34 @@ export const KeywordClustersPanel: React.FC<KeywordClustersPanelProps> = ({
         </CardContent>
       </Card>
 
-      {/* Cluster Insights */}
+      {/* Enhanced Cluster Insights */}
       <Card className="bg-zinc-900/50 border-zinc-800">
         <CardHeader>
-          <CardTitle className="text-white">Cluster Insights</CardTitle>
+          <CardTitle className="text-white">Cluster Intelligence</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div className="text-center p-4 bg-zinc-800/50 rounded-lg">
-              <p className="text-2xl font-bold text-blue-400">{mockClusters.length}</p>
+              <p className="text-2xl font-bold text-blue-400">{clusters.length}</p>
               <p className="text-sm text-zinc-400">Active Clusters</p>
             </div>
             <div className="text-center p-4 bg-zinc-800/50 rounded-lg">
               <p className="text-2xl font-bold text-green-400">
-                {mockClusters.reduce((sum, c) => sum + c.relatedKeywords.length, 0)}
+                {clusters.reduce((sum, c) => sum + c.relatedKeywords.length + 1, 0)}
               </p>
               <p className="text-sm text-zinc-400">Total Keywords</p>
             </div>
             <div className="text-center p-4 bg-zinc-800/50 rounded-lg">
               <p className="text-2xl font-bold text-purple-400">
-                {Math.round(mockClusters.reduce((sum, c) => sum + (c.opportunityScore || 0), 0) / mockClusters.length * 100)}%
+                {Math.round(clusters.reduce((sum, c) => sum + (c.opportunityScore || 0), 0) / clusters.length * 100) || 0}%
               </p>
               <p className="text-sm text-zinc-400">Avg Opportunity</p>
+            </div>
+            <div className="text-center p-4 bg-zinc-800/50 rounded-lg">
+              <p className="text-2xl font-bold text-orange-400">
+                {clusters.filter(c => (c.opportunityScore || 0) >= 0.7).length}
+              </p>
+              <p className="text-sm text-zinc-400">High-Value</p>
             </div>
           </div>
         </CardContent>

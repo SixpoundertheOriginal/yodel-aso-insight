@@ -4,14 +4,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Brain, Target, TrendingUp, FileText, RefreshCw, Download, AlertTriangle } from 'lucide-react';
+import { Brain, Target, TrendingUp, FileText, RefreshCw, Download, AlertTriangle, Users } from 'lucide-react';
 import { MetadataImporter } from '../AsoAiHub/MetadataCopilot/MetadataImporter';
 import { MetadataWorkspace } from '../AsoAiHub/MetadataCopilot/MetadataWorkspace';
 import { KeywordClustersPanel } from '../KeywordIntelligence/KeywordClustersPanel';
 import { RankDistributionChart } from '../KeywordIntelligence/RankDistributionChart';
 import { KeywordTrendsTable } from '../KeywordIntelligence/KeywordTrendsTable';
 import { CompetitiveKeywordAnalysis } from './CompetitiveKeywordAnalysis';
-import { useAppAuditHub } from '@/hooks/useAppAuditHub';
+import { useEnhancedAppAudit } from '@/hooks/useEnhancedAppAudit';
 import { ScrapedMetadata } from '@/types/aso';
 import { toast } from 'sonner';
 
@@ -30,9 +30,10 @@ export const AppAuditHub: React.FC<AppAuditHubProps> = ({ organizationId }) => {
     lastUpdated,
     refreshAudit,
     generateAuditReport
-  } = useAppAuditHub({
+  } = useEnhancedAppAudit({
     organizationId,
     appId: importedMetadata?.appId,
+    metadata: importedMetadata,
     enabled: !!importedMetadata
   });
 
@@ -40,7 +41,7 @@ export const AppAuditHub: React.FC<AppAuditHubProps> = ({ organizationId }) => {
     console.log('🎯 [APP-AUDIT] App imported:', metadata.name);
     setImportedMetadata(metadata);
     setActiveTab('overview');
-    toast.success(`Started audit for ${metadata.name}`);
+    toast.success(`Started comprehensive audit for ${metadata.name}`);
   };
 
   const handleExportReport = async () => {
@@ -48,8 +49,19 @@ export const AppAuditHub: React.FC<AppAuditHubProps> = ({ organizationId }) => {
     
     try {
       const report = await generateAuditReport();
-      // Trigger download logic here
-      toast.success('Audit report generated successfully');
+      // Create downloadable report
+      const reportData = JSON.stringify(report, null, 2);
+      const blob = new Blob([reportData], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${importedMetadata.name}-audit-report.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      toast.success('Audit report downloaded successfully');
     } catch (error) {
       toast.error('Failed to generate audit report');
     }
@@ -165,9 +177,9 @@ export const AppAuditHub: React.FC<AppAuditHubProps> = ({ organizationId }) => {
         </div>
       </div>
 
-      {/* Audit Score Overview */}
+      {/* Enhanced Audit Score Overview */}
       {auditData && (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
           <Card className="bg-zinc-900 border-zinc-800">
             <CardContent className="p-4">
               <div className="flex items-center gap-2">
@@ -177,16 +189,24 @@ export const AppAuditHub: React.FC<AppAuditHubProps> = ({ organizationId }) => {
               <div className="text-2xl font-bold text-white">
                 {auditData.overallScore}/100
               </div>
+              <div className="text-xs text-zinc-500 mt-1">
+                {auditData.overallScore >= 80 ? 'Excellent' : 
+                 auditData.overallScore >= 60 ? 'Good' : 
+                 auditData.overallScore >= 40 ? 'Fair' : 'Needs Work'}
+              </div>
             </CardContent>
           </Card>
           <Card className="bg-zinc-900 border-zinc-800">
             <CardContent className="p-4">
               <div className="flex items-center gap-2">
                 <FileText className="h-4 w-4 text-green-400" />
-                <span className="text-sm text-zinc-400">Metadata Score</span>
+                <span className="text-sm text-zinc-400">Metadata</span>
               </div>
               <div className="text-2xl font-bold text-white">
                 {auditData.metadataScore}/100
+              </div>
+              <div className="text-xs text-zinc-500 mt-1">
+                Title, Subtitle, Keywords
               </div>
             </CardContent>
           </Card>
@@ -194,21 +214,41 @@ export const AppAuditHub: React.FC<AppAuditHubProps> = ({ organizationId }) => {
             <CardContent className="p-4">
               <div className="flex items-center gap-2">
                 <Target className="h-4 w-4 text-blue-400" />
-                <span className="text-sm text-zinc-400">Keyword Score</span>
+                <span className="text-sm text-zinc-400">Keywords</span>
               </div>
               <div className="text-2xl font-bold text-white">
                 {auditData.keywordScore}/100
+              </div>
+              <div className="text-xs text-zinc-500 mt-1">
+                Rankings & Visibility
               </div>
             </CardContent>
           </Card>
           <Card className="bg-zinc-900 border-zinc-800">
             <CardContent className="p-4">
               <div className="flex items-center gap-2">
-                <TrendingUp className="h-4 w-4 text-purple-400" />
+                <Users className="h-4 w-4 text-purple-400" />
+                <span className="text-sm text-zinc-400">Competitive</span>
+              </div>
+              <div className="text-2xl font-bold text-white">
+                {auditData.competitorScore}/100
+              </div>
+              <div className="text-xs text-zinc-500 mt-1">
+                Market Position
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="bg-zinc-900 border-zinc-800">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2">
+                <TrendingUp className="h-4 w-4 text-green-400" />
                 <span className="text-sm text-zinc-400">Opportunities</span>
               </div>
               <div className="text-2xl font-bold text-green-400">
                 {auditData.opportunityCount}
+              </div>
+              <div className="text-xs text-zinc-500 mt-1">
+                Action Items
               </div>
             </CardContent>
           </Card>
@@ -234,8 +274,43 @@ export const AppAuditHub: React.FC<AppAuditHubProps> = ({ organizationId }) => {
             <KeywordClustersPanel
               clusters={auditData?.keywordClusters || []}
               isLoading={isLoading}
+              detailed={true}
             />
           </div>
+          
+          {/* Enhanced Audit Summary */}
+          {auditData?.metadataAnalysis && (
+            <Card className="bg-zinc-900 border-zinc-800">
+              <CardHeader>
+                <CardTitle className="text-white">Audit Summary</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="p-4 bg-zinc-800/50 rounded-lg">
+                    <h4 className="font-medium text-white mb-2">Character Usage</h4>
+                    <div className="text-2xl font-bold text-blue-400">
+                      {auditData.metadataAnalysis.scores.breakdown.characterUsage}%
+                    </div>
+                    <p className="text-sm text-zinc-400">Title & Subtitle efficiency</p>
+                  </div>
+                  <div className="p-4 bg-zinc-800/50 rounded-lg">
+                    <h4 className="font-medium text-white mb-2">Keyword Density</h4>
+                    <div className="text-2xl font-bold text-green-400">
+                      {auditData.metadataAnalysis.scores.breakdown.keywordDensity}%
+                    </div>
+                    <p className="text-sm text-zinc-400">Optimization level</p>
+                  </div>
+                  <div className="p-4 bg-zinc-800/50 rounded-lg">
+                    <h4 className="font-medium text-white mb-2">Uniqueness</h4>
+                    <div className="text-2xl font-bold text-purple-400">
+                      {auditData.metadataAnalysis.scores.breakdown.uniqueness}%
+                    </div>
+                    <p className="text-sm text-zinc-400">vs Competitors</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
 
         <TabsContent value="metadata" className="space-y-6">
@@ -269,20 +344,39 @@ export const AppAuditHub: React.FC<AppAuditHubProps> = ({ organizationId }) => {
                 <AlertTriangle className="h-5 w-5 text-yodel-orange" />
                 <span>Priority Recommendations</span>
               </CardTitle>
+              <CardDescription>
+                AI-powered optimization suggestions based on comprehensive analysis
+              </CardDescription>
             </CardHeader>
             <CardContent>
               {auditData?.recommendations?.map((rec, index) => (
                 <div key={index} className="flex items-start space-x-3 p-4 bg-zinc-800/50 rounded-lg mb-3">
                   <Badge className={`mt-1 ${
-                    rec.priority === 'high' ? 'bg-red-500/20 text-red-400' :
-                    rec.priority === 'medium' ? 'bg-yellow-500/20 text-yellow-400' :
-                    'bg-blue-500/20 text-blue-400'
+                    rec.priority === 'high' ? 'bg-red-500/20 text-red-400 border-red-500/30' :
+                    rec.priority === 'medium' ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' :
+                    'bg-blue-500/20 text-blue-400 border-blue-500/30'
                   }`}>
                     {rec.priority}
                   </Badge>
                   <div className="flex-1">
-                    <h4 className="font-medium text-white">{rec.title}</h4>
+                    <div className="flex items-center justify-between">
+                      <h4 className="font-medium text-white">{rec.title}</h4>
+                      <Badge variant="outline" className="text-zinc-400 border-zinc-600">
+                        {rec.category}
+                      </Badge>
+                    </div>
                     <p className="text-sm text-zinc-400 mt-1">{rec.description}</p>
+                    {'impact' in rec && (
+                      <div className="mt-2">
+                        <div className="text-xs text-zinc-500">Expected Impact: {rec.impact}%</div>
+                        <div className="w-full bg-zinc-700 rounded-full h-1.5 mt-1">
+                          <div 
+                            className="bg-yodel-orange h-1.5 rounded-full" 
+                            style={{ width: `${rec.impact}%` }}
+                          ></div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}
