@@ -1,11 +1,11 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { KeywordDiscoveryService } from './services/keyword-discovery.service.ts'
 
-const VERSION = '8.5.0-ambiguous-search-detection'
+const VERSION = '8.6.0-enhanced-json-handling'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-correlation-id, x-transmission-method, x-payload-data',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-correlation-id, x-transmission-method, x-payload-data, x-debug-mode, x-payload-size',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
 }
 
@@ -60,6 +60,8 @@ serve(async (req: Request) => {
   const startTime = Date.now()
   const correlationId = req.headers.get('x-correlation-id') || crypto.randomUUID()
   const transmissionMethod = req.headers.get('x-transmission-method') || 'unknown'
+  const debugMode = req.headers.get('x-debug-mode') === 'true'
+  const payloadSize = req.headers.get('x-payload-size') || 'unknown'
 
   console.log(`🔍 [${correlationId}] ENHANCED REQUEST RECEIVED:`, {
     method: req.method,
@@ -68,6 +70,8 @@ serve(async (req: Request) => {
     contentType: req.headers.get('content-type'),
     contentLength: req.headers.get('content-length'),
     transmissionMethod,
+    debugMode,
+    payloadSize,
     hasPayloadHeader: !!req.headers.get('x-payload-data')
   })
 
@@ -88,21 +92,21 @@ serve(async (req: Request) => {
         status: 'ok',
         version: VERSION,
         timestamp: new Date().toISOString(),
-        mode: 'ambiguous-search-detection',
+        mode: 'enhanced-json-handling',
         correlationId,
-        message: 'App Store scraper with ambiguous search detection ready'
+        message: 'App Store scraper with enhanced JSON body handling ready'
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 200
       })
     }
 
-    // Enhanced request body parsing with multiple format support
+    // ENHANCED request body parsing with detailed debugging
     let requestBody: string | null = null
     let requestData: any = null
     
     try {
-      console.log(`📡 [${correlationId}] PARSING REQUEST (Method: ${transmissionMethod})`);
+      console.log(`📡 [${correlationId}] ENHANCED PARSING REQUEST (Method: ${transmissionMethod})`);
 
       if (req.method === 'GET' && req.url.includes('?')) {
         // Handle URL parameters transmission
@@ -135,7 +139,7 @@ serve(async (req: Request) => {
           });
         }
       } else {
-        // Handle standard body transmission (JSON or FormData)
+        // ENHANCED body transmission handling
         const contentType = req.headers.get('content-type') || '';
         
         if (contentType.includes('multipart/form-data')) {
@@ -154,27 +158,32 @@ serve(async (req: Request) => {
             hasOrgId: !!requestData.organizationId
           });
         } else {
-          // Standard JSON body
-          requestBody = await req.text()
-          console.log(`📝 [${correlationId}] RAW REQUEST BODY:`, {
-            length: requestBody?.length || 0,
-            isEmpty: !requestBody || requestBody.trim() === '',
-            firstChars: requestBody?.substring(0, 100) || 'EMPTY',
-            lastChars: requestBody?.length > 100 ? requestBody.substring(requestBody.length - 50) : 'N/A'
-          })
-
-          // Check if body is empty or invalid
-          if (!requestBody || requestBody.trim() === '') {
-            console.error(`💥 [${correlationId}] EMPTY REQUEST BODY DETECTED`)
+          // ENHANCED JSON body handling with comprehensive debugging
+          console.log(`📝 [${correlationId}] Processing ENHANCED JSON body`);
+          
+          // Try to read request body with detailed logging
+          try {
+            requestBody = await req.text()
+            console.log(`📝 [${correlationId}] RAW BODY READ ATTEMPT:`, {
+              bodyExists: !!requestBody,
+              bodyLength: requestBody?.length || 0,
+              bodyIsEmpty: !requestBody || requestBody.trim() === '',
+              firstChars: requestBody?.substring(0, 100) || 'EMPTY',
+              lastChars: requestBody?.length > 100 ? requestBody.substring(requestBody.length - 50) : 'N/A',
+              contentType,
+              expectedSize: payloadSize
+            })
+          } catch (readError: any) {
+            console.error(`💥 [${correlationId}] BODY READ FAILED:`, readError.message)
             return new Response(JSON.stringify({
               success: false,
-              error: 'Request body is empty - this is the core transmission issue',
+              error: 'Failed to read request body',
               correlationId,
               debug: {
-                bodyLength: requestBody?.length || 0,
-                contentType: req.headers.get('content-type'),
+                readError: readError.message,
+                contentType,
                 transmissionMethod,
-                allHeaders: Object.fromEntries(req.headers.entries())
+                expectedSize: payloadSize
               }
             }), {
               status: 400,
@@ -182,22 +191,55 @@ serve(async (req: Request) => {
             })
           }
 
-          // Parse JSON with error handling
+          // Check if body is empty or invalid
+          if (!requestBody || requestBody.trim() === '') {
+            console.error(`💥 [${correlationId}] EMPTY REQUEST BODY DETECTED - CORE ISSUE`)
+            console.error(`💥 [${correlationId}] DEBUG INFO:`, {
+              headers: Object.fromEntries(req.headers.entries()),
+              method: req.method,
+              url: req.url,
+              transmissionMethod,
+              contentType,
+              expectedSize: payloadSize
+            })
+            
+            return new Response(JSON.stringify({
+              success: false,
+              error: 'CRITICAL: Request body is empty - this is the core transmission issue we need to fix',
+              correlationId,
+              debug: {
+                bodyLength: requestBody?.length || 0,
+                contentType,
+                transmissionMethod,
+                allHeaders: Object.fromEntries(req.headers.entries()),  
+                expectedSize: payloadSize,
+                suggestion: 'Check client-side JSON serialization and Supabase invoke method'
+              }
+            }), {
+              status: 400,
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+            })
+          }
+
+          // Enhanced JSON parsing with detailed error reporting
           try {
             requestData = JSON.parse(requestBody)
-            console.log(`✅ [${correlationId}] JSON PARSED SUCCESSFULLY:`, {
+            console.log(`✅ [${correlationId}] ENHANCED JSON PARSED SUCCESSFULLY:`, {
               hasSearchTerm: !!requestData.searchTerm,
               hasTargetApp: !!requestData.targetApp,
               hasCompetitorApps: !!requestData.competitorApps,
               hasSeedKeywords: !!requestData.seedKeywords,
               includeCompetitorAnalysis: requestData.includeCompetitorAnalysis,
-              organizationId: requestData.organizationId?.substring(0, 8) + '...'
+              organizationId: requestData.organizationId?.substring(0, 8) + '...',
+              parsedKeys: Object.keys(requestData)
             })
           } catch (jsonError: any) {
             console.error(`💥 [${correlationId}] JSON PARSING FAILED:`, {
               error: jsonError.message,
               bodyPreview: requestBody.substring(0, 200),
-              bodyLength: requestBody.length
+              bodyLength: requestBody.length,
+              contentType,
+              transmissionMethod
             })
             return new Response(JSON.stringify({
               success: false,
@@ -205,7 +247,9 @@ serve(async (req: Request) => {
               correlationId,
               debug: {
                 jsonError: jsonError.message,
-                bodyPreview: requestBody.substring(0, 100)
+                bodyPreview: requestBody.substring(0, 100),
+                contentType,
+                transmissionMethod
               }
             }), {
               status: 400,
@@ -435,7 +479,7 @@ async function handleAppSearch(
   const country = searchParameters.country || 'us'
   const limit = Math.min(searchParameters.limit || 15, 25) // Increased default limit for better ambiguity detection
 
-  console.log(`🚀 [${correlationId}] STARTING APP STORE SEARCH WITH AMBIGUITY DETECTION:`, {
+  console.log(`🚀 [${correlationId}] STARTING APP STORE SEARCH WITH ENHANCED AMBIGUITY DETECTION:`, {
     searchTerm: searchTerm.trim(),
     searchType,
     country,
@@ -467,7 +511,7 @@ async function handleAppSearch(
       })
     }
 
-    // NEW: Enhanced ambiguity detection logic
+    // ENHANCED ambiguity detection logic
     const ambiguityResult = detectSearchAmbiguity(searchTerm.trim(), searchResults, searchType)
     
     const processingTime = Date.now() - startTime
@@ -568,7 +612,7 @@ async function handleAppSearch(
 }
 
 /**
- * NEW: Intelligent ambiguity detection logic
+ * Intelligent ambiguity detection logic
  */
 function detectSearchAmbiguity(
   searchTerm: string, 
