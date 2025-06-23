@@ -9,6 +9,7 @@ import { AppProvider } from "@/context/AppContext";
 import Index from "./pages/Index";
 import AsoAiHubPage from "./pages/aso-ai-hub";
 import AsoIntelligencePage from "./pages/aso-intelligence";
+import KeywordIntelligencePage from "./pages/keyword-intelligence";
 
 const queryClient = new QueryClient();
 
@@ -24,6 +25,7 @@ const App = () => (
               <Route path="/" element={<Index />} />
               <Route path="/aso-ai-hub" element={<AsoAiHubPage />} />
               <Route path="/aso-intelligence" element={<AsoIntelligencePage />} />
+              <Route path="/keyword-intelligence" element={<KeywordIntelligencePage />} />
               {/* Legacy routes for backward compatibility */}
               <Route path="/metadata-copilot" element={<AsoIntelligencePage />} />
               <Route path="/app-audit" element={<AsoIntelligencePage />} />
