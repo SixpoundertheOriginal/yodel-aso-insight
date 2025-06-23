@@ -328,7 +328,7 @@ class AsoSearchService {
   }
 
   /**
-   * Enhanced edge function search with transmission debugging
+   * Enhanced edge function search with transmission debugging and NEW ambiguity handling
    */
   private async executeEnhancedEdgeFunctionSearch(input: string, config: SearchConfig): Promise<SearchResult> {
     const requestPayload = {
@@ -342,7 +342,7 @@ class AsoSearchService {
       }
     };
 
-    console.log('📡 [BULLETPROOF-EDGE] Starting bulletproof transmission');
+    console.log('📡 [BULLETPROOF-EDGE] Starting bulletproof transmission with ambiguity detection');
 
     const transmissionResult = await requestTransmissionService.transmitRequest(
       'app-store-scraper',
@@ -360,6 +360,19 @@ class AsoSearchService {
     const data = transmissionResult.data;
     if (!data || !data.success) {
       throw new Error(data?.error || 'Edge function returned unsuccessful response');
+    }
+
+    // NEW: Handle ambiguous search responses from edge function
+    if (data.isAmbiguous) {
+      console.log('🎯 [BULLETPROOF-EDGE] Ambiguous search detected from edge function');
+      
+      const candidates = data.data.results || [];
+      if (candidates.length === 0) {
+        throw new Error('No candidates returned from ambiguous search');
+      }
+      
+      console.log(`📋 [BULLETPROOF-EDGE] Throwing AmbiguousSearchError with ${candidates.length} candidates`);
+      throw new AmbiguousSearchError(candidates, data.data.searchTerm || input);
     }
 
     return this.transformEdgeFunctionResult(data, input);

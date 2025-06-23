@@ -1,7 +1,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { KeywordDiscoveryService } from './services/keyword-discovery.service.ts'
 
-const VERSION = '8.4.0-transmission-debug'
+const VERSION = '8.5.0-ambiguous-search-detection'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -48,6 +48,14 @@ interface AppData {
   locale: string
 }
 
+interface AmbiguousSearchResponse {
+  isAmbiguous: boolean
+  results: AppData[]
+  searchTerm: string
+  totalFound: number
+  ambiguityReason?: string
+}
+
 serve(async (req: Request) => {
   const startTime = Date.now()
   const correlationId = req.headers.get('x-correlation-id') || crypto.randomUUID()
@@ -80,9 +88,9 @@ serve(async (req: Request) => {
         status: 'ok',
         version: VERSION,
         timestamp: new Date().toISOString(),
-        mode: 'transmission-debug',
+        mode: 'ambiguous-search-detection',
         correlationId,
-        message: 'App Store scraper with enhanced transmission debugging ready'
+        message: 'App Store scraper with ambiguous search detection ready'
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 200
@@ -425,9 +433,9 @@ async function handleAppSearch(
 
   const { searchTerm, searchType = 'keyword', organizationId, searchParameters = {} } = request
   const country = searchParameters.country || 'us'
-  const limit = Math.min(searchParameters.limit || 5, 25)
+  const limit = Math.min(searchParameters.limit || 15, 25) // Increased default limit for better ambiguity detection
 
-  console.log(`🚀 [${correlationId}] STARTING APP STORE SEARCH:`, {
+  console.log(`🚀 [${correlationId}] STARTING APP STORE SEARCH WITH AMBIGUITY DETECTION:`, {
     searchTerm: searchTerm.trim(),
     searchType,
     country,
@@ -459,19 +467,61 @@ async function handleAppSearch(
       })
     }
 
+    // NEW: Enhanced ambiguity detection logic
+    const ambiguityResult = detectSearchAmbiguity(searchTerm.trim(), searchResults, searchType)
+    
     const processingTime = Date.now() - startTime
     console.log(`✅ [${correlationId}] APP SEARCH COMPLETED:`, {
       resultsCount: searchResults.length,
+      isAmbiguous: ambiguityResult.isAmbiguous,
+      ambiguityReason: ambiguityResult.ambiguityReason,
       processingTime: `${processingTime}ms`
     })
 
-    // If only one result, return it as the target app
-    // If multiple results, return the first as target and rest as competitors
+    if (ambiguityResult.isAmbiguous) {
+      // Return ambiguous search response for frontend to handle
+      console.log(`🎯 [${correlationId}] AMBIGUOUS SEARCH DETECTED - Returning multiple candidates`)
+      
+      return new Response(JSON.stringify({
+        success: true,
+        isAmbiguous: true,
+        data: {
+          searchTerm: searchTerm.trim(),
+          results: searchResults,
+          totalFound: searchResults.length,
+          ambiguityReason: ambiguityResult.ambiguityReason
+        },
+        correlationId,
+        processingTime: `${processingTime}ms`,
+        version: VERSION,
+        searchContext: {
+          query: searchTerm.trim(),
+          country,
+          resultsReturned: searchResults.length,
+          totalFound: searchResults.length,
+          includeCompetitors: request.includeCompetitorAnalysis,
+          ambiguityDetected: true
+        }
+      }), {
+        headers: {
+          ...corsHeaders,
+          'Content-Type': 'application/json',
+          'X-Processing-Time': `${processingTime}ms`,
+          'X-Correlation-ID': correlationId
+        },
+        status: 200
+      })
+    }
+
+    // Auto-select single clear result
     const targetApp = searchResults[0]
     const competitors = request.includeCompetitorAnalysis ? searchResults.slice(1) : []
 
+    console.log(`✅ [${correlationId}] AUTO-SELECTED SINGLE CLEAR RESULT:`, targetApp.name)
+
     return new Response(JSON.stringify({
       success: true,
+      isAmbiguous: false,
       data: {
         ...targetApp,
         competitors
@@ -484,7 +534,8 @@ async function handleAppSearch(
         country,
         resultsReturned: searchResults.length,
         totalFound: searchResults.length,
-        includeCompetitors: request.includeCompetitorAnalysis
+        includeCompetitors: request.includeCompetitorAnalysis,
+        autoSelected: true
       }
     }), {
       headers: {
@@ -514,6 +565,92 @@ async function handleAppSearch(
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     })
   }
+}
+
+/**
+ * NEW: Intelligent ambiguity detection logic
+ */
+function detectSearchAmbiguity(
+  searchTerm: string, 
+  results: AppData[], 
+  searchType: string
+): { isAmbiguous: boolean; ambiguityReason?: string } {
+  
+  // Only one result - never ambiguous  
+  if (results.length <= 1) {
+    return { isAmbiguous: false }
+  }
+
+  const searchTermLower = searchTerm.toLowerCase().trim()
+  
+  // URL searches - never ambiguous (user specified exact app)
+  if (searchType === 'url' || searchTerm.includes('apps.apple.com') || searchTerm.includes('itunes.apple.com')) {
+    return { isAmbiguous: false }
+  }
+
+  // App ID searches - never ambiguous  
+  if (/^\d+$/.test(searchTerm)) {
+    return { isAmbiguous: false }
+  }
+
+  // Check for exact name matches
+  const exactMatches = results.filter(app => 
+    app.name.toLowerCase().trim() === searchTermLower ||
+    app.title.toLowerCase().trim() === searchTermLower
+  )
+
+  // Single exact match - auto-select
+  if (exactMatches.length === 1) {
+    return { isAmbiguous: false }
+  }
+
+  // Multiple exact matches - ambiguous
+  if (exactMatches.length > 1) {
+    return { 
+      isAmbiguous: true, 
+      ambiguityReason: `Multiple apps found with exact name "${searchTerm}"` 
+    }
+  }
+
+  // Generic keyword searches - always ambiguous if multiple results
+  const genericKeywords = [
+    'fitness', 'meditation', 'language', 'learning', 'photo', 'music', 
+    'social', 'messenger', 'chat', 'camera', 'weather', 'news', 'games'
+  ]
+  
+  if (genericKeywords.some(keyword => searchTermLower.includes(keyword))) {
+    return { 
+      isAmbiguous: true, 
+      ambiguityReason: `Multiple apps found for keyword search "${searchTerm}"` 
+    }
+  }
+
+  // Brand/company searches with multiple apps
+  const topApps = results.slice(0, 5) // Check top 5 results
+  const hasDifferentDevelopers = new Set(topApps.map(app => app.developer.toLowerCase())).size > 1
+  
+  if (hasDifferentDevelopers && results.length >= 3) {
+    return { 
+      isAmbiguous: true, 
+      ambiguityReason: `Multiple apps from different developers found for "${searchTerm}"` 
+    }
+  }
+
+  // Check similarity scores for highly relevant results
+  const highRelevanceCount = results.filter(app => {
+    const appNameLower = app.name.toLowerCase()
+    return appNameLower.includes(searchTermLower) || searchTermLower.includes(appNameLower)
+  }).length
+
+  if (highRelevanceCount >= 3) {
+    return { 
+      isAmbiguous: true, 
+      ambiguityReason: `Multiple relevant apps found for "${searchTerm}"` 
+    }
+  }
+
+  // Default: Not ambiguous (auto-select first result)
+  return { isAmbiguous: false }
 }
 
 async function performRealAppStoreSearch(searchTerm: string, country: string, limit: number, correlationId: string): Promise<AppData[]> {
