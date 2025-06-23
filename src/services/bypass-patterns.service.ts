@@ -1,133 +1,141 @@
 
 /**
- * Emergency Bypass Patterns Service
- * Identifies safe inputs that can bypass complex validation
+ * Enhanced Bypass Patterns Service
+ * Routes problematic searches directly to iTunes API to avoid edge function failures
  */
 
-export interface BypassResult {
+interface BypassAnalysis {
   shouldBypass: boolean;
   confidence: number;
-  pattern: 'safe-keyword' | 'app-name' | 'simple-phrase' | 'unknown';
   reason: string;
+  pattern: string;
 }
 
 class BypassPatternsService {
-  private safeKeywords = new Set([
-    'fitness', 'meditation', 'learning', 'education', 'music', 'photo', 'video',
-    'health', 'workout', 'yoga', 'diet', 'recipe', 'cooking', 'finance', 'banking',
-    'productivity', 'notes', 'calendar', 'weather', 'news', 'social', 'messaging',
-    'shopping', 'travel', 'games', 'puzzle', 'entertainment', 'streaming',
-    // ASO Search Terms
-    'language', 'training', 'course', 'lesson', 'study', 'practice', 'fluent', 
-    'speak', 'learn', 'business', 'food'
-  ]);
-
-  private knownAppNames = new Set([
-    'instagram', 'tiktok', 'facebook', 'twitter', 'youtube', 'spotify', 'netflix',
-    'duolingo', 'headspace', 'calm', 'whatsapp', 'telegram', 'discord', 'slack',
-    'zoom', 'teams', 'gmail', 'outlook', 'dropbox', 'onedrive', 'uber', 'lyft',
-    // Language Learning Apps (Critical for ASO)
-    'pimsleur', 'babbel', 'rosetta stone', 'busuu', 'memrise', 'lingoda', 
-    'italki', 'hellotalk', 'tandem'
-  ]);
-
-  private simplePatterns = [
-    /^[a-zA-Z\s]{3,30}$/,  // Simple words/phrases
-    /^\w+\s+(app|game)$/i, // "word app" or "word game"
-    /^(best|top|free)\s+\w+$/i // "best fitness", "top games"
+  // Expanded patterns for direct iTunes API bypass
+  private patterns = [
+    // Specific app names that consistently fail
+    { 
+      pattern: /^(cutvibe|phoyo|cutvibes?|video\s*eraser|object\s*eraser)$/i, 
+      reason: 'known-failing-app-name',
+      confidence: 0.95 
+    },
+    
+    // Short specific terms (likely app names)
+    { 
+      pattern: /^[a-zA-Z]{3,8}$/, 
+      reason: 'short-specific-term',
+      confidence: 0.8 
+    },
+    
+    // CamelCase patterns (app naming convention)
+    { 
+      pattern: /^[A-Z][a-z]+[A-Z][a-zA-Z]*$/, 
+      reason: 'camelcase-app-name',
+      confidence: 0.85 
+    },
+    
+    // App Store URLs
+    { 
+      pattern: /apps\.apple\.com|itunes\.apple\.com/i, 
+      reason: 'app-store-url',
+      confidence: 0.99 
+    },
+    
+    // Brand names with numbers/special chars
+    { 
+      pattern: /^[a-zA-Z]+\d+[a-zA-Z]*$|^[a-zA-Z]+[_-][a-zA-Z]+$/i, 
+      reason: 'branded-app-name',
+      confidence: 0.9 
+    },
+    
+    // Specific app name patterns with descriptors
+    { 
+      pattern: /^[a-zA-Z]+:\s*[a-zA-Z\s]+$/i, 
+      reason: 'app-with-descriptor',
+      confidence: 0.9 
+    },
+    
+    // Common failing patterns detected from logs
+    { 
+      pattern: /^(fight|photo\s*editor|video\s*edit|camera\s*app)$/i, 
+      reason: 'historically-failing-term',
+      confidence: 0.85 
+    }
   ];
 
-  /**
-   * Determines if input can safely bypass complex validation
-   */
-  analyzeForBypass(input: string): BypassResult {
-    const cleanInput = input.trim().toLowerCase();
+  analyzeForBypass(input: string): BypassAnalysis {
+    const trimmedInput = input.trim();
     
-    // Single safe keyword
-    if (this.safeKeywords.has(cleanInput)) {
-      return {
-        shouldBypass: true,
-        confidence: 0.95,
-        pattern: 'safe-keyword',
-        reason: `Known safe keyword: ${cleanInput}`
-      };
-    }
-
-    // Known app name
-    if (this.knownAppNames.has(cleanInput)) {
-      return {
-        shouldBypass: true,
-        confidence: 0.9,
-        pattern: 'app-name',
-        reason: `Known app name: ${cleanInput}`
-      };
-    }
-
-    // Check for keyword containment (e.g., "pimsleur french" contains "pimsleur")
-    for (const appName of this.knownAppNames) {
-      if (cleanInput.includes(appName)) {
+    // Check against all patterns
+    for (const { pattern, reason, confidence } of this.patterns) {
+      if (pattern.test(trimmedInput)) {
         return {
           shouldBypass: true,
-          confidence: 0.85,
-          pattern: 'app-name',
-          reason: `Contains known app name: ${appName}`
+          confidence,
+          reason,
+          pattern: pattern.toString()
         };
       }
     }
 
-    // Check for safe keyword containment
-    for (const keyword of this.safeKeywords) {
-      if (cleanInput.includes(keyword)) {
-        return {
-          shouldBypass: true,
-          confidence: 0.8,
-          pattern: 'safe-keyword',
-          reason: `Contains safe keyword: ${keyword}`
-        };
-      }
+    // Additional heuristics for bypass decision
+    const heuristicAnalysis = this.analyzeHeuristics(trimmedInput);
+    if (heuristicAnalysis.shouldBypass) {
+      return heuristicAnalysis;
     }
 
-    // Simple phrase pattern
-    for (const pattern of this.simplePatterns) {
-      if (pattern.test(cleanInput)) {
-        return {
-          shouldBypass: true,
-          confidence: 0.8,
-          pattern: 'simple-phrase',
-          reason: `Matches simple phrase pattern`
-        };
-      }
-    }
-
-    // Check for obviously unsafe patterns
-    if (this.containsSuspiciousContent(cleanInput)) {
-      return {
-        shouldBypass: false,
-        confidence: 0.95,
-        pattern: 'unknown',
-        reason: 'Contains suspicious content'
-      };
-    }
-
-    // Default: use complex validation for unknown inputs
     return {
       shouldBypass: false,
-      confidence: 0.7,
-      pattern: 'unknown',
-      reason: 'Unknown pattern, using full validation'
+      confidence: 0,
+      reason: 'no-bypass-needed',
+      pattern: 'none'
     };
   }
 
-  private containsSuspiciousContent(input: string): boolean {
-    const suspiciousPatterns = [
-      /<script/i,
-      /javascript:/i,
-      /data:text\/html/i,
-      /\.\./,
-      /[<>'"]/
-    ];
+  private analyzeHeuristics(input: string): BypassAnalysis {
+    // Length-based bypass for very specific terms
+    if (input.length <= 6 && input.length >= 3 && !/\s/.test(input)) {
+      return {
+        shouldBypass: true,
+        confidence: 0.75,
+        reason: 'short-specific-term-heuristic',
+        pattern: 'length-based'
+      };
+    }
 
-    return suspiciousPatterns.some(pattern => pattern.test(input));
+    // Mixed case without spaces (likely app names)
+    if (/^[a-zA-Z]+$/.test(input) && /[A-Z]/.test(input) && /[a-z]/.test(input) && input.length <= 12) {
+      return {
+        shouldBypass: true,
+        confidence: 0.8,
+        reason: 'mixed-case-app-name',
+        pattern: 'case-pattern'
+      };
+    }
+
+    // Terms that look like proper nouns
+    if (/^[A-Z][a-z]+$/.test(input) && input.length <= 10) {
+      return {
+        shouldBypass: true,
+        confidence: 0.7,
+        reason: 'proper-noun-pattern',
+        pattern: 'proper-noun'
+      };
+    }
+
+    return {
+      shouldBypass: false,
+      confidence: 0,
+      reason: 'heuristics-passed',
+      pattern: 'none'
+    };
+  }
+
+  // Method to add dynamic patterns based on failures
+  addFailurePattern(searchTerm: string, reason: string) {
+    console.log(`🔄 [BYPASS-PATTERNS] Adding failure pattern: ${searchTerm} (${reason})`);
+    // This could be extended to dynamically learn from failures
   }
 }
 
