@@ -38,24 +38,8 @@ export const AppImporter: React.FC<AppImporterProps> = ({
         cacheResults: true
       });
       
-      // Convert search result to ScrapedMetadata format
-      const metadata: ScrapedMetadata = {
-        name: result.name || result.title,
-        url: result.url,
-        appId: result.appId,
-        title: result.title,
-        subtitle: result.subtitle || '',
-        description: result.description,
-        applicationCategory: result.applicationCategory,
-        locale: result.locale || 'en-US',
-        icon: result.icon,
-        developer: result.developer,
-        rating: result.rating,
-        reviews: result.reviews,
-        price: result.price
-      };
-      
-      onImportSuccess(metadata, organizationId);
+      // Extract the target app from the search result
+      onImportSuccess(result.targetApp, organizationId);
     } catch (error) {
       if (error instanceof AmbiguousSearchError) {
         setCandidateApps(error.candidates);
