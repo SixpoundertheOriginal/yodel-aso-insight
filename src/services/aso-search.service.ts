@@ -36,13 +36,68 @@ class AsoSearchService {
   private baseDelay = 1000;
 
   /**
-   * Stabilized search with comprehensive error handling
+   * Enhanced request debugging utility
+   */
+  private logRequestDetails(stage: string, data: any) {
+    console.group(`🔍 [REQUEST-DEBUG] ${stage}`);
+    console.log('Timestamp:', new Date().toISOString());
+    console.log('Stage:', stage);
+    console.log('Data type:', typeof data);
+    console.log('Data keys:', data && typeof data === 'object' ? Object.keys(data) : 'N/A');
+    
+    if (data && typeof data === 'object') {
+      console.log('Data details:', JSON.stringify(data, null, 2));
+      console.log('JSON stringified length:', JSON.stringify(data).length);
+      
+      // Test serialization
+      try {
+        const serialized = JSON.stringify(data);
+        const deserialized = JSON.parse(serialized);
+        console.log('✅ Serialization test passed');
+        console.log('Serialized matches original:', JSON.stringify(data) === JSON.stringify(deserialized));
+      } catch (serError) {
+        console.error('❌ Serialization test failed:', serError);
+      }
+    }
+    console.groupEnd();
+  }
+
+  /**
+   * Enhanced Supabase client debugging
+   */
+  private logSupabaseClientState() {
+    console.group('🔍 [SUPABASE-DEBUG] Client State');
+    
+    // Log client configuration (safely)
+    console.log('Supabase URL exists:', !!supabase.supabaseUrl);
+    console.log('Supabase Key exists:', !!supabase.supabaseKey);
+    console.log('Client initialized:', !!supabase);
+    
+    // Test client connectivity
+    supabase.auth.getSession().then(({ data: { session }, error }) => {
+      console.log('Auth session exists:', !!session);
+      console.log('Auth error:', error?.message || 'None');
+      console.log('User ID:', session?.user?.id || 'Not authenticated');
+    }).catch(authError => {
+      console.error('Auth check failed:', authError);
+    });
+    
+    console.groupEnd();
+  }
+
+  /**
+   * Stabilized search with comprehensive error handling and debugging
    */
   async search(input: string, config: SearchConfig): Promise<SearchResult> {
     // Create correlation context for request tracing
     const correlationContext = correlationTracker.createContext('aso-search', config.organizationId);
     
-    correlationTracker.log('info', 'ASO search initiated with stabilized routing', { input, config });
+    console.group(`🚀 [ASO-SEARCH] Starting search with enhanced debugging`);
+    console.log('Input:', input);
+    console.log('Config:', config);
+    console.log('Correlation ID:', correlationContext.id);
+    
+    correlationTracker.log('info', 'ASO search initiated with comprehensive debugging', { input, config });
 
     try {
       // PHASE 1: Bypass analysis for direct iTunes calls
@@ -87,11 +142,15 @@ class AsoSearchService {
         }
       }
 
-      // MAIN PATH: Use edge function with stabilized error handling
-      correlationTracker.log('info', 'Using edge function with stabilized error handling');
-      return await this.searchWithStabilizedErrorHandling(input, config);
+      // MAIN PATH: Use edge function with comprehensive debugging
+      console.log('🔍 [DEBUG] Using edge function with comprehensive request debugging');
+      const result = await this.searchWithComprehensiveDebugging(input, config);
+      console.groupEnd();
+      return result;
 
     } catch (error: any) {
+      console.groupEnd();
+      
       // Re-throw AmbiguousSearchError without modification
       if (error instanceof AmbiguousSearchError) {
         throw error;
@@ -99,6 +158,242 @@ class AsoSearchService {
       
       correlationTracker.log('error', 'All search paths failed', { error: error.message });
       throw new Error(this.getUserFriendlyError(error));
+    }
+  }
+
+  /**
+   * Comprehensive debugging version of edge function call
+   */
+  private async searchWithComprehensiveDebugging(input: string, config: SearchConfig): Promise<SearchResult> {
+    const correlationId = correlationTracker.getContext()?.id || crypto.randomUUID();
+    
+    console.group(`🔍 [COMPREHENSIVE-DEBUG] Edge Function Request`);
+    
+    // PHASE 1: PRE-REQUEST VALIDATION AND DEBUGGING
+    console.log('🔍 [PHASE-1] Pre-Request Validation');
+    
+    const requestBody = {
+      searchTerm: input.trim(),
+      searchType: 'keyword' as const,
+      organizationId: config.organizationId,
+      includeCompetitorAnalysis: true,
+      searchParameters: {
+        country: 'us',
+        limit: 25
+      }
+    };
+
+    // Log request construction
+    this.logRequestDetails('Request Body Construction', requestBody);
+
+    // VALIDATION 1: Basic input validation
+    if (!requestBody.searchTerm || requestBody.searchTerm.trim() === '') {
+      console.error('❌ [VALIDATION] Empty search term');
+      throw new Error('Search term cannot be empty');
+    }
+
+    if (!requestBody.organizationId) {
+      console.error('❌ [VALIDATION] Missing organization ID');
+      throw new Error('Organization ID is required');
+    }
+
+    // VALIDATION 2: JSON serialization test
+    console.log('🔍 [VALIDATION] Testing JSON serialization...');
+    let serializedBody: string;
+    try {
+      serializedBody = JSON.stringify(requestBody);
+      console.log('✅ [VALIDATION] JSON serialization successful');
+      console.log('📊 [VALIDATION] Serialized body length:', serializedBody.length);
+      console.log('📝 [VALIDATION] Serialized body preview:', serializedBody.substring(0, 200));
+      
+      // Test deserialization
+      const testDeserialized = JSON.parse(serializedBody);
+      console.log('✅ [VALIDATION] JSON round-trip test passed');
+      console.log('🔍 [VALIDATION] Round-trip keys match:', 
+        Object.keys(requestBody).sort().join(',') === Object.keys(testDeserialized).sort().join(','));
+        
+    } catch (serializationError) {
+      console.error('❌ [VALIDATION] JSON serialization failed:', serializationError);
+      throw new Error('Failed to serialize request body');
+    }
+
+    // PHASE 2: SUPABASE CLIENT STATE DEBUGGING
+    console.log('🔍 [PHASE-2] Supabase Client State');
+    this.logSupabaseClientState();
+
+    // PHASE 3: REQUEST HEADERS DEBUGGING
+    console.log('🔍 [PHASE-3] Request Headers Preparation');
+    const requestHeaders = {
+      'Content-Type': 'application/json',
+      'X-Correlation-ID': correlationId
+    };
+    
+    console.log('📋 [HEADERS] Request headers:', requestHeaders);
+    console.log('📋 [HEADERS] Content-Type set:', requestHeaders['Content-Type']);
+    console.log('📋 [HEADERS] Correlation ID set:', requestHeaders['X-Correlation-ID']);
+
+    // PHASE 4: EDGE FUNCTION INVOCATION WITH DEBUGGING
+    console.log('🔍 [PHASE-4] Edge Function Invocation');
+    console.log('🚀 [INVOKE] Calling supabase.functions.invoke...');
+    console.log('🚀 [INVOKE] Function name: app-store-scraper');
+    console.log('🚀 [INVOKE] Body type:', typeof requestBody);
+    console.log('🚀 [INVOKE] Body size (bytes):', new Blob([serializedBody]).size);
+
+    let invokeStartTime = Date.now();
+    
+    try {
+      console.log('📡 [NETWORK] Making edge function request...');
+      
+      const { data, error } = await supabase.functions.invoke('app-store-scraper', {
+        body: requestBody,
+        headers: requestHeaders
+      });
+
+      const invokeEndTime = Date.now();
+      const invokeDuration = invokeEndTime - invokeStartTime;
+      
+      // PHASE 5: RESPONSE DEBUGGING
+      console.log('🔍 [PHASE-5] Response Analysis');
+      console.log('⏱️ [TIMING] Edge function call duration:', invokeDuration + 'ms');
+      console.log('📥 [RESPONSE] Has data:', !!data);
+      console.log('📥 [RESPONSE] Has error:', !!error);
+      
+      if (error) {
+        console.error('❌ [RESPONSE] Edge function error details:');
+        console.error('   Error message:', error.message);
+        console.error('   Error context:', error.context);
+        console.error('   Error stack:', error.stack);
+        
+        // Detailed error analysis
+        if (error.message?.includes('Edge Function returned a non-2xx status code')) {
+          console.error('🚨 [ERROR-ANALYSIS] Non-2xx status code detected');
+          console.error('   This typically indicates the edge function received the request but returned an error');
+          console.error('   Check edge function logs for detailed error information');
+        }
+        if (error.message?.includes('Invalid JSON')) {
+          console.error('🚨 [ERROR-ANALYSIS] JSON parsing error detected');
+          console.error('   Request body may be corrupted during transmission');
+        }
+        if (error.message?.includes('timeout')) {
+          console.error('🚨 [ERROR-ANALYSIS] Timeout error detected');
+          console.error('   Edge function may be taking too long to respond');
+        }
+        
+        throw new Error(`Edge function error: ${error.message}`);
+      }
+
+      if (!data) {
+        console.error('❌ [RESPONSE] No data received from edge function');
+        console.error('   This indicates the edge function may have failed silently');
+        throw new Error('No response received from edge function');
+      }
+
+      // SUCCESS DEBUGGING
+      console.log('✅ [RESPONSE] Edge function response received successfully');
+      console.log('📊 [RESPONSE] Response data type:', typeof data);
+      console.log('📊 [RESPONSE] Response success:', data?.success);
+      
+      if (data.success) {
+        console.log('✅ [SUCCESS] Edge function call completed successfully');
+        console.log('📋 [SUCCESS] Response data keys:', Object.keys(data));
+        console.log('📋 [SUCCESS] Has search data:', !!data.data);
+        console.log('📋 [SUCCESS] Search context:', data.searchContext);
+      } else {
+        console.error('❌ [RESPONSE] Edge function returned unsuccessful response');
+        console.error('   Success flag is false, but no error thrown');
+        console.error('   Response data:', data);
+      }
+
+      if (!data.success) {
+        const errorMessage = data?.error || 'Edge function returned unsuccessful response';
+        console.error('❌ [FAILURE] Edge function failed:', errorMessage);
+        
+        // Enhanced error messages based on the response
+        if (errorMessage.includes('No apps found')) {
+          throw new Error(`No apps found for "${input}". Try different keywords or check the spelling.`);
+        }
+        if (errorMessage.includes('Invalid request')) {
+          throw new Error('Search request was invalid. Please try again.');
+        }
+        if (errorMessage.includes('temporarily unavailable') || errorMessage.includes('Service temporarily unavailable')) {
+          throw new Error('App Store search is temporarily unavailable. Please try again in a few minutes.');
+        }
+        
+        throw new Error(errorMessage);
+      }
+
+      console.log('✅ [SUCCESS] Edge function call successful, transforming response...');
+
+      // Transform response - handle both single app and app with competitors
+      const responseData = data.data;
+      const targetApp = {
+        name: responseData.name || responseData.title,
+        appId: responseData.appId,
+        title: responseData.title,
+        subtitle: responseData.subtitle || '',
+        description: responseData.description || '',
+        url: responseData.url || '',
+        icon: responseData.icon || '',
+        rating: responseData.rating || 0,
+        reviews: responseData.reviews || 0,
+        developer: responseData.developer || '',
+        applicationCategory: responseData.applicationCategory || 'Unknown',
+        locale: responseData.locale || 'en-US'
+      } as ScrapedMetadata;
+
+      const result = {
+        targetApp,
+        competitors: responseData.competitors || [],
+        searchContext: {
+          query: input,
+          type: 'keyword' as const,
+          totalResults: (responseData.competitors?.length || 0) + 1,
+          category: responseData.applicationCategory || 'Unknown',
+          country: 'us'
+        },
+        intelligence: { 
+          opportunities: data.searchContext?.includeCompetitors ? 
+            [`Found ${responseData.competitors?.length || 0} competitors for analysis`] : 
+            ['App successfully imported for analysis']
+        }
+      };
+
+      console.log('✅ [FINAL] Search result transformed successfully');
+      console.groupEnd();
+      
+      return result;
+
+    } catch (networkError: any) {
+      const invokeEndTime = Date.now();
+      const invokeDuration = invokeEndTime - invokeStartTime;
+      
+      console.error('💥 [NETWORK-ERROR] Edge function call failed');
+      console.error('⏱️ [TIMING] Failed after:', invokeDuration + 'ms');
+      console.error('📋 [ERROR] Error type:', networkError.constructor.name);
+      console.error('📋 [ERROR] Error message:', networkError.message);
+      console.error('📋 [ERROR] Stack trace:', networkError.stack);
+      
+      // Network-level error analysis
+      if (networkError.message?.includes('fetch')) {
+        console.error('🚨 [NETWORK-ANALYSIS] Network fetch error detected');
+        console.error('   This indicates a problem with the HTTP request itself');
+      }
+      if (networkError.message?.includes('timeout')) {
+        console.error('🚨 [NETWORK-ANALYSIS] Network timeout detected');
+        console.error('   The request may have taken too long to complete');
+      }
+      
+      console.groupEnd();
+      
+      // Re-throw with preserved error message if it's already user-friendly
+      if (networkError.message?.includes('No apps found') || 
+          networkError.message?.includes('temporarily unavailable') ||
+          networkError.message?.includes('try again')) {
+        throw networkError;
+      }
+      
+      // Otherwise, provide a generic user-friendly message
+      throw new Error('Edge function call failed. Please try again with different keywords.');
     }
   }
 
@@ -125,165 +420,6 @@ class AsoSearchService {
         opportunities: [`Direct match found for "${input}"`]
       }
     };
-  }
-
-  /**
-   * Stabilized edge function call with comprehensive error handling
-   */
-  private async searchWithStabilizedErrorHandling(input: string, config: SearchConfig): Promise<SearchResult> {
-    const requestBody = {
-      searchTerm: input.trim(),
-      searchType: 'keyword' as const,
-      organizationId: config.organizationId,
-      includeCompetitorAnalysis: true,
-      searchParameters: {
-        country: 'us',
-        limit: 25
-      }
-    };
-
-    // Enhanced debug logging
-    console.log('🔍 [FRONTEND] Preparing stabilized edge function request:', {
-      requestBody,
-      bodySize: JSON.stringify(requestBody).length,
-      correlationId: correlationTracker.getContext()?.id
-    });
-
-    // STABILIZED VALIDATION before sending
-    if (!requestBody.searchTerm || requestBody.searchTerm.trim() === '') {
-      throw new Error('Search term cannot be empty');
-    }
-
-    if (!requestBody.organizationId) {
-      throw new Error('Organization ID is required');
-    }
-
-    // Validate JSON serialization doesn't fail
-    try {
-      const testSerialization = JSON.stringify(requestBody);
-      if (!testSerialization || testSerialization === 'null') {
-        throw new Error('Request body serialization failed');
-      }
-    } catch (serializationError) {
-      console.error('❌ [FRONTEND] Request serialization failed:', serializationError);
-      throw new Error('Failed to prepare search request');
-    }
-
-    console.log('✅ [FRONTEND] Request validation passed, calling stabilized edge function');
-
-    try {
-      const { data, error } = await supabase.functions.invoke('app-store-scraper', {
-        body: requestBody,
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Correlation-ID': correlationTracker.getContext()?.id || 'unknown'
-        }
-      });
-
-      console.log('📥 [FRONTEND] Stabilized edge function response received:', {
-        hasData: !!data,
-        hasError: !!error,
-        dataSuccess: data?.success,
-        errorMessage: error?.message,
-        dataError: data?.error
-      });
-
-      // ENHANCED ERROR HANDLING
-      if (error) {
-        console.error('❌ [FRONTEND] Edge function error:', error);
-        
-        // Parse different types of edge function errors
-        if (error.message?.includes('Edge Function returned a non-2xx status code')) {
-          throw new Error('Search service is currently unavailable. Please try again in a moment.');
-        }
-        if (error.message?.includes('Invalid JSON')) {
-          throw new Error('Search request format error. Please try again.');
-        }
-        if (error.message?.includes('timeout')) {
-          throw new Error('Search timed out. Please try with a different search term.');
-        }
-        
-        throw new Error(`Search service error: ${error.message}`);
-      }
-
-      if (!data) {
-        console.error('❌ [FRONTEND] No data received from edge function');
-        throw new Error('No response received from search service');
-      }
-
-      if (!data.success) {
-        console.error('❌ [FRONTEND] Edge function returned unsuccessful response:', data);
-        const errorMessage = data?.error || 'Search was unsuccessful';
-        
-        // Enhanced error messages based on the response
-        if (errorMessage.includes('No apps found')) {
-          throw new Error(`No apps found for "${input}". Try different keywords or check the spelling.`);
-        }
-        if (errorMessage.includes('Invalid request')) {
-          throw new Error('Search request was invalid. Please try again.');
-        }
-        if (errorMessage.includes('temporarily unavailable') || errorMessage.includes('Service temporarily unavailable')) {
-          throw new Error('App Store search is temporarily unavailable. Please try again in a few minutes.');
-        }
-        if (errorMessage.includes('Missing required field')) {
-          throw new Error('Search configuration error. Please refresh the page and try again.');
-        }
-        
-        throw new Error(errorMessage);
-      }
-
-      console.log('✅ [FRONTEND] Stabilized edge function call successful');
-
-      // Transform response - handle both single app and app with competitors
-      const responseData = data.data;
-      const targetApp = {
-        name: responseData.name || responseData.title,
-        appId: responseData.appId,
-        title: responseData.title,
-        subtitle: responseData.subtitle || '',
-        description: responseData.description || '',
-        url: responseData.url || '',
-        icon: responseData.icon || '',
-        rating: responseData.rating || 0,
-        reviews: responseData.reviews || 0,
-        developer: responseData.developer || '',
-        applicationCategory: responseData.applicationCategory || 'Unknown',
-        locale: responseData.locale || 'en-US'
-      } as ScrapedMetadata;
-
-      return {
-        targetApp,
-        competitors: responseData.competitors || [],
-        searchContext: {
-          query: input,
-          type: 'keyword',
-          totalResults: (responseData.competitors?.length || 0) + 1,
-          category: responseData.applicationCategory || 'Unknown',
-          country: 'us'
-        },
-        intelligence: { 
-          opportunities: data.searchContext?.includeCompetitors ? 
-            [`Found ${responseData.competitors?.length || 0} competitors for analysis`] : 
-            ['App successfully imported for analysis']
-        }
-      };
-
-    } catch (error: any) {
-      console.error('💥 [FRONTEND] Stabilized edge function call failed:', {
-        error: error.message,
-        stack: error.stack
-      });
-      
-      // Re-throw with preserved error message if it's already user-friendly
-      if (error.message?.includes('No apps found') || 
-          error.message?.includes('temporarily unavailable') ||
-          error.message?.includes('try again')) {
-        throw error;
-      }
-      
-      // Otherwise, provide a generic user-friendly message
-      throw new Error('Search failed. Please try again with different keywords.');
-    }
   }
 
   /**
