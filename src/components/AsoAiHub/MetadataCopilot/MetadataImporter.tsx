@@ -1,7 +1,7 @@
+
 import React, { useState, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { appStoreService } from '@/services';
 import { ScrapedMetadata } from '@/types/aso';
 import { AmbiguousSearchError } from '@/types/search-errors';
 import { DataImporter } from '@/components/shared/DataImporter';
@@ -13,16 +13,16 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 
-// Import new bulletproof services
+// Import bulletproof services
 import { userExperienceShieldService, LoadingState } from '@/services/user-experience-shield.service';
 import { asoSearchService } from '@/services/aso-search.service';
+import { useDebouncedSearch } from '@/hooks/useDebouncedSearch';
 
 interface MetadataImporterProps {
   onImportSuccess: (data: ScrapedMetadata, organizationId: string) => void;
 }
 
 export const MetadataImporter: React.FC<MetadataImporterProps> = ({ onImportSuccess }) => {
-  const [isImporting, setIsImporting] = useState(false);
   const [organizationId, setOrganizationId] = useState<string | null>(null);
   const [lastError, setLastError] = useState<string | null>(null);
   const [searchType, setSearchType] = useState<'auto' | 'keyword' | 'brand' | 'url'>('auto');
@@ -51,6 +51,15 @@ export const MetadataImporter: React.FC<MetadataImporterProps> = ({ onImportSucc
   const [showDebugInfo, setShowDebugInfo] = useState(process.env.NODE_ENV === 'development');
   
   const { toast } = useToast();
+
+  // ENHANCED: Use debounced search hook for bulletproof search operations
+  const { debouncedSearch, isSearching, cancelSearch } = useDebouncedSearch({
+    delay: 800, // Slightly longer delay for complex search operations
+    onSearch: async (input: string) => {
+      console.log('🔍 [DEBOUNCED-SEARCH] Executing bulletproof search for:', input);
+      await performBulletproofSearch(input);
+    }
+  });
 
   useEffect(() => {
     const fetchOrgId = async () => {
@@ -113,7 +122,8 @@ export const MetadataImporter: React.FC<MetadataImporterProps> = ({ onImportSucc
     }
   };
 
-  const handleImport = async (input: string) => {
+  // ENHANCED: Main search logic extracted for debounced usage
+  const performBulletproofSearch = async (input: string) => {
     if (!organizationId) {
       toast({
         title: 'Organization Missing',
@@ -123,32 +133,19 @@ export const MetadataImporter: React.FC<MetadataImporterProps> = ({ onImportSucc
       return;
     }
 
-    if (!input || input.trim().length === 0) {
-      toast({
-        title: 'Empty Search',
-        description: 'Please enter keywords, app name, or App Store URL to search.',
-        variant: 'destructive'
-      });
-      return;
-    }
-
-    const trimmedInput = input.trim();
-    console.log('🚀 [METADATA-IMPORTER] Starting bulletproof import for:', trimmedInput);
-
-    setIsImporting(true);
     setLastError(null);
-    setPendingSearchTerm(trimmedInput);
+    setPendingSearchTerm(input);
 
     // Add to search history
     setSearchHistory(prev => {
-      const newHistory = [trimmedInput, ...prev.filter(item => item !== trimmedInput)].slice(0, 5);
+      const newHistory = [input, ...prev.filter(item => item !== input)].slice(0, 5);
       return newHistory;
     });
 
     try {
       console.log('📤 [METADATA-IMPORTER] Calling bulletproof asoSearchService.search...');
       
-      const searchResult = await asoSearchService.search(trimmedInput, {
+      const searchResult = await asoSearchService.search(input, {
         organizationId,
         includeIntelligence: true,
         cacheResults: true,
@@ -215,7 +212,6 @@ export const MetadataImporter: React.FC<MetadataImporterProps> = ({ onImportSucc
         console.log(`📋 [METADATA-IMPORTER] User can choose from ${error.candidates.length} options`);
         setAppCandidates(error.candidates);
         setShowAppSelection(true);
-        setIsImporting(false);
         return;
       }
       
@@ -232,7 +228,6 @@ export const MetadataImporter: React.FC<MetadataImporterProps> = ({ onImportSucc
 
     } finally {
       if (!showAppSelection) {
-        setIsImporting(false);
         userExperienceShieldService.reset();
         setLoadingState({
           isLoading: false,
@@ -245,10 +240,27 @@ export const MetadataImporter: React.FC<MetadataImporterProps> = ({ onImportSucc
     }
   };
 
-  // NEW: Handle app selection from modal
+  // ENHANCED: Updated main import handler to use debounced search
+  const handleImport = async (input: string) => {
+    if (!input || input.trim().length === 0) {
+      toast({
+        title: 'Empty Search',
+        description: 'Please enter keywords, app name, or App Store URL to search.',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    const trimmedInput = input.trim();
+    console.log('🚀 [METADATA-IMPORTER] Triggering debounced bulletproof import for:', trimmedInput);
+
+    // Use debounced search instead of direct search
+    await debouncedSearch(trimmedInput);
+  };
+
+  // Handle app selection from modal
   const handleAppSelection = async (selectedApp: ScrapedMetadata) => {
     setShowAppSelection(false);
-    setIsImporting(true);
     
     try {
       console.log('✅ [METADATA-IMPORTER] User selected app:', selectedApp.name);
@@ -268,18 +280,19 @@ export const MetadataImporter: React.FC<MetadataImporterProps> = ({ onImportSucc
         variant: 'destructive',
       });
     } finally {
-      setIsImporting(false);
       setAppCandidates([]);
       setPendingSearchTerm('');
     }
   };
 
-  // NEW: Handle modal cancel
+  // Handle modal cancel
   const handleAppSelectionCancel = () => {
     setShowAppSelection(false);
-    setIsImporting(false);
     setAppCandidates([]);
     setPendingSearchTerm('');
+    
+    // Cancel any pending search operations
+    cancelSearch();
     
     toast({
       title: 'Search Cancelled',
@@ -317,6 +330,9 @@ export const MetadataImporter: React.FC<MetadataImporterProps> = ({ onImportSucc
     handleImport(searchTerm);
   };
 
+  // ENHANCED: Determine loading state from multiple sources
+  const isImporting = isSearching || loadingState.isLoading || showAppSelection;
+
   return (
     <div className="max-w-2xl mx-auto space-y-4">
       {lastError && (
@@ -329,25 +345,29 @@ export const MetadataImporter: React.FC<MetadataImporterProps> = ({ onImportSucc
       )}
 
       {/* Enhanced Loading State Display */}
-      {loadingState.isLoading && (
+      {(loadingState.isLoading || isSearching) && (
         <Card className="bg-zinc-900/70 border-zinc-700">
           <CardContent className="pt-6">
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-2">
                   <Shield className="w-4 h-4 text-blue-500" />
-                  <span className="text-sm font-medium text-white">Bulletproof Search Active</span>
+                  <span className="text-sm font-medium text-white">
+                    {isSearching ? 'Debounced Search Active' : 'Bulletproof Search Active'}
+                  </span>
                 </div>
                 <Badge variant="outline" className="text-xs">
-                  {loadingState.stage}
+                  {isSearching ? 'debouncing' : loadingState.stage}
                 </Badge>
               </div>
               
-              <Progress value={loadingState.progress} className="h-2" />
+              <Progress value={isSearching ? 25 : loadingState.progress} className="h-2" />
               
               <div className="flex items-center space-x-2 text-sm text-zinc-300">
                 <Loader2 className="w-4 h-4 animate-spin" />
-                <span>{loadingState.message}</span>
+                <span>
+                  {isSearching ? 'Processing search request...' : loadingState.message}
+                </span>
               </div>
               
               {loadingState.stage === 'fallback' && (
@@ -592,23 +612,23 @@ export const MetadataImporter: React.FC<MetadataImporterProps> = ({ onImportSucc
       {/* Enhanced Development Debug Info */}
       {process.env.NODE_ENV === 'development' && (
         <div className="mt-4 bg-zinc-800/50 p-3 rounded text-xs text-zinc-300 space-y-1">
-          <div><strong>ASO Intelligence Platform v8.0.0-bulletproof-search</strong></div>
+          <div><strong>ASO Intelligence Platform v8.1.0-debounced-search</strong></div>
           <div>Organization ID: {organizationId || 'Not loaded'}</div>
           <div>Search Type: {searchType}</div>
           <div>Competitive Intelligence: {enableCompetitorDiscovery ? 'Enabled' : 'Disabled'}</div>
           <div>Competitor Limit: {competitorLimit}</div>
           <div>Keyword Analysis: {includeKeywordAnalysis ? 'Enabled' : 'Disabled'}</div>
           <div>Is Importing: {isImporting ? 'Yes' : 'No'}</div>
+          <div>Is Searching (Debounced): {isSearching ? 'Yes' : 'No'}</div>
           <div>Loading Stage: {loadingState.stage}</div>
           <div>Loading Progress: {loadingState.progress}%</div>
           <div>Show App Selection: {showAppSelection ? 'Yes' : 'No'}</div>
           <div>App Candidates: {appCandidates.length}</div>
-          <div className="text-green-400">✅ Bulletproof error handling active</div>
-          <div className="text-green-400">✅ Multi-level circuit breakers</div>
-          <div className="text-green-400">✅ Intelligent retry strategies</div>
-          <div className="text-green-400">✅ Cache fallback system</div>
-          <div className="text-green-400">✅ UX shield protection</div>
-          <div className="text-green-400">✅ Failure analytics & prediction</div>
+          <div className="text-green-400">✅ Phase 1 Complete - Infinite loop prevention active</div>
+          <div className="text-green-400">✅ Debounced search implemented</div>
+          <div className="text-green-400">✅ Enhanced audit stability</div>
+          <div className="text-green-400">✅ Circuit breaker protection</div>
+          <div className="text-green-400">✅ Operation cooldowns</div>
           {lastError && <div className="text-red-400">❌ Last Error: {lastError}</div>}
           {systemHealth && (
             <div className="text-blue-400">📊 System Health: {Math.round(systemHealth.circuitBreakers.overallHealth * 100)}%</div>
