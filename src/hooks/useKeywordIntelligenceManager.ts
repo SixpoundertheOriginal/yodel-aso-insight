@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useAdvancedKeywordIntelligence } from './useAdvancedKeywordIntelligence';
 import { useEnhancedKeywordAnalytics } from './useEnhancedKeywordAnalytics';
 import { enhancedKeywordDataPipelineService } from '@/services/enhanced-keyword-data-pipeline.service';
+import { semanticClusteringService } from '@/services/semantic-clustering.service';
 import { toast } from 'sonner';
 
 interface KeywordIntelligenceState {
@@ -50,6 +51,42 @@ export const useKeywordIntelligenceManager = ({
     appId: targetAppId,
     enabled: !!targetAppId && !state.isTransitioning
   });
+
+  // Enhanced clustering with performance analytics
+  const [enhancedClusters, setEnhancedClusters] = useState<any[]>([]);
+
+  // Generate enhanced clusters when keyword data changes
+  useEffect(() => {
+    if (advancedKI.keywordData.length > 0 && !state.isTransitioning) {
+      generateEnhancedClusters();
+    }
+  }, [advancedKI.keywordData, state.isTransitioning]);
+
+  const generateEnhancedClusters = useCallback(async () => {
+    if (!advancedKI.keywordData.length) return;
+
+    try {
+      console.log('🧠 [KI-MANAGER] Generating enhanced semantic clusters');
+      
+      const clusteringResult = await semanticClusteringService.generateClusters(
+        advancedKI.keywordData,
+        organizationId,
+        {
+          minSimilarity: 0.5,
+          maxClusters: 10,
+          minKeywordsPerCluster: 2
+        }
+      );
+
+      setEnhancedClusters(clusteringResult.clusters);
+      console.log('✅ [KI-MANAGER] Generated', clusteringResult.clusters.length, 'enhanced clusters');
+
+    } catch (error) {
+      console.error('❌ [KI-MANAGER] Enhanced clustering failed:', error);
+      // Fallback to original clusters
+      setEnhancedClusters(advancedKI.clusters);
+    }
+  }, [advancedKI.keywordData, advancedKI.clusters, organizationId]);
 
   // Handle app transitions with timeout protection
   useEffect(() => {
@@ -161,6 +198,9 @@ export const useKeywordIntelligenceManager = ({
         enhancedAnalytics.refetchTrends()
       ]);
       
+      // Regenerate enhanced clusters
+      await generateEnhancedClusters();
+      
       setState(prev => ({
         ...prev,
         isTransitioning: false,
@@ -177,7 +217,7 @@ export const useKeywordIntelligenceManager = ({
       setState(prev => ({ ...prev, isTransitioning: false }));
       toast.error('Failed to refresh enhanced keyword data');
     }
-  }, [targetAppId, state.isTransitioning, state.fallbackMode, advancedKI, enhancedAnalytics]);
+  }, [targetAppId, state.isTransitioning, state.fallbackMode, advancedKI, enhancedAnalytics, generateEnhancedClusters]);
 
   // Generate unified enhanced keyword data
   const unifiedKeywordData = useCallback(() => {
@@ -207,9 +247,9 @@ export const useKeywordIntelligenceManager = ({
     fallbackMode: state.fallbackMode,
     lastSuccessfulLoad: state.lastSuccessfulLoad,
     
-    // Enhanced unified data
+    // Enhanced unified data with semantic clustering
     keywordData: unifiedKeywordData(),
-    clusters: advancedKI.clusters,
+    clusters: enhancedClusters.length > 0 ? enhancedClusters : advancedKI.clusters,
     stats: advancedKI.stats,
     selectedApp: advancedKI.selectedApp,
     
@@ -221,6 +261,7 @@ export const useKeywordIntelligenceManager = ({
     // Enhanced actions
     refreshAllData,
     clearStuckTransition: () => setState(prev => ({ ...prev, isTransitioning: false })),
+    generateEnhancedClusters,
     
     // Individual hook access for advanced use
     advancedKI,
