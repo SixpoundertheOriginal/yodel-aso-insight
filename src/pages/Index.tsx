@@ -1,3 +1,4 @@
+
 import React from "react";
 import MainLayout from "../layouts/MainLayout";
 import { Button } from "@/components/ui/button";
@@ -5,7 +6,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Link } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { useNavigate } from "react-router-dom";
-import { Brain, Zap } from "@/components/icons";
+import { Brain, Zap } from "lucide-react";
 
 const Index = () => {
   const { session } = useAuth();

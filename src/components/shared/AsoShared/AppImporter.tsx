@@ -8,7 +8,14 @@ import { useDebouncedSearch } from '@/hooks/useDebouncedSearch';
 import { asoSearchService } from '@/services/aso-search.service';
 import { ScrapedMetadata } from '@/types/aso';
 import { AppSelectionModal } from './AppSelectionModal';
-import { AmbiguousSearchError } from '@/services/aso-search.service';
+
+// Define AmbiguousSearchError locally since it's not exported
+class AmbiguousSearchError extends Error {
+  constructor(public candidates: ScrapedMetadata[]) {
+    super('Multiple apps found');
+    this.name = 'AmbiguousSearchError';
+  }
+}
 
 interface AppImporterProps {
   onImportSuccess: (metadata: ScrapedMetadata, orgId: string) => void;
@@ -31,7 +38,24 @@ export const AppImporter: React.FC<AppImporterProps> = ({
         cacheResults: true
       });
       
-      onImportSuccess(result, organizationId);
+      // Convert search result to ScrapedMetadata format
+      const metadata: ScrapedMetadata = {
+        name: result.name || result.title,
+        url: result.url,
+        appId: result.appId,
+        title: result.title,
+        subtitle: result.subtitle || '',
+        description: result.description,
+        applicationCategory: result.applicationCategory,
+        locale: result.locale || 'en-US',
+        icon: result.icon,
+        developer: result.developer,
+        rating: result.rating,
+        reviews: result.reviews,
+        price: result.price
+      };
+      
+      onImportSuccess(metadata, organizationId);
     } catch (error) {
       if (error instanceof AmbiguousSearchError) {
         setCandidateApps(error.candidates);

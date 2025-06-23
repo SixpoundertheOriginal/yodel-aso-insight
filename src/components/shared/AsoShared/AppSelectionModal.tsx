@@ -57,21 +57,23 @@ export const AppSelectionModal: React.FC<AppSelectionModalProps> = ({
                       {app.name}
                     </h3>
                     <p className="text-sm text-zinc-400 mb-2">
-                      by {app.sellerName}
+                      by {app.developer || 'Unknown Developer'}
                     </p>
                     
                     <div className="flex items-center gap-4 mb-2">
-                      {app.averageUserRating && (
+                      {app.rating && (
                         <div className="flex items-center gap-1">
                           <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
                           <span className="text-sm text-zinc-300">
-                            {app.averageUserRating}
+                            {app.rating}
                           </span>
                         </div>
                       )}
-                      <Badge variant="outline" className="text-zinc-400 border-zinc-600">
-                        {app.applicationCategory}
-                      </Badge>
+                      {app.applicationCategory && (
+                        <Badge variant="outline" className="text-zinc-400 border-zinc-600">
+                          {app.applicationCategory}
+                        </Badge>
+                      )}
                     </div>
                     
                     {app.description && (
