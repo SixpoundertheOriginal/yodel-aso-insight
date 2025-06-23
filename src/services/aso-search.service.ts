@@ -1,3 +1,4 @@
+
 import { supabase } from '@/integrations/supabase/client';
 import { inputDetectionService, SearchParameters } from './input-detection.service';
 import { bypassPatternsService } from './bypass-patterns.service';
@@ -68,10 +69,10 @@ class AsoSearchService {
   private logSupabaseClientState() {
     console.group('🔍 [SUPABASE-DEBUG] Client State');
     
-    // Log client configuration (safely)
-    console.log('Supabase URL exists:', !!supabase.supabaseUrl);
-    console.log('Supabase Key exists:', !!supabase.supabaseKey);
-    console.log('Client initialized:', !!supabase);
+    // Log client configuration (safely without accessing protected properties)
+    console.log('Supabase client exists:', !!supabase);
+    console.log('Client type:', typeof supabase);
+    console.log('Client constructor name:', supabase.constructor.name);
     
     // Test client connectivity
     supabase.auth.getSession().then(({ data: { session }, error }) => {
