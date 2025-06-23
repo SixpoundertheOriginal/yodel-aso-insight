@@ -1,5 +1,5 @@
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useAdvancedKeywordIntelligence } from './useAdvancedKeywordIntelligence';
 import { useEnhancedKeywordAnalytics } from './useEnhancedKeywordAnalytics';
@@ -44,6 +44,7 @@ export const useEnhancedAppAudit = ({
 }: UseEnhancedAppAuditProps) => {
   const [auditData, setAuditData] = useState<EnhancedAuditData | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isAuditRunning, setIsAuditRunning] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   // Use existing intelligence hooks
@@ -78,25 +79,33 @@ export const useEnhancedAppAudit = ({
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
 
-  // Generate enhanced audit data when dependencies change
-  useEffect(() => {
-    if (!enabled || !metadata || !appId || advancedKI.isLoading || enhancedAnalytics.isLoading) {
-      return;
-    }
-
-    generateEnhancedAudit();
-  }, [
-    enabled,
-    metadata,
+  // Memoize stable dependencies to prevent infinite re-renders
+  const stableDependencies = useMemo(() => ({
+    hasMetadata: !!metadata,
+    hasAppId: !!appId,
+    metadataAppId: metadata?.appId,
+    metadataName: metadata?.name,
+    keywordDataLength: advancedKI.keywordData.length,
+    hasRankDistribution: !!enhancedAnalytics.rankDistribution,
+    competitorDataLength: competitorData?.length || 0,
+    isLoadingComplete: !advancedKI.isLoading && !enhancedAnalytics.isLoading
+  }), [
+    metadata?.appId,
+    metadata?.name,
     appId,
-    advancedKI.keywordData,
+    advancedKI.keywordData.length,
+    advancedKI.isLoading,
     enhancedAnalytics.rankDistribution,
-    competitorData
+    enhancedAnalytics.isLoading,
+    competitorData?.length
   ]);
 
   const generateEnhancedAudit = useCallback(async () => {
-    if (!metadata || !appId) return;
+    if (!metadata || !appId || isAuditRunning) {
+      return;
+    }
 
+    setIsAuditRunning(true);
     try {
       console.log('🔍 [ENHANCED-AUDIT] Generating comprehensive audit for', metadata.name);
 
@@ -181,11 +190,29 @@ export const useEnhancedAppAudit = ({
 
     } catch (error) {
       console.error('❌ [ENHANCED-AUDIT] Failed to generate audit:', error);
+    } finally {
+      setIsAuditRunning(false);
     }
   }, [metadata, appId, organizationId, advancedKI.keywordData, enhancedAnalytics.rankDistribution, competitorData]);
 
+  // Generate enhanced audit data when stable dependencies change
+  useEffect(() => {
+    if (!enabled || !stableDependencies.hasMetadata || !stableDependencies.hasAppId || !stableDependencies.isLoadingComplete || isAuditRunning) {
+      return;
+    }
+
+    generateEnhancedAudit();
+  }, [
+    enabled,
+    stableDependencies.hasMetadata,
+    stableDependencies.hasAppId,
+    stableDependencies.metadataAppId,
+    stableDependencies.isLoadingComplete,
+    generateEnhancedAudit
+  ]);
+
   const refreshAudit = useCallback(async () => {
-    if (!appId) return;
+    if (!appId || isAuditRunning) return;
     
     setIsRefreshing(true);
     try {
@@ -200,7 +227,7 @@ export const useEnhancedAppAudit = ({
     } finally {
       setIsRefreshing(false);
     }
-  }, [appId, advancedKI.refreshKeywordData, enhancedAnalytics.refreshAll, generateEnhancedAudit]);
+  }, [appId, advancedKI.refreshKeywordData, enhancedAnalytics.refreshAll, generateEnhancedAudit, isAuditRunning]);
 
   const generateAuditReport = useCallback(async () => {
     if (!auditData || !appId || !metadata) {
@@ -231,7 +258,7 @@ export const useEnhancedAppAudit = ({
     };
   }, [auditData, appId, metadata]);
 
-  const isLoading = advancedKI.isLoading || enhancedAnalytics.isLoading || !auditData;
+  const isLoading = advancedKI.isLoading || enhancedAnalytics.isLoading || (!auditData && !isAuditRunning);
 
   return {
     auditData,
