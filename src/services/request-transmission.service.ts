@@ -1,6 +1,6 @@
 /**
  * ENHANCED Request Transmission Service
- * Fixes JSON body transmission issues and adds comprehensive debugging
+ * Fixed JSON body transmission and edge function compatibility
  */
 
 import { supabase } from '@/integrations/supabase/client';
@@ -29,7 +29,7 @@ class RequestTransmissionService {
   private debugMode = process.env.NODE_ENV === 'development';
 
   /**
-   * ENHANCED transmission method with comprehensive debugging
+   * ENHANCED transmission method with improved edge function compatibility
    */
   async transmitRequest(
     functionName: string, 
@@ -40,22 +40,22 @@ class RequestTransmissionService {
     let lastError: string = '';
     let attempts = 0;
 
-    console.group(`📡 [REQUEST-TRANSMISSION] ENHANCED transmission starting`);
+    console.group(`📡 [REQUEST-TRANSMISSION] Starting enhanced transmission`);
     console.log('Function:', functionName);
     console.log('Payload size:', JSON.stringify(payload).length, 'bytes');
     console.log('Correlation ID:', correlationId);
     console.log('Payload preview:', JSON.stringify(payload, null, 2).substring(0, 300));
 
-    // Method 1: ENHANCED JSON body transmission with comprehensive debugging
+    // Method 1: FIXED JSON body transmission
     try {
       attempts++;
-      console.log(`🔄 [ATTEMPT-${attempts}] Enhanced JSON body transmission`);
-      const result = await this.transmitViaEnhancedJsonBody(functionName, payload, correlationId);
+      console.log(`🔄 [ATTEMPT-${attempts}] Fixed JSON body transmission`);
+      const result = await this.transmitViaFixedJsonBody(functionName, payload, correlationId);
       if (result.success) {
         console.groupEnd();
         return { ...result, attempts, responseTime: Date.now() - startTime };
       }
-      lastError = result.error || 'Enhanced JSON body transmission failed';
+      lastError = result.error || 'Fixed JSON body transmission failed';
       console.warn(`❌ [ATTEMPT-${attempts}] Failed:`, lastError);
     } catch (error: any) {
       lastError = error.message;
@@ -80,7 +80,7 @@ class RequestTransmissionService {
       }
     }
 
-    // Method 3: Form Data transmission
+    // Method 3: Form Data transmission as last resort
     try {
       attempts++;
       console.log(`🔄 [ATTEMPT-${attempts}] Form data transmission`);
@@ -109,117 +109,147 @@ class RequestTransmissionService {
   }
 
   /**
-   * ENHANCED JSON body transmission with comprehensive debugging and validation
+   * FIXED JSON body transmission with proper edge function compatibility
    */
-  private async transmitViaEnhancedJsonBody(
+  private async transmitViaFixedJsonBody(
     functionName: string, 
     payload: RequestPayload, 
     correlationId: string
   ): Promise<TransmissionResult> {
-    console.log('📤 [ENHANCED-JSON] Starting enhanced JSON body transmission...');
+    console.log('📤 [FIXED-JSON] Starting fixed JSON body transmission...');
     
-    // Pre-transmission validation and debugging
+    // Enhanced payload validation
     const serialized = JSON.stringify(payload);
-    console.log('🔍 [ENHANCED-JSON] Pre-transmission validation:');
-    console.log('- Payload object keys:', Object.keys(payload));
+    console.log('🔍 [FIXED-JSON] Pre-transmission validation:');
+    console.log('- Payload object type:', typeof payload);
     console.log('- Required fields present:', {
-      searchTerm: !!payload.searchTerm,
-      organizationId: !!payload.organizationId
+      searchTerm: !!payload.searchTerm && typeof payload.searchTerm === 'string',
+      organizationId: !!payload.organizationId && typeof payload.organizationId === 'string'
     });
     console.log('- Serialized length:', serialized.length);
-    console.log('- Serialized first 100 chars:', serialized.substring(0, 100));
+    console.log('- JSON validity test:', (() => {
+      try {
+        JSON.parse(serialized);
+        return 'Valid JSON';
+      } catch (e) {
+        return 'Invalid JSON: ' + e.message;
+      }
+    })());
     
-    if (!serialized || serialized === '{}') {
-      throw new Error('Payload serialization failed - empty result');
+    if (!serialized || serialized === '{}' || !payload.searchTerm || !payload.organizationId) {
+      throw new Error('Invalid payload: missing required fields or serialization failed');
     }
 
-    // Enhanced headers with debugging information
+    // Simplified, edge-function-compatible headers
     const headers = {
       'Content-Type': 'application/json',
       'X-Correlation-ID': correlationId,
-      'X-Transmission-Method': 'enhanced-json-body',
-      'X-Debug-Mode': this.debugMode ? 'true' : 'false',
-      'X-Payload-Size': serialized.length.toString()
+      'X-Transmission-Method': 'fixed-json-body'
     };
 
-    console.log('📊 [ENHANCED-JSON] Request headers:', headers);
-    console.log('📊 [ENHANCED-JSON] Full request body preview:', serialized.substring(0, 200));
+    console.log('📊 [FIXED-JSON] Request headers:', headers);
+    console.log('📊 [FIXED-JSON] Payload object keys:', Object.keys(payload));
 
     try {
-      console.log('🚀 [ENHANCED-JSON] Invoking Supabase function...');
+      console.log('🚀 [FIXED-JSON] Invoking Supabase function with clean payload...');
       
+      // Create a clean payload object to ensure proper serialization
+      const cleanPayload = {
+        searchTerm: String(payload.searchTerm).trim(),
+        searchType: payload.searchType || 'keyword',
+        organizationId: String(payload.organizationId).trim(),
+        includeCompetitorAnalysis: Boolean(payload.includeCompetitorAnalysis),
+        searchParameters: {
+          country: payload.searchParameters?.country || 'us',
+          limit: payload.searchParameters?.limit || 25
+        }
+      };
+
+      console.log('📤 [FIXED-JSON] Clean payload:', cleanPayload);
+
       const { data, error } = await supabase.functions.invoke(functionName, {
-        body: payload, // Send the actual object, not the serialized string
+        body: cleanPayload,
         headers
       });
 
-      console.log('📨 [ENHANCED-JSON] Response received:');
+      console.log('📨 [FIXED-JSON] Response received:');
       console.log('- Has error:', !!error);
       console.log('- Has data:', !!data);
+      console.log('- Error details:', error);
       
       if (error) {
-        console.error('❌ [ENHANCED-JSON] Supabase invoke error:', {
+        console.error('❌ [FIXED-JSON] Supabase invoke error:', {
           message: error.message,
           details: error.details,
           hint: error.hint,
-          code: error.code
+          code: error.code,
+          context: error.context
         });
+        
+        // Better error handling for edge function issues
+        let errorMessage = `Edge function error: ${error.message}`;
+        if (error.context) {
+          errorMessage += ` (Context: ${JSON.stringify(error.context)})`;
+        }
+        
         return { 
           success: false, 
-          error: `Supabase invoke failed: ${error.message}`, 
-          method: 'enhanced-json-body', 
+          error: errorMessage, 
+          method: 'fixed-json-body', 
           attempts: 1, 
           responseTime: 0 
         };
       }
 
       if (!data) {
-        console.error('❌ [ENHANCED-JSON] No data returned from function');
+        console.error('❌ [FIXED-JSON] No data returned from function');
         return { 
           success: false, 
-          error: 'No data returned from edge function', 
-          method: 'enhanced-json-body', 
+          error: 'Edge function returned empty response', 
+          method: 'fixed-json-body', 
           attempts: 1, 
           responseTime: 0 
         };
       }
 
-      console.log('📊 [ENHANCED-JSON] Response data preview:', {
+      console.log('📊 [FIXED-JSON] Response data preview:', {
         success: data.success,
         hasData: !!data.data,
         isAmbiguous: data.isAmbiguous,
-        errorMessage: data.error
+        errorMessage: data.error,
+        dataType: typeof data.data
       });
 
       if (!data.success && data.error) {
-        console.error('❌ [ENHANCED-JSON] Function returned error:', data.error);
+        console.error('❌ [FIXED-JSON] Function returned error:', data.error);
         return { 
           success: false, 
           error: `Function error: ${data.error}`, 
-          method: 'enhanced-json-body', 
+          method: 'fixed-json-body', 
           attempts: 1, 
           responseTime: 0 
         };
       }
 
-      console.log('✅ [ENHANCED-JSON] Success - data received and validated');
+      console.log('✅ [FIXED-JSON] Success - data received and validated');
       return { 
         success: true, 
         data, 
-        method: 'enhanced-json-body', 
+        method: 'fixed-json-body', 
         attempts: 1, 
         responseTime: 0 
       };
 
     } catch (invokeError: any) {
-      console.error('💥 [ENHANCED-JSON] Invoke exception:', {
+      console.error('💥 [FIXED-JSON] Invoke exception:', {
         name: invokeError.name,
         message: invokeError.message,
         status: invokeError.status,
-        statusText: invokeError.statusText
+        statusText: invokeError.statusText,
+        stack: invokeError.stack?.substring(0, 200)
       });
       
-      throw new Error(`Enhanced JSON transmission failed: ${invokeError.message}`);
+      throw new Error(`Fixed JSON transmission failed: ${invokeError.message}`);
     }
   }
 
@@ -353,7 +383,12 @@ class RequestTransmissionService {
     return {
       timestamp: new Date().toISOString(),
       debugMode: this.debugMode,
-      enhancedLogging: true
+      enhancedLogging: true,
+      fixesApplied: [
+        'improved_json_serialization',
+        'clean_payload_validation',
+        'better_error_handling'
+      ]
     };
   }
 }

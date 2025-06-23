@@ -1,4 +1,3 @@
-
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/services/query-key.service';
 import { competitorKeywordAnalysisService } from '@/services/competitor-keyword-analysis.service';
@@ -10,6 +9,17 @@ interface UseEnhancedQueriesProps {
   enabled?: boolean;
 }
 
+// Utility function to detect if a string is a valid UUID
+const isValidUUID = (str: string): boolean => {
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(str);
+};
+
+// Utility function to detect if a string is an iTunes App Store ID
+const isValidAppStoreId = (str: string): boolean => {
+  return /^\d+$/.test(str) && str.length >= 6 && str.length <= 12;
+};
+
 export const useEnhancedQueries = ({
   organizationId,
   appId,
@@ -17,61 +27,115 @@ export const useEnhancedQueries = ({
 }: UseEnhancedQueriesProps) => {
   const queryClient = useQueryClient();
 
-  // Selected app query with proper error handling and app store ID resolution
+  // Enhanced app lookup with proper ID format handling
   const selectedAppQuery = useQuery({
     queryKey: appId ? queryKeys.keywordIntelligence.selectedApp(appId, organizationId) : ['no-app'],
     queryFn: async () => {
       if (!appId) return null;
 
-      console.log('🔍 [ENHANCED-QUERIES] Looking up app:', appId);
+      console.log('🔍 [ENHANCED-QUERIES] Looking up app with improved ID handling:', appId);
 
-      // First try to find by UUID (internal app ID)
-      let { data: appByUuid, error: uuidError } = await supabase
-        .from('apps')
-        .select('*')
-        .eq('organization_id', organizationId)
-        .eq('id', appId)
-        .maybeSingle();
+      // Determine the ID format and search strategy
+      const isUUID = isValidUUID(appId);
+      const isAppStoreId = isValidAppStoreId(appId);
 
-      if (appByUuid && !uuidError) {
-        console.log('✅ [ENHANCED-QUERIES] Found app by UUID:', appByUuid.app_name);
-        return appByUuid;
-      }
-
-      // If not found by UUID, try by app_store_id (external App Store ID)
-      let { data: appByStoreId, error: storeIdError } = await supabase
-        .from('apps')
-        .select('*')
-        .eq('organization_id', organizationId)
-        .eq('app_store_id', appId)
-        .maybeSingle();
-
-      if (appByStoreId && !storeIdError) {
-        console.log('✅ [ENHANCED-QUERIES] Found app by App Store ID:', appByStoreId.app_name);
-        return appByStoreId;
-      }
-
-      // Log the specific errors for debugging
-      console.error('❌ [ENHANCED-QUERIES] App lookup failed:', {
+      console.log('🔍 [ENHANCED-QUERIES] ID format detection:', {
         appId,
-        uuidError: uuidError?.message,
-        storeIdError: storeIdError?.message,
-        organizationId
+        isUUID,
+        isAppStoreId,
+        length: appId.length
       });
 
-      // Check if there are any apps in the organization for debugging
+      let appData = null;
+      let searchMethod = 'unknown';
+
+      // Strategy 1: If it's a valid UUID, search by internal ID first
+      if (isUUID) {
+        console.log('✅ [ENHANCED-QUERIES] Searching by UUID (internal ID)');
+        const { data: appByUuid, error: uuidError } = await supabase
+          .from('apps')
+          .select('*')
+          .eq('organization_id', organizationId)
+          .eq('id', appId)
+          .maybeSingle();
+
+        if (appByUuid && !uuidError) {
+          appData = appByUuid;
+          searchMethod = 'uuid';
+          console.log('✅ [ENHANCED-QUERIES] Found app by UUID:', appByUuid.app_name);
+        } else if (uuidError) {
+          console.warn('⚠️ [ENHANCED-QUERIES] UUID search error:', uuidError.message);
+        }
+      }
+
+      // Strategy 2: If not found by UUID or it's an App Store ID, search by app_store_id
+      if (!appData && (isAppStoreId || !isUUID)) {
+        console.log('🔍 [ENHANCED-QUERIES] Searching by App Store ID');
+        const { data: appByStoreId, error: storeIdError } = await supabase
+          .from('apps')
+          .select('*')
+          .eq('organization_id', organizationId)
+          .eq('app_store_id', appId)
+          .maybeSingle();
+
+        if (appByStoreId && !storeIdError) {
+          appData = appByStoreId;
+          searchMethod = 'app_store_id';
+          console.log('✅ [ENHANCED-QUERIES] Found app by App Store ID:', appByStoreId.app_name);
+        } else if (storeIdError) {
+          console.warn('⚠️ [ENHANCED-QUERIES] App Store ID search error:', storeIdError.message);
+        }
+      }
+
+      // Strategy 3: Fallback - search by app name if the ID might be a name
+      if (!appData && !isUUID && !isAppStoreId) {
+        console.log('🔍 [ENHANCED-QUERIES] Fallback: Searching by app name');
+        const { data: appByName, error: nameError } = await supabase
+          .from('apps')
+          .select('*')
+          .eq('organization_id', organizationId)
+          .ilike('app_name', `%${appId}%`)
+          .limit(1)
+          .maybeSingle();
+
+        if (appByName && !nameError) {
+          appData = appByName;
+          searchMethod = 'app_name';
+          console.log('✅ [ENHANCED-QUERIES] Found app by name similarity:', appByName.app_name);
+        }
+      }
+
+      if (appData) {
+        console.log('✅ [ENHANCED-QUERIES] App found via', searchMethod, ':', {
+          id: appData.id,
+          app_name: appData.app_name,
+          app_store_id: appData.app_store_id
+        });
+        return appData;
+      }
+
+      // Debugging: Check available apps in organization
       const { data: allApps } = await supabase
         .from('apps')
         .select('id, app_store_id, app_name')
         .eq('organization_id', organizationId)
-        .limit(5);
+        .limit(10);
 
       console.log('🔍 [ENHANCED-QUERIES] Available apps in org:', allApps);
+      console.error('❌ [ENHANCED-QUERIES] App not found with any strategy:', {
+        searchedId: appId,
+        organizationId,
+        strategies: {
+          uuid: isUUID,
+          appStoreId: isAppStoreId,
+          fallback: !isUUID && !isAppStoreId
+        }
+      });
 
-      throw new Error(`App not found: ${appId}. Check if the app exists in organization ${organizationId}`);
+      throw new Error(`App not found: ${appId}. Searched by ${searchMethod}. Available apps: ${allApps?.length || 0}`);
     },
     enabled: !!appId && !!organizationId && enabled,
-    staleTime: 1000 * 60 * 5, // 5 minutes - shorter for better updates
+    staleTime: 1000 * 60 * 5, // 5 minutes
     gcTime: 1000 * 60 * 10, // 10 minutes
     retry: (failureCount, error) => {
       // Don't retry if it's a "not found" error
@@ -92,7 +156,7 @@ export const useEnhancedQueries = ({
       try {
         console.log('🔍 [ENHANCED-QUERIES] Fetching gap analysis for app:', selectedAppQuery.data.app_name);
         
-        // Use the correct app ID (UUID) for gap analysis
+        // Use the correct internal app ID (UUID) for gap analysis
         const targetAppId = selectedAppQuery.data.id;
         const data = await competitorKeywordAnalysisService.getKeywordGapAnalysis(organizationId, targetAppId);
         
@@ -131,10 +195,22 @@ export const useEnhancedQueries = ({
     refetchOnWindowFocus: false,
   });
 
-  // Invalidation helpers with correct app ID handling
+  // Enhanced invalidation helpers with flexible app ID handling
   const invalidateAppData = (targetAppId: string) => {
-    const queries = queryKeys.keywordIntelligence.allForApp(organizationId, targetAppId);
-    queries.forEach(queryKey => {
+    // Try to invalidate using both the provided ID and the resolved app data
+    const resolvedAppId = selectedAppQuery.data?.id || targetAppId;
+    
+    const queries = [
+      ...queryKeys.keywordIntelligence.allForApp(organizationId, targetAppId),
+      ...queryKeys.keywordIntelligence.allForApp(organizationId, resolvedAppId)
+    ];
+    
+    // Remove duplicates
+    const uniqueQueries = queries.filter((query, index, self) => 
+      index === self.findIndex(q => JSON.stringify(q) === JSON.stringify(query))
+    );
+    
+    uniqueQueries.forEach(queryKey => {
       queryClient.invalidateQueries({ queryKey });
     });
   };
@@ -146,30 +222,35 @@ export const useEnhancedQueries = ({
     });
   };
 
-  // Prefetch app data with improved lookup
+  // Enhanced prefetch with flexible app ID handling
   const prefetchAppData = (targetAppId: string) => {
     queryClient.prefetchQuery({
       queryKey: queryKeys.keywordIntelligence.selectedApp(targetAppId, organizationId),
       queryFn: async () => {
-        // Try UUID first, then app_store_id
-        let { data } = await supabase
-          .from('apps')
-          .select('*')
-          .eq('organization_id', organizationId)
-          .eq('id', targetAppId)
-          .maybeSingle();
+        const isUUID = isValidUUID(targetAppId);
+        const isAppStoreId = isValidAppStoreId(targetAppId);
 
-        if (!data) {
-          const result = await supabase
+        // Try UUID first if it's a valid UUID
+        if (isUUID) {
+          const { data } = await supabase
             .from('apps')
             .select('*')
             .eq('organization_id', organizationId)
-            .eq('app_store_id', targetAppId)
+            .eq('id', targetAppId)
             .maybeSingle();
-          data = result.data;
+          
+          if (data) return data;
         }
 
-        return data;
+        // Fallback to app store ID
+        const result = await supabase
+          .from('apps')
+          .select('*')
+          .eq('organization_id', organizationId)
+          .eq('app_store_id', targetAppId)
+          .maybeSingle();
+        
+        return result.data;
       },
       staleTime: 1000 * 60 * 5,
     });
@@ -197,9 +278,16 @@ export const useEnhancedQueries = ({
     refetchGaps: gapAnalysisQuery.refetch,
     refetchClusters: clustersQuery.refetch,
     
-    // Cache management
+    // Enhanced cache management
     invalidateAppData,
     invalidateAllData,
     prefetchAppData,
+    
+    // Additional utility for ID format detection
+    getAppIdFormat: (id: string) => ({
+      isUUID: isValidUUID(id),
+      isAppStoreId: isValidAppStoreId(id),
+      resolvedApp: selectedAppQuery.data
+    })
   };
 };

@@ -14,6 +14,16 @@ interface UseAppSelectionProps {
   onAppChange?: (appId: string | null) => void;
 }
 
+// Utility functions for ID format detection
+const isValidUUID = (str: string): boolean => {
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(str);
+};
+
+const isValidAppStoreId = (str: string): boolean => {
+  return /^\d+$/.test(str) && str.length >= 6 && str.length <= 12;
+};
+
 export const useAppSelection = ({ 
   organizationId, 
   onAppChange 
@@ -40,6 +50,16 @@ export const useAppSelection = ({
   }, []);
 
   const invalidateAppQueries = useCallback((appId: string) => {
+    // Enhanced invalidation to handle both UUID and App Store ID formats
+    const isUUID = isValidUUID(appId);
+    const isAppStoreId = isValidAppStoreId(appId);
+    
+    console.log('🔄 [APP-SELECTION] Invalidating queries for app:', {
+      appId,
+      isUUID,
+      isAppStoreId
+    });
+
     const queriesToInvalidate = [
       ['keyword-gap-analysis', organizationId, appId],
       ['keyword-clusters', organizationId],
@@ -47,16 +67,46 @@ export const useAppSelection = ({
       ['selected-app', appId, organizationId]
     ];
 
+    // If it's an App Store ID, also invalidate potential UUID-based queries
+    if (isAppStoreId) {
+      // Note: We can't easily reverse-lookup UUID from App Store ID here,
+      // but the enhanced queries hook should handle the resolution
+      console.log('🔄 [APP-SELECTION] App Store ID detected, enhanced invalidation may be needed');
+    }
+
     queriesToInvalidate.forEach(queryKey => {
       queryClient.invalidateQueries({ queryKey });
     });
   }, [organizationId, queryClient]);
 
   const selectApp = useCallback(async (appId: string | null) => {
-    // Prevent processing the same app ID multiple times
-    if (appId === lastProcessedAppRef.current) {
-      console.log('🔄 [APP-SELECTION] App already processed:', appId);
-      return;
+    // Enhanced app ID processing and validation
+    if (appId) {
+      const isUUID = isValidUUID(appId);
+      const isAppStoreId = isValidAppStoreId(appId);
+      
+      console.log('🎯 [APP-SELECTION] Processing app selection:', {
+        appId,
+        isUUID,
+        isAppStoreId,
+        lastProcessed: lastProcessedAppRef.current
+      });
+
+      // Prevent processing the same app ID multiple times
+      if (appId === lastProcessedAppRef.current) {
+        console.log('🔄 [APP-SELECTION] App already processed:', appId);
+        return;
+      }
+
+      // Validate the ID format
+      if (!isUUID && !isAppStoreId && appId.length < 3) {
+        console.warn('⚠️ [APP-SELECTION] Invalid app ID format:', appId);
+        setState(prev => ({
+          ...prev,
+          transitionError: 'Invalid app ID format'
+        }));
+        return;
+      }
     }
 
     // Prevent concurrent transitions
@@ -102,7 +152,7 @@ export const useAppSelection = ({
         onAppChange(appId);
       }
 
-      // Shorter, immediate transition completion
+      // Quick transition completion with enhanced logging
       transitionTimeoutRef.current = setTimeout(() => {
         setState(prev => ({
           ...prev,
@@ -112,8 +162,12 @@ export const useAppSelection = ({
         }));
 
         transitionLockRef.current = false;
-        console.log('✅ [APP-SELECTION] App transition completed:', appId);
-      }, 100); // Much shorter delay
+        console.log('✅ [APP-SELECTION] App transition completed:', {
+          appId,
+          organizationId,
+          timestamp: new Date().toISOString()
+        });
+      }, 100);
 
     } catch (error) {
       console.error('❌ [APP-SELECTION] App transition failed:', error);
@@ -131,12 +185,14 @@ export const useAppSelection = ({
   }, [state.selectedAppId, state.isTransitioning, organizationId, invalidateAppQueries, onAppChange]);
 
   const clearSelection = useCallback(() => {
+    console.log('🗑️ [APP-SELECTION] Clearing app selection');
     lastProcessedAppRef.current = null;
     selectApp(null);
   }, [selectApp]);
 
   const forceRefresh = useCallback(() => {
     if (state.selectedAppId) {
+      console.log('🔄 [APP-SELECTION] Force refreshing app data:', state.selectedAppId);
       invalidateAppQueries(state.selectedAppId);
     }
   }, [state.selectedAppId, invalidateAppQueries]);
@@ -146,6 +202,12 @@ export const useAppSelection = ({
     selectApp,
     clearSelection,
     forceRefresh,
-    isLocked: transitionLockRef.current
+    isLocked: transitionLockRef.current,
+    // Additional utility functions
+    getAppIdFormat: (id: string | null) => id ? {
+      isUUID: isValidUUID(id),
+      isAppStoreId: isValidAppStoreId(id),
+      isValid: id ? (isValidUUID(id) || isValidAppStoreId(id)) : false
+    } : null
   };
 };
