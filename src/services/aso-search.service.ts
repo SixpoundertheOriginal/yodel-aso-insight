@@ -1,4 +1,3 @@
-
 import { supabase } from '@/integrations/supabase/client';
 import { inputDetectionService, SearchParameters } from './input-detection.service';
 import { bypassPatternsService } from './bypass-patterns.service';
@@ -37,13 +36,13 @@ class AsoSearchService {
   private baseDelay = 1000;
 
   /**
-   * Enhanced search with improved error handling and routing
+   * Stabilized search with comprehensive error handling
    */
   async search(input: string, config: SearchConfig): Promise<SearchResult> {
     // Create correlation context for request tracing
     const correlationContext = correlationTracker.createContext('aso-search', config.organizationId);
     
-    correlationTracker.log('info', 'ASO search initiated with enhanced routing', { input, config });
+    correlationTracker.log('info', 'ASO search initiated with stabilized routing', { input, config });
 
     try {
       // PHASE 1: Bypass analysis for direct iTunes calls
@@ -88,9 +87,9 @@ class AsoSearchService {
         }
       }
 
-      // MAIN PATH: Use edge function with enhanced error handling
-      correlationTracker.log('info', 'Using edge function with enhanced error handling');
-      return await this.searchWithEnhancedErrorHandling(input, config);
+      // MAIN PATH: Use edge function with stabilized error handling
+      correlationTracker.log('info', 'Using edge function with stabilized error handling');
+      return await this.searchWithStabilizedErrorHandling(input, config);
 
     } catch (error: any) {
       // Re-throw AmbiguousSearchError without modification
@@ -129,9 +128,9 @@ class AsoSearchService {
   }
 
   /**
-   * Enhanced edge function call with better error handling
+   * Stabilized edge function call with comprehensive error handling
    */
-  private async searchWithEnhancedErrorHandling(input: string, config: SearchConfig): Promise<SearchResult> {
+  private async searchWithStabilizedErrorHandling(input: string, config: SearchConfig): Promise<SearchResult> {
     const requestBody = {
       searchTerm: input.trim(),
       searchType: 'keyword' as const,
@@ -144,13 +143,13 @@ class AsoSearchService {
     };
 
     // Enhanced debug logging
-    console.log('🔍 [FRONTEND] Preparing enhanced edge function request:', {
+    console.log('🔍 [FRONTEND] Preparing stabilized edge function request:', {
       requestBody,
       bodySize: JSON.stringify(requestBody).length,
       correlationId: correlationTracker.getContext()?.id
     });
 
-    // Validate request before sending
+    // STABILIZED VALIDATION before sending
     if (!requestBody.searchTerm || requestBody.searchTerm.trim() === '') {
       throw new Error('Search term cannot be empty');
     }
@@ -159,7 +158,18 @@ class AsoSearchService {
       throw new Error('Organization ID is required');
     }
 
-    console.log('✅ [FRONTEND] Request validation passed, calling edge function');
+    // Validate JSON serialization doesn't fail
+    try {
+      const testSerialization = JSON.stringify(requestBody);
+      if (!testSerialization || testSerialization === 'null') {
+        throw new Error('Request body serialization failed');
+      }
+    } catch (serializationError) {
+      console.error('❌ [FRONTEND] Request serialization failed:', serializationError);
+      throw new Error('Failed to prepare search request');
+    }
+
+    console.log('✅ [FRONTEND] Request validation passed, calling stabilized edge function');
 
     try {
       const { data, error } = await supabase.functions.invoke('app-store-scraper', {
@@ -170,7 +180,7 @@ class AsoSearchService {
         }
       });
 
-      console.log('📥 [FRONTEND] Enhanced edge function response received:', {
+      console.log('📥 [FRONTEND] Stabilized edge function response received:', {
         hasData: !!data,
         hasError: !!error,
         dataSuccess: data?.success,
@@ -178,14 +188,32 @@ class AsoSearchService {
         dataError: data?.error
       });
 
+      // ENHANCED ERROR HANDLING
       if (error) {
         console.error('❌ [FRONTEND] Edge function error:', error);
-        throw new Error(`Edge function error: ${error.message}`);
+        
+        // Parse different types of edge function errors
+        if (error.message?.includes('Edge Function returned a non-2xx status code')) {
+          throw new Error('Search service is currently unavailable. Please try again in a moment.');
+        }
+        if (error.message?.includes('Invalid JSON')) {
+          throw new Error('Search request format error. Please try again.');
+        }
+        if (error.message?.includes('timeout')) {
+          throw new Error('Search timed out. Please try with a different search term.');
+        }
+        
+        throw new Error(`Search service error: ${error.message}`);
       }
 
-      if (!data || !data.success) {
+      if (!data) {
+        console.error('❌ [FRONTEND] No data received from edge function');
+        throw new Error('No response received from search service');
+      }
+
+      if (!data.success) {
         console.error('❌ [FRONTEND] Edge function returned unsuccessful response:', data);
-        const errorMessage = data?.error || 'Edge function returned unsuccessful response';
+        const errorMessage = data?.error || 'Search was unsuccessful';
         
         // Enhanced error messages based on the response
         if (errorMessage.includes('No apps found')) {
@@ -194,14 +222,17 @@ class AsoSearchService {
         if (errorMessage.includes('Invalid request')) {
           throw new Error('Search request was invalid. Please try again.');
         }
-        if (errorMessage.includes('temporarily unavailable')) {
+        if (errorMessage.includes('temporarily unavailable') || errorMessage.includes('Service temporarily unavailable')) {
           throw new Error('App Store search is temporarily unavailable. Please try again in a few minutes.');
+        }
+        if (errorMessage.includes('Missing required field')) {
+          throw new Error('Search configuration error. Please refresh the page and try again.');
         }
         
         throw new Error(errorMessage);
       }
 
-      console.log('✅ [FRONTEND] Enhanced edge function call successful');
+      console.log('✅ [FRONTEND] Stabilized edge function call successful');
 
       // Transform response - handle both single app and app with competitors
       const responseData = data.data;
@@ -238,11 +269,20 @@ class AsoSearchService {
       };
 
     } catch (error: any) {
-      console.error('💥 [FRONTEND] Enhanced edge function call failed:', {
+      console.error('💥 [FRONTEND] Stabilized edge function call failed:', {
         error: error.message,
         stack: error.stack
       });
-      throw error;
+      
+      // Re-throw with preserved error message if it's already user-friendly
+      if (error.message?.includes('No apps found') || 
+          error.message?.includes('temporarily unavailable') ||
+          error.message?.includes('try again')) {
+        throw error;
+      }
+      
+      // Otherwise, provide a generic user-friendly message
+      throw new Error('Search failed. Please try again with different keywords.');
     }
   }
 
@@ -398,7 +438,7 @@ class AsoSearchService {
     if (message.includes('unauthorized') || message.includes('forbidden')) {
       return 'Authentication required. Please log in and try again.';
     }
-    if (message.includes('edge function')) {
+    if (message.includes('edge function') || message.includes('service error')) {
       return 'Search service encountered an error. Please try again with different keywords.';
     }
     

@@ -2,7 +2,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { KeywordDiscoveryService } from './services/keyword-discovery.service.ts'
 
-const VERSION = '8.2.0-fixed-routing'
+const VERSION = '8.3.0-stabilized'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -56,7 +56,9 @@ serve(async (req: Request) => {
   console.log(`🔍 [${correlationId}] REQUEST RECEIVED:`, {
     method: req.method,
     url: req.url,
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    contentType: req.headers.get('content-type'),
+    contentLength: req.headers.get('content-length')
   })
 
   try {
@@ -76,9 +78,9 @@ serve(async (req: Request) => {
         status: 'ok',
         version: VERSION,
         timestamp: new Date().toISOString(),
-        mode: 'app-search-with-keyword-discovery',
+        mode: 'stabilized-routing',
         correlationId,
-        message: 'App Store scraper with fixed routing ready'
+        message: 'App Store scraper with stabilized routing ready'
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 200
@@ -98,54 +100,121 @@ serve(async (req: Request) => {
       })
     }
 
-    // Parse request body
-    let requestData: any
+    // STABILIZED REQUEST BODY PARSING with detailed debugging
+    let requestBody: string | null = null
+    let requestData: any = null
+    
     try {
-      requestData = await req.json()
-      console.log(`🎯 [${correlationId}] REQUEST PARSED:`, {
-        hasSearchTerm: !!requestData.searchTerm,
-        hasTargetApp: !!requestData.targetApp,
-        hasCompetitorApps: !!requestData.competitorApps,
-        hasSeedKeywords: !!requestData.seedKeywords,
-        includeCompetitorAnalysis: requestData.includeCompetitorAnalysis,
-        organizationId: requestData.organizationId?.substring(0, 8) + '...'
+      // First, get the raw body text
+      requestBody = await req.text()
+      console.log(`📝 [${correlationId}] RAW REQUEST BODY:`, {
+        length: requestBody?.length || 0,
+        isEmpty: !requestBody || requestBody.trim() === '',
+        firstChars: requestBody?.substring(0, 100) || 'EMPTY',
+        lastChars: requestBody?.length > 100 ? requestBody.substring(requestBody.length - 50) : 'N/A'
       })
-    } catch (error: any) {
-      console.error(`💥 [${correlationId}] BODY PARSING FAILED:`, error.message)
+
+      // Check if body is empty or invalid
+      if (!requestBody || requestBody.trim() === '') {
+        console.error(`💥 [${correlationId}] EMPTY REQUEST BODY`)
+        return new Response(JSON.stringify({
+          success: false,
+          error: 'Request body is empty',
+          correlationId,
+          debug: {
+            bodyLength: requestBody?.length || 0,
+            contentType: req.headers.get('content-type')
+          }
+        }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        })
+      }
+
+      // Parse JSON with error handling
+      try {
+        requestData = JSON.parse(requestBody)
+        console.log(`✅ [${correlationId}] JSON PARSED SUCCESSFULLY:`, {
+          hasSearchTerm: !!requestData.searchTerm,
+          hasTargetApp: !!requestData.targetApp,
+          hasCompetitorApps: !!requestData.competitorApps,
+          hasSeedKeywords: !!requestData.seedKeywords,
+          includeCompetitorAnalysis: requestData.includeCompetitorAnalysis,
+          organizationId: requestData.organizationId?.substring(0, 8) + '...'
+        })
+      } catch (jsonError: any) {
+        console.error(`💥 [${correlationId}] JSON PARSING FAILED:`, {
+          error: jsonError.message,
+          bodyPreview: requestBody.substring(0, 200),
+          bodyLength: requestBody.length
+        })
+        return new Response(JSON.stringify({
+          success: false,
+          error: 'Invalid JSON in request body',
+          correlationId,
+          debug: {
+            jsonError: jsonError.message,
+            bodyPreview: requestBody.substring(0, 100)
+          }
+        }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        })
+      }
+    } catch (bodyError: any) {
+      console.error(`💥 [${correlationId}] BODY READING FAILED:`, bodyError.message)
       return new Response(JSON.stringify({
         success: false,
-        error: 'Invalid JSON in request body',
-        correlationId
+        error: 'Failed to read request body',
+        correlationId,
+        details: bodyError.message
       }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
     }
 
-    // FIXED ROUTING LOGIC: Check for keyword discovery first with proper criteria
-    const isKeywordDiscovery = !!(
-      requestData.seedKeywords || 
-      requestData.competitorApps || 
-      requestData.targetApp ||
-      (!requestData.searchTerm && (requestData.seedKeywords || requestData.competitorApps))
-    )
+    // STABILIZED ROUTING LOGIC with clear criteria
+    const hasSearchTerm = !!(requestData.searchTerm && typeof requestData.searchTerm === 'string' && requestData.searchTerm.trim().length > 0)
+    const hasOrganizationId = !!(requestData.organizationId && typeof requestData.organizationId === 'string')
+    const hasKeywordDiscoveryFields = !!(requestData.seedKeywords || requestData.competitorApps || requestData.targetApp)
+    
+    // Clear routing decision logic
+    const isAppSearch = hasSearchTerm && hasOrganizationId && !hasKeywordDiscoveryFields
+    const isKeywordDiscovery = hasKeywordDiscoveryFields || (!hasSearchTerm && hasOrganizationId)
 
-    const isAppSearch = !!(
-      requestData.searchTerm && 
-      requestData.organizationId &&
-      !isKeywordDiscovery
-    )
-
-    console.log(`🔀 [${correlationId}] ROUTING DECISION:`, {
-      isKeywordDiscovery,
+    console.log(`🔀 [${correlationId}] STABILIZED ROUTING DECISION:`, {
+      hasSearchTerm,
+      hasOrganizationId,
+      hasKeywordDiscoveryFields,
       isAppSearch,
-      hasSearchTerm: !!requestData.searchTerm,
-      criteria: {
-        seedKeywords: !!requestData.seedKeywords,
-        competitorApps: !!requestData.competitorApps,
-        targetApp: !!requestData.targetApp
-      }
+      isKeywordDiscovery,
+      searchTerm: requestData.searchTerm,
+      includeCompetitorAnalysis: requestData.includeCompetitorAnalysis
     })
+
+    // Validate routing decision
+    if (!isAppSearch && !isKeywordDiscovery) {
+      console.error(`❌ [${correlationId}] ROUTING VALIDATION FAILED`)
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'Invalid request: Cannot determine request type',
+        correlationId,
+        debug: {
+          hasSearchTerm,
+          hasOrganizationId,
+          hasKeywordDiscoveryFields,
+          receivedFields: Object.keys(requestData)
+        },
+        requirements: {
+          appSearch: 'Requires: searchTerm + organizationId (no keyword discovery fields)',
+          keywordDiscovery: 'Requires: organizationId + (seedKeywords OR competitorApps OR targetApp)'
+        }
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      })
+    }
 
     if (isKeywordDiscovery) {
       console.log(`🔍 [${correlationId}] ROUTING TO: Keyword Discovery`)
@@ -157,15 +226,14 @@ serve(async (req: Request) => {
       return await handleAppSearch(requestData as AppSearchRequest, correlationId, startTime)
     }
 
-    // Invalid request - neither keyword discovery nor app search
-    console.error(`❌ [${correlationId}] INVALID REQUEST: Cannot determine request type`)
+    // This should never be reached due to validation above
+    console.error(`❌ [${correlationId}] ROUTING FALLTHROUGH - This should not happen`)
     return new Response(JSON.stringify({
       success: false,
-      error: 'Invalid request: Must provide either searchTerm for app search or seedKeywords/competitorApps for keyword discovery',
-      correlationId,
-      receivedFields: Object.keys(requestData)
+      error: 'Internal routing error',
+      correlationId
     }), {
-      status: 400,
+      status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     })
 
@@ -201,6 +269,19 @@ async function handleKeywordDiscovery(
     competitorApps: request.competitorApps?.length || 0,
     targetApp: !!request.targetApp
   })
+
+  // Validate required fields for keyword discovery
+  if (!request.organizationId) {
+    console.error(`❌ [${correlationId}] KEYWORD DISCOVERY VALIDATION FAILED: Missing organizationId`)
+    return new Response(JSON.stringify({
+      success: false,
+      error: 'Missing required field: organizationId is required for keyword discovery',
+      correlationId
+    }), {
+      status: 400,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    })
+  }
 
   const discoveryService = new KeywordDiscoveryService()
   
@@ -261,16 +342,32 @@ async function handleAppSearch(
   correlationId: string, 
   startTime: number
 ) {
-  // Validate required fields
-  if (!request.searchTerm || !request.organizationId) {
-    console.error(`❌ [${correlationId}] APP SEARCH VALIDATION FAILED: Missing required fields`)
+  // ENHANCED VALIDATION for app search
+  if (!request.searchTerm || typeof request.searchTerm !== 'string' || request.searchTerm.trim() === '') {
+    console.error(`❌ [${correlationId}] APP SEARCH VALIDATION FAILED: Invalid searchTerm`)
     return new Response(JSON.stringify({
       success: false,
-      error: 'Missing required fields: searchTerm and organizationId are required for app search',
+      error: 'Missing or invalid searchTerm: must be a non-empty string',
       correlationId,
       received: {
-        searchTerm: !!request.searchTerm,
-        organizationId: !!request.organizationId
+        searchTerm: request.searchTerm,
+        searchTermType: typeof request.searchTerm
+      }
+    }), {
+      status: 400,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    })
+  }
+
+  if (!request.organizationId || typeof request.organizationId !== 'string') {
+    console.error(`❌ [${correlationId}] APP SEARCH VALIDATION FAILED: Invalid organizationId`)
+    return new Response(JSON.stringify({
+      success: false,
+      error: 'Missing or invalid organizationId: must be a non-empty string',
+      correlationId,
+      received: {
+        organizationId: request.organizationId,
+        organizationIdType: typeof request.organizationId
       }
     }), {
       status: 400,
@@ -283,7 +380,7 @@ async function handleAppSearch(
   const limit = Math.min(searchParameters.limit || 5, 25)
 
   console.log(`🚀 [${correlationId}] STARTING APP STORE SEARCH:`, {
-    searchTerm,
+    searchTerm: searchTerm.trim(),
     searchType,
     country,
     limit,
@@ -292,20 +389,21 @@ async function handleAppSearch(
 
   try {
     // Perform real App Store search using iTunes Search API
-    const searchResults = await performRealAppStoreSearch(searchTerm, country, limit, correlationId)
+    const searchResults = await performRealAppStoreSearch(searchTerm.trim(), country, limit, correlationId)
 
     if (!searchResults || searchResults.length === 0) {
       console.log(`📭 [${correlationId}] NO RESULTS FOUND`)
       return new Response(JSON.stringify({
         success: false,
-        error: `No apps found for "${searchTerm}" in ${country.toUpperCase()}`,
+        error: `No apps found for "${searchTerm.trim()}" in ${country.toUpperCase()}`,
         correlationId,
-        searchTerm,
+        searchTerm: searchTerm.trim(),
         country,
         suggestions: [
           'Try a different app name or keyword',
           'Check the spelling of the app name',
-          'Try searching for the developer name instead'
+          'Try searching for the developer name instead',
+          'Use more specific search terms'
         ]
       }), {
         status: 404,
@@ -334,7 +432,7 @@ async function handleAppSearch(
       processingTime: `${processingTime}ms`,
       version: VERSION,
       searchContext: {
-        query: searchTerm,
+        query: searchTerm.trim(),
         country,
         resultsReturned: searchResults.length,
         totalFound: searchResults.length,
@@ -353,7 +451,7 @@ async function handleAppSearch(
   } catch (error: any) {
     console.error(`❌ [${correlationId}] APP SEARCH FAILED:`, {
       error: error.message,
-      searchTerm,
+      searchTerm: searchTerm.trim(),
       country
     })
     
@@ -361,7 +459,7 @@ async function handleAppSearch(
       success: false,
       error: `App search failed: ${error.message}`,
       correlationId,
-      searchTerm,
+      searchTerm: searchTerm.trim(),
       details: 'The iTunes Search API may be temporarily unavailable. Please try again later.'
     }), {
       status: 500,
