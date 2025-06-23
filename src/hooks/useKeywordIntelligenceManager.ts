@@ -29,6 +29,7 @@ export const useKeywordIntelligenceManager = ({
   const transitionTimeoutRef = useRef<NodeJS.Timeout>();
   const errorCountRef = useRef(0);
   const initializationTimeoutRef = useRef<NodeJS.Timeout>();
+  const isClusteringRef = useRef(false);
   
   const [state, setState] = useState<KeywordIntelligenceState>({
     isInitialized: false,
@@ -57,14 +58,16 @@ export const useKeywordIntelligenceManager = ({
 
   // Generate enhanced clusters when keyword data changes
   useEffect(() => {
-    if (advancedKI.keywordData.length > 0 && !state.isTransitioning) {
+    if (advancedKI.keywordData.length > 0 && !state.isTransitioning && !isClusteringRef.current) {
       generateEnhancedClusters();
     }
-  }, [advancedKI.keywordData, state.isTransitioning]);
+  }, [advancedKI.keywordData.length, state.isTransitioning]); // Removed generateEnhancedClusters from deps
 
   const generateEnhancedClusters = useCallback(async () => {
-    if (!advancedKI.keywordData.length) return;
+    // Guard against concurrent clustering
+    if (!advancedKI.keywordData.length || isClusteringRef.current) return;
 
+    isClusteringRef.current = true;
     try {
       console.log('🧠 [KI-MANAGER] Generating enhanced semantic clusters');
       
@@ -85,6 +88,8 @@ export const useKeywordIntelligenceManager = ({
       console.error('❌ [KI-MANAGER] Enhanced clustering failed:', error);
       // Fallback to original clusters
       setEnhancedClusters(advancedKI.clusters);
+    } finally {
+      isClusteringRef.current = false;
     }
   }, [advancedKI.keywordData, advancedKI.clusters, organizationId]);
 
