@@ -1,88 +1,35 @@
 
-import React from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { AsoDataProvider } from "./context/AsoDataContext";
-import { AuthProvider } from "./context/AuthContext";
-import { AppProvider } from "./context/AppContext";
+import { AuthProvider } from "@/context/AuthContext";
 import Index from "./pages/Index";
-import SignInPage from "./pages/auth/sign-in";
-import SignUpPage from "./pages/auth/sign-up";
-import Dashboard from "./pages/dashboard";
-import TrafficSourcesPage from "./pages/traffic-sources";
-import ConversionAnalysisPage from "./pages/conversion-analysis";
-import OverviewPage from "./pages/overview";
 import AsoAiHubPage from "./pages/aso-ai-hub";
-import FeaturingToolkitPage from './pages/featuring-toolkit';
-import KeywordIntelligencePage from './pages/keyword-intelligence';
-import ProfilePage from './pages/profile';
-import SettingsPage from './pages/settings';
-import AdminPage from './pages/admin';
-import AppsPage from './pages/apps';
-import NotFound from "./pages/NotFound";
-import { withAuth } from "./components/Auth/withAuth";
+import AsoIntelligencePage from "./pages/aso-intelligence";
 
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      retry: 1,
-      refetchOnWindowFocus: false,
-    },
-  },
-});
+const queryClient = new QueryClient();
 
-// Apply the withAuth HOC to protect routes
-const ProtectedDashboard = withAuth(Dashboard);
-const ProtectedTrafficSourcesPage = withAuth(TrafficSourcesPage);
-const ProtectedConversionAnalysisPage = withAuth(ConversionAnalysisPage);
-const ProtectedOverviewPage = withAuth(OverviewPage);
-const ProtectedAsoAiHubPage = withAuth(AsoAiHubPage);
-const ProtectedFeaturingToolkitPage = withAuth(FeaturingToolkitPage);
-const ProtectedKeywordIntelligencePage = withAuth(KeywordIntelligencePage);
-const ProtectedProfilePage = withAuth(ProfilePage);
-const ProtectedSettingsPage = withAuth(SettingsPage);
-const ProtectedAdminPage = withAuth(AdminPage);
-const ProtectedAppsPage = withAuth(AppsPage);
-
-const App: React.FC = () => {
-  return (
-    <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <TooltipProvider>
-          <AuthProvider>
-            <AppProvider>
-              <AsoDataProvider>
-                <div className="min-h-screen bg-background">
-                  <Routes>
-                    <Route path="/" element={<Index />} />
-                    <Route path="/auth/sign-in" element={<SignInPage />} />
-                    <Route path="/auth/sign-up" element={<SignUpPage />} />
-                    <Route path="/apps" element={<ProtectedAppsPage />} />
-                    <Route path="/dashboard" element={<ProtectedDashboard />} />
-                    <Route path="/traffic-sources" element={<ProtectedTrafficSourcesPage />} />
-                    <Route path="/conversion-analysis" element={<ProtectedConversionAnalysisPage />} />
-                    <Route path="/overview" element={<ProtectedOverviewPage />} />
-                    <Route path="/aso-ai-hub" element={<ProtectedAsoAiHubPage />} />
-                    <Route path="/featuring-toolkit" element={<ProtectedFeaturingToolkitPage />} />
-                    <Route path="/keyword-intelligence" element={<ProtectedKeywordIntelligencePage />} />
-                    <Route path="/profile" element={<ProtectedProfilePage />} />
-                    <Route path="/settings" element={<ProtectedSettingsPage />} />
-                    <Route path="/admin" element={<ProtectedAdminPage />} />
-                    <Route path="*" element={<NotFound />} />
-                  </Routes>
-                </div>
-                <Toaster />
-                <Sonner />
-              </AsoDataProvider>
-            </AppProvider>
-          </AuthProvider>
-        </TooltipProvider>
-      </BrowserRouter>
-    </QueryClientProvider>
-  );
-};
+const App = () => (
+  <QueryClientProvider client={queryClient}>
+    <AuthProvider>
+      <TooltipProvider>
+        <Toaster />
+        <Sonner />
+        <BrowserRouter>
+          <Routes>
+            <Route path="/" element={<Index />} />
+            <Route path="/aso-ai-hub" element={<AsoAiHubPage />} />
+            <Route path="/aso-intelligence" element={<AsoIntelligencePage />} />
+            {/* Legacy routes for backward compatibility */}
+            <Route path="/metadata-copilot" element={<AsoIntelligencePage />} />
+            <Route path="/app-audit" element={<AsoIntelligencePage />} />
+          </Routes>
+        </BrowserRouter>
+      </TooltipProvider>
+    </AuthProvider>
+  </QueryClientProvider>
+);
 
 export default App;
