@@ -1,3 +1,4 @@
+
 import { supabase } from '@/integrations/supabase/client';
 import { inputDetectionService, SearchParameters } from './input-detection.service';
 import { bypassPatternsService } from './bypass-patterns.service';
@@ -36,16 +37,16 @@ class AsoSearchService {
   private baseDelay = 1000;
 
   /**
-   * EMERGENCY BYPASS: Smart search with comprehensive debugging
+   * Enhanced search with improved error handling and routing
    */
   async search(input: string, config: SearchConfig): Promise<SearchResult> {
     // Create correlation context for request tracing
     const correlationContext = correlationTracker.createContext('aso-search', config.organizationId);
     
-    correlationTracker.log('info', 'ASO search initiated with emergency debugging', { input, config });
+    correlationTracker.log('info', 'ASO search initiated with enhanced routing', { input, config });
 
     try {
-      // PHASE 1: Emergency bypass analysis
+      // PHASE 1: Bypass analysis for direct iTunes calls
       const bypassAnalysis = bypassPatternsService.analyzeForBypass(input);
       correlationTracker.log('info', 'Bypass analysis completed', bypassAnalysis);
 
@@ -87,9 +88,9 @@ class AsoSearchService {
         }
       }
 
-      // EMERGENCY PATH: Use edge function with enhanced debugging
-      correlationTracker.log('info', 'Using edge function with emergency debugging');
-      return await this.searchWithEmergencyDebugging(input, config);
+      // MAIN PATH: Use edge function with enhanced error handling
+      correlationTracker.log('info', 'Using edge function with enhanced error handling');
+      return await this.searchWithEnhancedErrorHandling(input, config);
 
     } catch (error: any) {
       // Re-throw AmbiguousSearchError without modification
@@ -128,9 +129,9 @@ class AsoSearchService {
   }
 
   /**
-   * EMERGENCY: Enhanced edge function call with comprehensive debugging
+   * Enhanced edge function call with better error handling
    */
-  private async searchWithEmergencyDebugging(input: string, config: SearchConfig): Promise<SearchResult> {
+  private async searchWithEnhancedErrorHandling(input: string, config: SearchConfig): Promise<SearchResult> {
     const requestBody = {
       searchTerm: input.trim(),
       searchType: 'keyword' as const,
@@ -142,20 +143,20 @@ class AsoSearchService {
       }
     };
 
-    // EMERGENCY DEBUG: Log frontend request details
-    console.log('🔍 [FRONTEND] Preparing edge function request:', {
+    // Enhanced debug logging
+    console.log('🔍 [FRONTEND] Preparing enhanced edge function request:', {
       requestBody,
       bodySize: JSON.stringify(requestBody).length,
       correlationId: correlationTracker.getContext()?.id
     });
 
-    // EMERGENCY DEBUG: Validate request before sending
+    // Validate request before sending
     if (!requestBody.searchTerm || requestBody.searchTerm.trim() === '') {
-      throw new Error('Frontend validation failed: searchTerm is empty');
+      throw new Error('Search term cannot be empty');
     }
 
     if (!requestBody.organizationId) {
-      throw new Error('Frontend validation failed: organizationId is missing');
+      throw new Error('Organization ID is required');
     }
 
     console.log('✅ [FRONTEND] Request validation passed, calling edge function');
@@ -169,11 +170,12 @@ class AsoSearchService {
         }
       });
 
-      console.log('📥 [FRONTEND] Edge function response received:', {
+      console.log('📥 [FRONTEND] Enhanced edge function response received:', {
         hasData: !!data,
         hasError: !!error,
         dataSuccess: data?.success,
-        errorMessage: error?.message
+        errorMessage: error?.message,
+        dataError: data?.error
       });
 
       if (error) {
@@ -183,29 +185,60 @@ class AsoSearchService {
 
       if (!data || !data.success) {
         console.error('❌ [FRONTEND] Edge function returned unsuccessful response:', data);
-        throw new Error(data?.error || 'Edge function returned unsuccessful response');
+        const errorMessage = data?.error || 'Edge function returned unsuccessful response';
+        
+        // Enhanced error messages based on the response
+        if (errorMessage.includes('No apps found')) {
+          throw new Error(`No apps found for "${input}". Try different keywords or check the spelling.`);
+        }
+        if (errorMessage.includes('Invalid request')) {
+          throw new Error('Search request was invalid. Please try again.');
+        }
+        if (errorMessage.includes('temporarily unavailable')) {
+          throw new Error('App Store search is temporarily unavailable. Please try again in a few minutes.');
+        }
+        
+        throw new Error(errorMessage);
       }
 
-      console.log('✅ [FRONTEND] Edge function call successful');
+      console.log('✅ [FRONTEND] Enhanced edge function call successful');
 
-      // Transform response
+      // Transform response - handle both single app and app with competitors
+      const responseData = data.data;
+      const targetApp = {
+        name: responseData.name || responseData.title,
+        appId: responseData.appId,
+        title: responseData.title,
+        subtitle: responseData.subtitle || '',
+        description: responseData.description || '',
+        url: responseData.url || '',
+        icon: responseData.icon || '',
+        rating: responseData.rating || 0,
+        reviews: responseData.reviews || 0,
+        developer: responseData.developer || '',
+        applicationCategory: responseData.applicationCategory || 'Unknown',
+        locale: responseData.locale || 'en-US'
+      } as ScrapedMetadata;
+
       return {
-        targetApp: data.data,
-        competitors: data.data.competitors || [],
+        targetApp,
+        competitors: responseData.competitors || [],
         searchContext: {
           query: input,
           type: 'keyword',
-          totalResults: (data.data.competitors?.length || 0) + 1,
-          category: data.data.applicationCategory || 'Unknown',
+          totalResults: (responseData.competitors?.length || 0) + 1,
+          category: responseData.applicationCategory || 'Unknown',
           country: 'us'
         },
         intelligence: { 
-          opportunities: data.debugMode ? ['Emergency debug mode active'] : [] 
+          opportunities: data.searchContext?.includeCompetitors ? 
+            [`Found ${responseData.competitors?.length || 0} competitors for analysis`] : 
+            ['App successfully imported for analysis']
         }
       };
 
     } catch (error: any) {
-      console.error('💥 [FRONTEND] Edge function call failed:', {
+      console.error('💥 [FRONTEND] Enhanced edge function call failed:', {
         error: error.message,
         stack: error.stack
       });
@@ -350,23 +383,26 @@ class AsoSearchService {
   private getUserFriendlyError(error: any): string {
     const message = error.message?.toLowerCase() || '';
     
+    if (message.includes('no apps found')) {
+      return error.message; // Already user-friendly from edge function
+    }
     if (message.includes('rate limit')) {
       return 'You have made too many requests. Please wait a few minutes before trying again.';
     }
-    if (message.includes('not found') || message.includes('no results')) {
-      return 'No apps found for your search. Try different keywords or check the spelling.';
-    }
     if (message.includes('invalid') || message.includes('validation')) {
-      return 'Please enter valid keywords, app name, or App Store URL.';
+      return 'Please enter a valid app name, keywords, or App Store URL.';
     }
-    if (message.includes('network') || message.includes('unavailable')) {
+    if (message.includes('network') || message.includes('unavailable') || message.includes('temporarily')) {
       return 'Search service is temporarily unavailable. Please try again in a few minutes.';
     }
-    if (message.includes('unauthorized')) {
+    if (message.includes('unauthorized') || message.includes('forbidden')) {
       return 'Authentication required. Please log in and try again.';
     }
+    if (message.includes('edge function')) {
+      return 'Search service encountered an error. Please try again with different keywords.';
+    }
     
-    return 'Search failed. Please try again with different keywords.';
+    return 'Search failed. Please try again with different keywords or check your internet connection.';
   }
 }
 

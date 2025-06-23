@@ -1,7 +1,8 @@
+
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { KeywordDiscoveryService } from './services/keyword-discovery.service.ts'
 
-const VERSION = '8.1.0-keyword-discovery'
+const VERSION = '8.2.0-fixed-routing'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -9,7 +10,7 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
 }
 
-interface SearchRequest {
+interface AppSearchRequest {
   searchTerm: string
   searchType?: 'keyword' | 'brand' | 'url'
   organizationId: string
@@ -31,6 +32,21 @@ interface KeywordDiscoveryRequest {
   seedKeywords?: string[]
   country?: string
   maxKeywords?: number
+}
+
+interface AppData {
+  name: string
+  appId: string
+  title: string
+  subtitle: string
+  description: string
+  url: string
+  icon: string
+  rating: number
+  reviews: number
+  developer: string
+  applicationCategory: string
+  locale: string
 }
 
 serve(async (req: Request) => {
@@ -60,9 +76,9 @@ serve(async (req: Request) => {
         status: 'ok',
         version: VERSION,
         timestamp: new Date().toISOString(),
-        mode: 'real-search-with-keyword-discovery',
+        mode: 'app-search-with-keyword-discovery',
         correlationId,
-        message: 'App Store scraper with keyword discovery ready'
+        message: 'App Store scraper with fixed routing ready'
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 200
@@ -88,8 +104,11 @@ serve(async (req: Request) => {
       requestData = await req.json()
       console.log(`🎯 [${correlationId}] REQUEST PARSED:`, {
         hasSearchTerm: !!requestData.searchTerm,
-        hasKeywordDiscovery: !!requestData.seedKeywords || !!requestData.competitorApps,
-        organizationId: requestData.organizationId
+        hasTargetApp: !!requestData.targetApp,
+        hasCompetitorApps: !!requestData.competitorApps,
+        hasSeedKeywords: !!requestData.seedKeywords,
+        includeCompetitorAnalysis: requestData.includeCompetitorAnalysis,
+        organizationId: requestData.organizationId?.substring(0, 8) + '...'
       })
     } catch (error: any) {
       console.error(`💥 [${correlationId}] BODY PARSING FAILED:`, error.message)
@@ -103,13 +122,52 @@ serve(async (req: Request) => {
       })
     }
 
-    // Route to keyword discovery if appropriate parameters are present
-    if (requestData.seedKeywords || requestData.competitorApps || requestData.targetApp) {
+    // FIXED ROUTING LOGIC: Check for keyword discovery first with proper criteria
+    const isKeywordDiscovery = !!(
+      requestData.seedKeywords || 
+      requestData.competitorApps || 
+      requestData.targetApp ||
+      (!requestData.searchTerm && (requestData.seedKeywords || requestData.competitorApps))
+    )
+
+    const isAppSearch = !!(
+      requestData.searchTerm && 
+      requestData.organizationId &&
+      !isKeywordDiscovery
+    )
+
+    console.log(`🔀 [${correlationId}] ROUTING DECISION:`, {
+      isKeywordDiscovery,
+      isAppSearch,
+      hasSearchTerm: !!requestData.searchTerm,
+      criteria: {
+        seedKeywords: !!requestData.seedKeywords,
+        competitorApps: !!requestData.competitorApps,
+        targetApp: !!requestData.targetApp
+      }
+    })
+
+    if (isKeywordDiscovery) {
+      console.log(`🔍 [${correlationId}] ROUTING TO: Keyword Discovery`)
       return await handleKeywordDiscovery(requestData as KeywordDiscoveryRequest, correlationId, startTime)
     }
 
-    // Continue with existing app search logic
-    return await handleAppSearch(requestData as SearchRequest, correlationId, startTime)
+    if (isAppSearch) {
+      console.log(`📱 [${correlationId}] ROUTING TO: App Search`)
+      return await handleAppSearch(requestData as AppSearchRequest, correlationId, startTime)
+    }
+
+    // Invalid request - neither keyword discovery nor app search
+    console.error(`❌ [${correlationId}] INVALID REQUEST: Cannot determine request type`)
+    return new Response(JSON.stringify({
+      success: false,
+      error: 'Invalid request: Must provide either searchTerm for app search or seedKeywords/competitorApps for keyword discovery',
+      correlationId,
+      receivedFields: Object.keys(requestData)
+    }), {
+      status: 400,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    })
 
   } catch (error: any) {
     const processingTime = Date.now() - startTime
@@ -138,7 +196,7 @@ async function handleKeywordDiscovery(
   startTime: number
 ) {
   console.log(`🔍 [${correlationId}] KEYWORD DISCOVERY REQUEST:`, {
-    organizationId: request.organizationId,
+    organizationId: request.organizationId?.substring(0, 8) + '...',
     seedKeywords: request.seedKeywords?.length || 0,
     competitorApps: request.competitorApps?.length || 0,
     targetApp: !!request.targetApp
@@ -199,17 +257,21 @@ async function handleKeywordDiscovery(
 }
 
 async function handleAppSearch(
-  request: SearchRequest, 
+  request: AppSearchRequest, 
   correlationId: string, 
   startTime: number
 ) {
   // Validate required fields
   if (!request.searchTerm || !request.organizationId) {
-    console.error(`❌ [${correlationId}] VALIDATION FAILED`)
+    console.error(`❌ [${correlationId}] APP SEARCH VALIDATION FAILED: Missing required fields`)
     return new Response(JSON.stringify({
       success: false,
-      error: 'Missing required fields: searchTerm and organizationId',
-      correlationId
+      error: 'Missing required fields: searchTerm and organizationId are required for app search',
+      correlationId,
+      received: {
+        searchTerm: !!request.searchTerm,
+        organizationId: !!request.organizationId
+      }
     }), {
       status: 400,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -224,54 +286,88 @@ async function handleAppSearch(
     searchTerm,
     searchType,
     country,
-    limit
+    limit,
+    includeCompetitors: request.includeCompetitorAnalysis
   })
 
-  // Perform real App Store search using iTunes Search API
-  const searchResults = await performRealAppStoreSearch(searchTerm, country, limit, correlationId)
+  try {
+    // Perform real App Store search using iTunes Search API
+    const searchResults = await performRealAppStoreSearch(searchTerm, country, limit, correlationId)
 
-  if (!searchResults || searchResults.length === 0) {
-    console.log(`📭 [${correlationId}] NO RESULTS FOUND`)
+    if (!searchResults || searchResults.length === 0) {
+      console.log(`📭 [${correlationId}] NO RESULTS FOUND`)
+      return new Response(JSON.stringify({
+        success: false,
+        error: `No apps found for "${searchTerm}" in ${country.toUpperCase()}`,
+        correlationId,
+        searchTerm,
+        country,
+        suggestions: [
+          'Try a different app name or keyword',
+          'Check the spelling of the app name',
+          'Try searching for the developer name instead'
+        ]
+      }), {
+        status: 404,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      })
+    }
+
+    const processingTime = Date.now() - startTime
+    console.log(`✅ [${correlationId}] APP SEARCH COMPLETED:`, {
+      resultsCount: searchResults.length,
+      processingTime: `${processingTime}ms`
+    })
+
+    // If only one result, return it as the target app
+    // If multiple results, return the first as target and rest as competitors
+    const targetApp = searchResults[0]
+    const competitors = request.includeCompetitorAnalysis ? searchResults.slice(1) : []
+
     return new Response(JSON.stringify({
-      success: false,
-      error: `No apps found for "${searchTerm}" in ${country.toUpperCase()}`,
+      success: true,
+      data: {
+        ...targetApp,
+        competitors
+      },
       correlationId,
+      processingTime: `${processingTime}ms`,
+      version: VERSION,
+      searchContext: {
+        query: searchTerm,
+        country,
+        resultsReturned: searchResults.length,
+        totalFound: searchResults.length,
+        includeCompetitors: request.includeCompetitorAnalysis
+      }
+    }), {
+      headers: {
+        ...corsHeaders,
+        'Content-Type': 'application/json',
+        'X-Processing-Time': `${processingTime}ms`,
+        'X-Correlation-ID': correlationId
+      },
+      status: 200
+    })
+
+  } catch (error: any) {
+    console.error(`❌ [${correlationId}] APP SEARCH FAILED:`, {
+      error: error.message,
       searchTerm,
       country
+    })
+    
+    return new Response(JSON.stringify({
+      success: false,
+      error: `App search failed: ${error.message}`,
+      correlationId,
+      searchTerm,
+      details: 'The iTunes Search API may be temporarily unavailable. Please try again later.'
     }), {
-      status: 404,
+      status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     })
   }
-
-  const processingTime = Date.now() - startTime
-  console.log(`✅ [${correlationId}] SEARCH COMPLETED:`, {
-    resultsCount: searchResults.length,
-    processingTime: `${processingTime}ms`
-  })
-
-  // Return multiple results for user selection
-  return new Response(JSON.stringify({
-    success: true,
-    data: searchResults,
-    correlationId,
-    processingTime: `${processingTime}ms`,
-    version: VERSION,
-    searchContext: {
-      query: searchTerm,
-      country,
-      resultsReturned: searchResults.length,
-      totalFound: searchResults.length
-    }
-  }), {
-    headers: {
-      ...corsHeaders,
-      'Content-Type': 'application/json',
-      'X-Processing-Time': `${processingTime}ms`,
-      'X-Correlation-ID': correlationId
-    },
-    status: 200
-  })
 }
 
 async function performRealAppStoreSearch(searchTerm: string, country: string, limit: number, correlationId: string): Promise<AppData[]> {
@@ -337,14 +433,5 @@ async function performRealAppStoreSearch(searchTerm: string, country: string, li
       country
     })
     throw error
-  }
-}
-
-function isAppStoreUrl(input: string): boolean {
-  try {
-    const url = new URL(input.startsWith('http') ? input : `https://${input}`)
-    return url.hostname.includes('apps.apple.com') || url.hostname.includes('play.google.com')
-  } catch {
-    return false
   }
 }
