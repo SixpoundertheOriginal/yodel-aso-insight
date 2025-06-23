@@ -45,65 +45,65 @@ const initialCopilots: CopilotData[] = [
   {
     id: 'metadata-copilot',
     name: 'Metadata Copilot',
-    description: 'Generate keyword-optimized metadata sets with strategic positioning',
+    description: 'Generate keyword-optimized metadata sets with strategic positioning and competitive analysis',
     icon: '📝',
-    progress: 92,
+    progress: 95,
     category: 'optimization',
+    status: 'available'
+  },
+  {
+    id: 'growth-gap-finder',
+    name: 'Growth Gap Finder',
+    description: 'Discover untapped keyword opportunities and competitive gaps in your market segment',
+    icon: '💡',
+    progress: 90,
+    category: 'analysis',
     status: 'available'
   },
   {
     id: 'cpp-strategy-copilot',
     name: 'CPP Strategy Copilot',
-    description: 'Analyze screenshots and generate Custom Product Page themes for better conversion',
+    description: 'Analyze screenshots and generate Custom Product Page themes for maximum conversion',
     icon: '🎯',
     progress: 88,
     category: 'strategy',
     status: 'available'
   },
   {
-    id: 'growth-gap-finder',
-    name: 'Growth Gap Finder',
-    description: 'Analyze keyword data to uncover ranking gaps and growth opportunities.',
-    icon: '💡',
-    progress: 75,
-    category: 'analysis',
-    status: 'available'
-  },
-  {
     id: 'cpp-strategy-builder',
     name: 'CPP Strategy Builder',
-    description: 'Craft seasonal Custom Product Pages with strategic conversion hooks',
-    icon: '🎯',
-    progress: 87,
+    description: 'Build comprehensive Custom Product Page strategies with seasonal optimization',
+    icon: '🏗️',
+    progress: 85,
     category: 'strategy',
     status: 'available'
   },
   {
     id: 'featuring-assistant',
     name: 'Featuring Assistant',
-    description: 'Plan feature-eligible moments using App Store featuring logic',
+    description: 'Plan feature-eligible content using App Store featuring guidelines and best practices',
     icon: '⭐',
-    progress: 95,
+    progress: 92,
     category: 'strategy',
     status: 'available'
   },
   {
     id: 'reporting-strategist',
     name: 'Reporting Strategist',
-    description: 'Analyze ASO performance data and surface actionable trends',
+    description: 'Generate comprehensive ASO performance reports with actionable insights and trends',
     icon: '📊',
-    progress: 89,
+    progress: 87,
     category: 'analysis',
     status: 'available'
   },
   {
     id: 'system-strategist',
     name: 'System Strategist',
-    description: 'AI-powered insights for improving GPT modules and ASO workflows',
+    description: 'Optimize ASO workflows and improve system performance with AI-powered recommendations',
     icon: '🧠',
-    progress: 78,
+    progress: 82,
     category: 'system',
-    status: 'available'
+    status: 'in-progress'
   }
 ];
 
