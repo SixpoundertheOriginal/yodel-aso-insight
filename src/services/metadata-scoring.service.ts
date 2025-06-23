@@ -366,7 +366,7 @@ class MetadataScoringService {
     if (competitors.length === 0) {
       return {
         betterThan: 0,
-        worsehan: 0,
+        worseThan: 0,
         averageScore: scores.overall
       };
     }
@@ -375,12 +375,12 @@ class MetadataScoringService {
     // you'd analyze competitor metadata using the same scoring system
     const estimatedCompetitorScores = competitors.map(() => Math.floor(Math.random() * 40) + 40);
     const betterThan = estimatedCompetitorScores.filter(score => scores.overall > score).length;
-    const worsehan = competitors.length - betterThan;
+    const worseThan = competitors.length - betterThan;
     const averageScore = estimatedCompetitorScores.reduce((sum, score) => sum + score, 0) / competitors.length;
 
     return {
       betterThan,
-      worsehan,
+      worseThan,
       averageScore: Math.round(averageScore)
     };
   }
