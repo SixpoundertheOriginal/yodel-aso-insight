@@ -4,6 +4,8 @@
  * Implements exponential backoff with jitter and method-specific strategies
  */
 
+import { AmbiguousSearchError } from '@/types/search-errors';
+
 export interface RetryConfig {
   maxAttempts: number;
   baseDelayMs: number;
@@ -99,6 +101,13 @@ class RetryStrategyService {
 
       } catch (error: any) {
         lastError = error;
+        
+        // FIXED: Don't retry AmbiguousSearchError - it's a success condition
+        if (error instanceof AmbiguousSearchError) {
+          console.log(`🎯 [RETRY-STRATEGY] ${method} found multiple candidates - not retrying`);
+          throw error;
+        }
+        
         const shouldRetry = this.shouldRetry(error, attempt, config, context);
         
         console.log(`❌ [RETRY-STRATEGY] ${method} failed attempt ${attempt}:`, {
@@ -132,9 +141,15 @@ class RetryStrategyService {
 
   /**
    * Determine if error is retryable
+   * FIXED: Never retry AmbiguousSearchError
    */
   private shouldRetry(error: Error, attempt: number, config: RetryConfig, context: RetryContext): boolean {
     if (attempt >= config.maxAttempts) {
+      return false;
+    }
+
+    // FIXED: AmbiguousSearchError should never be retried
+    if (error instanceof AmbiguousSearchError) {
       return false;
     }
 
@@ -175,9 +190,6 @@ class RetryStrategyService {
     return Math.max(100, cappedDelay + jitter);
   }
 
-  /**
-   * Get configuration for specific method
-   */
   private getConfigForMethod(method: string, customConfig?: Partial<RetryConfig>): RetryConfig {
     const methodConfig = this.methodConfigs[method] || {};
     return {
@@ -187,16 +199,10 @@ class RetryStrategyService {
     };
   }
 
-  /**
-   * Sleep utility
-   */
   private sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
 
-  /**
-   * Get retry statistics for monitoring
-   */
   getRetryStats() {
     return {
       supportedMethods: Object.keys(this.methodConfigs),

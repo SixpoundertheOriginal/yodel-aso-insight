@@ -107,7 +107,13 @@ class AsoSearchService {
     } catch (error: any) {
       console.groupEnd();
       
-      // Record failure for analytics
+      // Handle ambiguous search - let it bubble up for user selection
+      if (error instanceof AmbiguousSearchError) {
+        userExperienceShieldService.reset();
+        throw error;
+      }
+
+      // Record failure for analytics (only for actual failures)
       failureAnalyticsService.recordFailure({
         component: 'aso-search-orchestrator',
         method: 'bulletproof-search',
@@ -118,11 +124,6 @@ class AsoSearchService {
       });
 
       // Handle with UX shield
-      if (error instanceof AmbiguousSearchError) {
-        userExperienceShieldService.reset();
-        throw error; // Let ambiguous errors bubble up for user selection
-      }
-
       const userError = userExperienceShieldService.handleError(error, {
         searchTerm: input,
         attempts: 3 // Assuming full fallback chain was attempted
@@ -155,6 +156,7 @@ class AsoSearchService {
 
   /**
    * Execute the bulletproof search chain with intelligent fallbacks
+   * FIXED: Handle AmbiguousSearchError as success, not failure
    */
   private async executeBulletproofSearchChain(input: string, config: SearchConfig, startTime: number): Promise<SearchResult> {
     const searchMethods = [
@@ -182,67 +184,52 @@ class AsoSearchService {
       console.log(`🎯 [BULLETPROOF-SEARCH] Attempting ${method.name}`);
 
       try {
-        const retryResult: RetryResult<SearchResult> = await retryStrategyService.executeWithRetry(
-          method.handler,
-          method.name
-        );
+        // FIXED: Handle AmbiguousSearchError immediately without retry
+        const result = await method.handler();
+        
+        // If we get here, it's a successful result (not ambiguous)
+        multiLevelCircuitBreakerService.recordSuccess(method.name);
+        
+        // Calculate final response time
+        const responseTime = Date.now() - startTime;
 
-        if (retryResult.success && retryResult.data) {
-          // Record success
-          multiLevelCircuitBreakerService.recordSuccess(method.name);
-          
-          // Calculate final response time and retries
-          const responseTime = Date.now() - startTime;
-          totalRetries += retryResult.attempts - 1;
+        // Update search context with recovery info
+        result.searchContext.source = method.name === 'enhanced-edge-function' ? 'primary' : 'fallback';
+        result.searchContext.responseTime = responseTime;
+        result.searchContext.backgroundRetries = totalRetries;
 
-          // Update search context with recovery info
-          retryResult.data.searchContext.source = method.name === 'enhanced-edge-function' ? 'primary' : 'fallback';
-          retryResult.data.searchContext.responseTime = responseTime;
-          retryResult.data.searchContext.backgroundRetries = totalRetries;
+        // Complete loading
+        const feedback = {
+          searchTerm: input,
+          resultSource: result.searchContext.source,
+          responseTime,
+          userVisible: true,
+          backgroundRetries: totalRetries
+        };
 
-          // Complete loading
-          const feedback = {
-            searchTerm: input,
-            resultSource: retryResult.data.searchContext.source,
-            responseTime,
-            userVisible: true,
-            backgroundRetries: totalRetries
-          };
+        const completeState = userExperienceShieldService.completeLoading(feedback);
+        config.onLoadingUpdate?.(completeState);
 
-          const completeState = userExperienceShieldService.completeLoading(feedback);
-          config.onLoadingUpdate?.(completeState);
-
-          // Record recovery if there were previous failures
-          if (lastError) {
-            failureAnalyticsService.recordRecovery(
-              { component: method.name, searchTerm: input },
-              method.name,
-              responseTime
-            );
-          }
-
-          console.log(`✅ [BULLETPROOF-SEARCH] Success via ${method.name} (${retryResult.attempts} attempts, ${responseTime}ms)`);
-          return retryResult.data;
+        // Record recovery if there were previous failures
+        if (lastError) {
+          failureAnalyticsService.recordRecovery(
+            { component: method.name, searchTerm: input },
+            method.name,
+            responseTime
+          );
         }
 
-        // Handle retry failure
-        lastError = retryResult.error || new Error(`${method.name} failed after retries`);
-        multiLevelCircuitBreakerService.recordFailure(method.name, lastError);
-        
-        // Record failure
-        failureAnalyticsService.recordFailure({
-          component: method.name,
-          method: 'bulletproof-search-method',
-          error: lastError.message,
-          searchTerm: input,
-          organizationId: config.organizationId,
-          context: { attempts: retryResult.attempts, totalTime: retryResult.totalTime }
-        });
-
-        totalRetries += retryResult.attempts;
-        console.log(`❌ [BULLETPROOF-SEARCH] ${method.name} failed after ${retryResult.attempts} attempts: ${lastError.message}`);
+        console.log(`✅ [BULLETPROOF-SEARCH] Success via ${method.name} (${responseTime}ms)`);
+        return result;
 
       } catch (error: any) {
+        // FIXED: Let AmbiguousSearchError bubble up immediately
+        if (error instanceof AmbiguousSearchError) {
+          console.log(`🎯 [BULLETPROOF-SEARCH] ${method.name} found multiple candidates - bubbling up for user selection`);
+          throw error;
+        }
+
+        // For actual failures, record and continue to next method
         lastError = error;
         multiLevelCircuitBreakerService.recordFailure(method.name, error);
         
@@ -255,7 +242,7 @@ class AsoSearchService {
           context: { totalRetries }
         });
 
-        console.log(`💥 [BULLETPROOF-SEARCH] ${method.name} threw exception: ${error.message}`);
+        console.log(`❌ [BULLETPROOF-SEARCH] ${method.name} failed: ${error.message}`);
       }
     }
 
@@ -277,7 +264,7 @@ class AsoSearchService {
         bypassReason: 'bulletproof-fallback-direct-api'
       });
 
-      // FIXED: Handle ambiguous results properly
+      // Handle ambiguous results properly
       if (ambiguityResult.isAmbiguous && ambiguityResult.results.length > 1) {
         console.log(`🎯 [DIRECT-API] Found ${ambiguityResult.results.length} ambiguous results`);
         throw new AmbiguousSearchError(ambiguityResult.results, ambiguityResult.searchTerm);
@@ -314,7 +301,7 @@ class AsoSearchService {
         bypassReason: 'bulletproof-bypass-search'
       });
 
-      // FIXED: Handle ambiguous results properly
+      // Handle ambiguous results properly
       if (ambiguityResult.isAmbiguous && ambiguityResult.results.length > 1) {
         console.log(`🎯 [BYPASS-SEARCH] Found ${ambiguityResult.results.length} ambiguous results`);
         throw new AmbiguousSearchError(ambiguityResult.results, ambiguityResult.searchTerm);
