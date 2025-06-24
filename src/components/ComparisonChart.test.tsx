@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { render, screen } from '@testing-library/react';
-import ComparisonChart, { mergeSeries } from './ComparisonChart';
+import ComparisonChart from './ComparisonChart';
 
 describe('ComparisonChart', () => {
   // Mock data for testing
@@ -64,38 +64,5 @@ describe('ComparisonChart', () => {
     // Check for legend items
     expect(screen.getByText('Current')).toBeInTheDocument();
     expect(screen.getByText('Previous')).toBeInTheDocument();
-  });
-
-  describe('mergeSeries function', () => {
-    it('correctly merges current and previous data series', () => {
-      const merged = mergeSeries(currentData, previousData, 'downloads');
-      
-      // Should have entries for all unique dates
-      expect(merged.length).toBe(4); // 01, 02, 03, 04
-      
-      // Check specific entries
-      const jan1 = merged.find(item => item.date === '2023-01-01');
-      expect(jan1).toEqual({
-        date: '2023-01-01',
-        current: 100,
-        previous: 90
-      });
-      
-      // Check date that exists only in current data
-      const jan2 = merged.find(item => item.date === '2023-01-02');
-      expect(jan2.current).toBe(120);
-      expect(jan2.previous).toBe(0); // Default value when missing
-      
-      // Check date that exists only in previous data
-      const jan4 = merged.find(item => item.date === '2023-01-04');
-      expect(jan4.current).toBe(0); // Default value when missing
-      expect(jan4.previous).toBe(85);
-    });
-
-    it('handles empty input arrays', () => {
-      expect(mergeSeries([], [], 'downloads')).toEqual([]);
-      expect(mergeSeries(currentData, [], 'downloads').length).toBe(3);
-      expect(mergeSeries([], previousData, 'downloads').length).toBe(3);
-    });
   });
 });

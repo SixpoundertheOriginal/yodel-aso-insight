@@ -3,11 +3,13 @@ import React from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Database, TestTube, AlertTriangle, Loader2 } from 'lucide-react';
-import { CurrentDataSource } from '@/hooks/useAsoDataWithFallback';
+
+type DataSource = 'mock' | 'bigquery';
+type DataSourceStatus = 'available' | 'loading' | 'error' | 'fallback';
 
 interface DataSourceIndicatorProps {
-  currentDataSource: CurrentDataSource | null;
-  dataSourceStatus: 'loading' | 'bigquery-success' | 'bigquery-failed-fallback' | 'mock-only';
+  currentDataSource: DataSource;
+  dataSourceStatus: DataSourceStatus;
 }
 
 export const DataSourceIndicator: React.FC<DataSourceIndicatorProps> = ({
@@ -24,7 +26,7 @@ export const DataSourceIndicator: React.FC<DataSourceIndicatorProps> = ({
           tooltip: 'Loading data from BigQuery...'
         };
       
-      case 'bigquery-success':
+      case 'available':
         return {
           icon: <Database className="h-3 w-3" />,
           text: 'Live Data',
@@ -32,7 +34,7 @@ export const DataSourceIndicator: React.FC<DataSourceIndicatorProps> = ({
           tooltip: 'Data from BigQuery (Live ASO metrics)'
         };
       
-      case 'bigquery-failed-fallback':
+      case 'fallback':
         return {
           icon: <AlertTriangle className="h-3 w-3" />,
           text: 'Demo Data',
@@ -40,12 +42,12 @@ export const DataSourceIndicator: React.FC<DataSourceIndicatorProps> = ({
           tooltip: 'BigQuery unavailable - showing demo data'
         };
       
-      case 'mock-only':
+      case 'error':
         return {
-          icon: <TestTube className="h-3 w-3" />,
-          text: 'Demo Data',
-          variant: 'outline' as const,
-          tooltip: 'Demo data mode (for testing)'
+          icon: <AlertTriangle className="h-3 w-3" />,
+          text: 'Error',
+          variant: 'destructive' as const,
+          tooltip: 'Data source error - check logs'
         };
       
       default:
