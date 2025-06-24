@@ -4,51 +4,50 @@ import { supabase } from '@/integrations/supabase/client';
 
 export const usePermissions = () => {
   const { data: permissions, isLoading } = useQuery({
-    queryKey: ['user-permissions'],
+    queryKey: ['userPermissions'],
     queryFn: async () => {
+      // Get current user
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return [];
+      if (!user) return null;
+
+      // Get user profile and roles
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+
+      if (!profile) return null;
 
       // Get user roles
-      const { data: userRoles, error: rolesError } = await supabase
+      const { data: userRoles } = await supabase
         .from('user_roles')
-        .select('role')
+        .select('role, organization_id')
         .eq('user_id', user.id);
 
-      if (rolesError || !userRoles) return [];
+      const roles = userRoles?.map(r => r.role) || [];
+      const organizationRoles = userRoles?.filter(r => r.organization_id === profile.organization_id).map(r => r.role) || [];
 
-      // Get permissions for those roles
-      const roleNames = userRoles.map(ur => ur.role);
-      if (roleNames.length === 0) return [];
-
-      const { data: rolePermissions, error: permissionsError } = await supabase
-        .from('role_permissions')
-        .select('permission_name')
-        .in('role', roleNames);
-
-      if (permissionsError || !rolePermissions) return [];
-
-      // Return unique permissions
-      const allPermissions = rolePermissions.map(rp => rp.permission_name);
-      return [...new Set(allPermissions)];
+      return {
+        userId: user.id,
+        organizationId: profile.organization_id,
+        roles,
+        organizationRoles,
+        isSuperAdmin: roles.includes('SUPER_ADMIN'),
+        isOrganizationAdmin: organizationRoles.includes('ORGANIZATION_ADMIN') || roles.includes('SUPER_ADMIN'),
+        canManageApps: organizationRoles.includes('ORGANIZATION_ADMIN') || roles.includes('SUPER_ADMIN'),
+        canApproveApps: organizationRoles.includes('ORGANIZATION_ADMIN') || roles.includes('SUPER_ADMIN')
+      };
     },
+    staleTime: 5 * 60 * 1000, // 5 minutes
   });
 
-  const hasPermission = (permission: string) => {
-    return permissions?.includes(permission) || false;
-  };
-
-  const hasRole = (role: string) => {
-    // This would require a separate query, but for now we can check admin permissions
-    return hasPermission('admin.view_all_organizations');
-  };
-
   return {
-    permissions: permissions || [],
-    hasPermission,
-    hasRole,
+    ...permissions,
     isLoading,
-    isSuperAdmin: hasPermission('admin.manage_organizations'),
-    isOrgAdmin: hasPermission('admin.manage_apps') || hasPermission('admin.view_analytics'),
+    isSuperAdmin: permissions?.isSuperAdmin || false,
+    isOrganizationAdmin: permissions?.isOrganizationAdmin || false,
+    canManageApps: permissions?.canManageApps || false,
+    canApproveApps: permissions?.canApproveApps || false,
   };
 };

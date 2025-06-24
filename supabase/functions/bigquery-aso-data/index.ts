@@ -36,25 +36,31 @@ const isDevelopment = () => {
 serve(async (req) => {
   const startTime = Date.now();
   
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
     console.log('🔍 [BigQuery] ASO Data request received');
-    console.log('📋 [BigQuery] Request method:', req.method);
 
-    // Enhanced credential diagnostics
+    // Initialize Supabase client for approved apps lookup
+    const supabaseClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      {
+        global: {
+          headers: { Authorization: req.headers.get('Authorization')! },
+        },
+      }
+    )
+
     const credentialString = Deno.env.get('BIGQUERY_CREDENTIALS');
     const projectId = Deno.env.get('BIGQUERY_PROJECT_ID');
     
     if (isDevelopment()) {
       console.log('📋 [BigQuery] Environment Variable Diagnostics:');
       console.log('- Credential string exists:', !!credentialString);
-      console.log('- Credential string length:', credentialString?.length || 0);
       console.log('- Project ID exists:', !!projectId);
-      console.log('- Project ID value:', projectId);
     }
 
     if (!projectId || !credentialString) {
@@ -70,106 +76,82 @@ serve(async (req) => {
         }),
         {
           status: 500,
-          headers: {
-            ...corsHeaders,
-            'Content-Type': 'application/json',
-          },
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         }
       );
     }
 
-    // Handle GET vs POST requests
     let body: BigQueryRequest;
     if (req.method === 'GET') {
-      body = { 
-        organizationId: "yodel_pimsleur", 
-        limit: 10 
-      };
-      console.log('📊 [BigQuery] GET request - using default params:', body);
-    } else if (req.method === 'POST') {
+      body = { organizationId: "yodel_pimsleur", limit: 10 };
+    } else {
       try {
         body = await req.json();
-        console.log('📊 [BigQuery] POST request body:', body);
       } catch (parseError) {
-        console.error('❌ [BigQuery] Failed to parse POST request body:', parseError);
         return new Response(
           JSON.stringify({
             success: false,
             error: 'Invalid JSON in request body',
-            meta: {
-              executionTimeMs: Date.now() - startTime,
-              parseError: parseError.message
-            }
+            meta: { executionTimeMs: Date.now() - startTime }
           }),
           {
             status: 400,
-            headers: {
-              ...corsHeaders,
-              'Content-Type': 'application/json',
-            },
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
           }
         );
       }
-    } else {
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: `Method ${req.method} not allowed`,
-          allowedMethods: ['GET', 'POST']
-        }),
-        {
-          status: 405,
-          headers: {
-            ...corsHeaders,
-            'Content-Type': 'application/json',
-          },
-        }
-      );
     }
 
-    // Validate request
     if (!body.organizationId) {
       throw new Error('organizationId is required');
     }
 
-    // Parse BigQuery credentials
-    let credentials: BigQueryCredentials;
-    try {
-      credentials = JSON.parse(credentialString);
-      if (isDevelopment()) {
-        console.log('✅ [BigQuery] Successfully parsed credentials');
-        console.log('- Credential type:', credentials.type);
-        console.log('- Project ID from creds:', credentials.project_id);
-        console.log('- Client email:', credentials.client_email?.substring(0, 20) + '...');
-      }
-    } catch (parseError) {
-      console.error('❌ [BigQuery] Invalid BIGQUERY_CREDENTIALS JSON format:', parseError.message);
+    // Get approved apps for this organization
+    console.log('🔍 [BigQuery] Getting approved apps for organization:', body.organizationId);
+    const { data: approvedApps, error: approvedAppsError } = await supabaseClient
+      .rpc('get_approved_apps', { p_organization_id: body.organizationId });
+
+    if (approvedAppsError) {
+      console.error('❌ [BigQuery] Failed to get approved apps:', approvedAppsError);
+    }
+
+    const approvedAppIdentifiers = approvedApps?.map((app: any) => app.app_identifier) || [];
+    console.log('✅ [BigQuery] Found approved apps:', approvedAppIdentifiers);
+
+    // If no approved apps, return empty result
+    if (approvedAppIdentifiers.length === 0) {
+      console.log('⚠️ [BigQuery] No approved apps found, returning empty result');
       return new Response(
         JSON.stringify({
-          success: false,
-          error: 'Invalid BIGQUERY_CREDENTIALS JSON format',
+          success: true,
+          data: [],
           meta: {
-            parseError: parseError.message,
-            executionTimeMs: Date.now() - startTime
+            rowCount: 0,
+            totalRows: 0,
+            executionTimeMs: Date.now() - startTime,
+            queryParams: {
+              organizationId: body.organizationId,
+              dateRange: body.dateRange || null,
+              limit: body.limit || 100
+            },
+            projectId,
+            timestamp: new Date().toISOString(),
+            approvedApps: approvedAppIdentifiers
           }
         }),
-        {
-          status: 500,
-          headers: {
-            ...corsHeaders,
-            'Content-Type': 'application/json',
-          },
-        }
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Get Google OAuth token
-    console.log('🔐 [BigQuery] Getting Google OAuth token...');
+    const credentials: BigQueryCredentials = JSON.parse(credentialString);
     const tokenResponse = await getGoogleOAuthToken(credentials);
     const accessToken = tokenResponse.access_token;
 
-    // Build BigQuery SQL query with correct schema
     const limit = body.limit || 100;
+    
+    // Build WHERE clause for approved apps
+    const approvedAppsFilter = approvedAppIdentifiers.map(app => `'${app}'`).join(', ');
+    
     const query = `
       SELECT 
         date,
@@ -179,20 +161,13 @@ serve(async (req) => {
         downloads, 
         product_page_views
       FROM \`${projectId}.client_reports.aso_all_apple\`
-      WHERE client = @organizationId
+      WHERE client IN (${approvedAppsFilter})
       ${body.dateRange ? 'AND date BETWEEN @dateFrom AND @dateTo' : ''}
       ORDER BY date DESC
       LIMIT ${limit}
     `;
 
-    // Prepare query parameters
-    const queryParams: any[] = [
-      {
-        name: 'organizationId',
-        parameterType: { type: 'STRING' },
-        parameterValue: { value: body.organizationId }
-      }
-    ];
+    const queryParams: any[] = [];
 
     if (body.dateRange) {
       queryParams.push(
@@ -209,7 +184,6 @@ serve(async (req) => {
       );
     }
 
-    // Prepare BigQuery request
     const requestBody = {
       query,
       parameterMode: 'NAMED',
@@ -218,18 +192,12 @@ serve(async (req) => {
       maxResults: limit
     };
 
-    // Enhanced logging for debugging
     if (isDevelopment()) {
-      console.log('🔍 [BigQuery] Final Query Details:');
-      console.log('- Query:', query.replace(/\s+/g, ' ').trim());
-      console.log('- Organization ID:', body.organizationId);
-      console.log('- Date Range:', body.dateRange || 'No date filter');
-      console.log('- Limit:', limit);
-      console.log('- Query Parameters:', queryParams.map(p => `${p.name}: ${p.parameterValue.value}`).join(', '));
+      console.log('🔍 [BigQuery] Query with approved apps filter:', approvedAppIdentifiers);
+      console.log('🔍 [BigQuery] Final Query:', query.replace(/\s+/g, ' ').trim());
     }
 
-    // Execute BigQuery request
-    console.log('🔍 [BigQuery] Executing query...');
+    console.log('🔍 [BigQuery] Executing filtered query...');
     const bigQueryResponse = await fetch(
       `https://bigquery.googleapis.com/bigquery/v2/projects/${projectId}/queries`,
       {
@@ -253,7 +221,7 @@ serve(async (req) => {
     
     console.log('✅ [BigQuery] Query completed successfully');
     console.log('- Rows returned:', queryResult.totalRows || 0);
-    console.log('- Execution time:', executionTimeMs + 'ms');
+    console.log('- Approved apps filter applied:', approvedAppIdentifiers.length);
 
     // Transform BigQuery response to match frontend interface
     const rows = queryResult.rows || [];
@@ -268,9 +236,9 @@ serve(async (req) => {
         product_page_views: parseInt(fields[5]?.v || '0'),
         conversion_rate: fields[4]?.v && fields[5]?.v ? 
           (parseInt(fields[4].v) / parseInt(fields[5].v) * 100) : 0,
-        revenue: 0, // Not available in current schema
-        sessions: parseInt(fields[5]?.v || '0'), // Use product_page_views as sessions
-        country: 'US', // Default since not in schema
+        revenue: 0,
+        sessions: parseInt(fields[5]?.v || '0'),
+        country: 'US',
         data_source: 'bigquery'
       };
     });
@@ -295,6 +263,7 @@ serve(async (req) => {
           },
           projectId,
           timestamp: new Date().toISOString(),
+          approvedApps: approvedAppIdentifiers,
           ...(isDevelopment() && {
             debug: {
               queryPreview: query.replace(/\s+/g, ' ').trim(),
@@ -304,18 +273,12 @@ serve(async (req) => {
           })
         }
       }),
-      {
-        headers: {
-          ...corsHeaders,
-          'Content-Type': 'application/json',
-        },
-      }
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
   } catch (error: any) {
     const executionTimeMs = Date.now() - startTime;
     console.error('💥 [BigQuery] Function error:', error.message);
-    console.error('💥 [BigQuery] Error stack:', error.stack);
     
     return new Response(
       JSON.stringify({
@@ -330,10 +293,7 @@ serve(async (req) => {
       }),
       {
         status: 500,
-        headers: {
-          ...corsHeaders,
-          'Content-Type': 'application/json',
-        },
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       }
     );
   }
@@ -342,15 +302,9 @@ serve(async (req) => {
 async function getGoogleOAuthToken(credentials: BigQueryCredentials): Promise<any> {
   const scope = 'https://www.googleapis.com/auth/bigquery.readonly';
   const iat = Math.floor(Date.now() / 1000);
-  const exp = iat + 3600; // 1 hour
+  const exp = iat + 3600;
 
-  // Create JWT header
-  const header = {
-    alg: 'RS256',
-    typ: 'JWT'
-  };
-
-  // Create JWT payload
+  const header = { alg: 'RS256', typ: 'JWT' };
   const payload = {
     iss: credentials.client_email,
     scope,
@@ -359,20 +313,11 @@ async function getGoogleOAuthToken(credentials: BigQueryCredentials): Promise<an
     exp
   };
 
-  // Create JWT
-  const headerB64 = btoa(JSON.stringify(header));
-  const payloadB64 = btoa(JSON.stringify(payload));
-  const signatureInput = `${headerB64}.${payloadB64}`;
-
-  // Sign with private key (simplified - in production use proper crypto library)
   const privateKey = credentials.private_key.replace(/\\n/g, '\n');
   
-  // For this basic implementation, we'll use Google's token endpoint directly
   const tokenResponse = await fetch(credentials.token_uri, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
       grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
       assertion: await createJWT(header, payload, privateKey)
@@ -388,7 +333,6 @@ async function getGoogleOAuthToken(credentials: BigQueryCredentials): Promise<an
 }
 
 async function createJWT(header: any, payload: any, privateKey: string): Promise<string> {
-  // Import the private key
   const keyData = privateKey
     .replace('-----BEGIN PRIVATE KEY-----', '')
     .replace('-----END PRIVATE KEY-----', '')
@@ -399,15 +343,11 @@ async function createJWT(header: any, payload: any, privateKey: string): Promise
   const cryptoKey = await crypto.subtle.importKey(
     'pkcs8',
     binaryKey,
-    {
-      name: 'RSASSA-PKCS1-v1_5',
-      hash: 'SHA-256',
-    },
+    { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
     false,
     ['sign']
   );
 
-  // Create the signature
   const encoder = new TextEncoder();
   const headerB64 = btoa(JSON.stringify(header)).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
   const payloadB64 = btoa(JSON.stringify(payload)).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');

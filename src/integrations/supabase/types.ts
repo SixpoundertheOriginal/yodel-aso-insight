@@ -884,6 +884,73 @@ export type Database = {
         }
         Relationships: []
       }
+      organization_apps: {
+        Row: {
+          app_identifier: string
+          app_metadata: Json | null
+          app_name: string | null
+          approval_status: string | null
+          approved_by: string | null
+          approved_date: string | null
+          created_at: string | null
+          data_source: string | null
+          discovered_date: string | null
+          id: string
+          organization_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          app_identifier: string
+          app_metadata?: Json | null
+          app_name?: string | null
+          approval_status?: string | null
+          approved_by?: string | null
+          approved_date?: string | null
+          created_at?: string | null
+          data_source?: string | null
+          discovered_date?: string | null
+          id?: string
+          organization_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          app_identifier?: string
+          app_metadata?: Json | null
+          app_name?: string | null
+          approval_status?: string | null
+          approved_by?: string | null
+          approved_date?: string | null
+          created_at?: string | null
+          data_source?: string | null
+          discovered_date?: string | null
+          id?: string
+          organization_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "organization_apps_approved_by_fkey"
+            columns: ["approved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "organization_apps_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organization_app_usage"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "organization_apps_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       organization_keyword_usage: {
         Row: {
           api_calls_made: number | null
@@ -1358,6 +1425,12 @@ export type Database = {
         Args: { org_name: string; org_slug: string }
         Returns: string
       }
+      get_approved_apps: {
+        Args: { p_organization_id: string }
+        Returns: {
+          app_identifier: string
+        }[]
+      }
       get_current_user_organization_id: {
         Args: Record<PropertyKey, never>
         Returns: string
@@ -1410,6 +1483,19 @@ export type Database = {
           trend_direction: string
         }[]
       }
+      get_pending_app_discoveries: {
+        Args: { p_organization_id: string }
+        Returns: {
+          id: string
+          app_identifier: string
+          app_name: string
+          record_count: number
+          first_seen: string
+          last_seen: string
+          days_with_data: number
+          discovered_date: string
+        }[]
+      }
       get_user_organization_with_fallback: {
         Args: Record<PropertyKey, never>
         Returns: string
@@ -1430,6 +1516,10 @@ export type Database = {
       unlock_platform_admin_creation: {
         Args: Record<PropertyKey, never>
         Returns: undefined
+      }
+      update_app_approval_status: {
+        Args: { p_app_id: string; p_status: string; p_approved_by?: string }
+        Returns: boolean
       }
       update_keyword_usage: {
         Args: {

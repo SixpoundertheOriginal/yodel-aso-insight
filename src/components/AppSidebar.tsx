@@ -11,7 +11,8 @@ import {
   Shield,
   User,
   Settings as SettingsIcon,
-  Smartphone
+  Smartphone,
+  Database
 } from "lucide-react";
 import {
   Sidebar,
@@ -86,7 +87,7 @@ const userItems = [
 
 export function AppSidebar() {
   const location = useLocation();
-  const { isSuperAdmin } = usePermissions();
+  const { isSuperAdmin, isOrganizationAdmin } = usePermissions();
 
   return (
     <Sidebar collapsible="icon" className="border-r border-zinc-700">
@@ -133,8 +134,8 @@ export function AppSidebar() {
           </SidebarGroup>
         ))}
 
-        {/* Admin Section - only visible to super admins */}
-        {isSuperAdmin && (
+        {/* Admin Section - visible to org admins and super admins */}
+        {(isSuperAdmin || isOrganizationAdmin) && (
           <SidebarGroup>
             <SidebarGroupLabel className="px-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
               Administration
@@ -144,16 +145,32 @@ export function AppSidebar() {
                 <SidebarMenuItem>
                   <SidebarMenuButton
                     asChild
-                    isActive={location.pathname === '/admin'}
-                    tooltip="Admin Panel"
+                    isActive={location.pathname === '/app-discovery'}
+                    tooltip="App Discovery"
                     className="h-10 data-[active=true]:bg-yodel-orange data-[active=true]:text-white hover:bg-zinc-800 hover:text-white"
                   >
-                    <Link to="/admin" className="flex items-center gap-3">
-                      <Shield className="h-4 w-4 shrink-0" />
-                      <span className="truncate">Admin Panel</span>
+                    <Link to="/app-discovery" className="flex items-center gap-3">
+                      <Database className="h-4 w-4 shrink-0" />
+                      <span className="truncate">App Discovery</span>
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
+                
+                {isSuperAdmin && (
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      asChild
+                      isActive={location.pathname === '/admin'}
+                      tooltip="Admin Panel"
+                      className="h-10 data-[active=true]:bg-yodel-orange data-[active=true]:text-white hover:bg-zinc-800 hover:text-white"
+                    >
+                      <Link to="/admin" className="flex items-center gap-3">
+                        <Shield className="h-4 w-4 shrink-0" />
+                        <span className="truncate">Admin Panel</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                )}
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
