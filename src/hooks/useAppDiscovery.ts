@@ -16,6 +16,16 @@ interface DiscoveredApp {
   approval_status: 'pending' | 'approved' | 'rejected';
 }
 
+interface ApprovedApp {
+  id: string;
+  app_identifier: string;
+  app_name: string;
+  approval_status: string;
+  approved_date: string;
+  approved_by: string | null;
+  app_metadata: any;
+}
+
 interface AppDiscoveryResult {
   success: boolean;
   discoveredApps: number;
@@ -52,7 +62,7 @@ export const useAppDiscovery = (organizationId: string) => {
         .order('approved_date', { ascending: false });
 
       if (error) throw error;
-      return data as DiscoveredApp[];
+      return data as ApprovedApp[];
     },
     enabled: !!organizationId
   });

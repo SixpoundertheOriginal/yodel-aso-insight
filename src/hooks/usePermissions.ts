@@ -28,11 +28,21 @@ export const usePermissions = () => {
       const roles = userRoles?.map(r => r.role) || [];
       const organizationRoles = userRoles?.filter(r => r.organization_id === profile.organization_id).map(r => r.role) || [];
 
+      // Define permission list based on roles
+      const permissionsList = [];
+      if (roles.includes('SUPER_ADMIN')) {
+        permissionsList.push('admin.manage_all', 'admin.approve_apps', 'admin.manage_apps', 'admin.view_audit_logs');
+      }
+      if (organizationRoles.includes('ORGANIZATION_ADMIN') || roles.includes('SUPER_ADMIN')) {
+        permissionsList.push('admin.manage_apps', 'admin.approve_apps', 'admin.view_org_data');
+      }
+
       return {
         userId: user.id,
         organizationId: profile.organization_id,
         roles,
         organizationRoles,
+        permissions: permissionsList,
         isSuperAdmin: roles.includes('SUPER_ADMIN'),
         isOrganizationAdmin: organizationRoles.includes('ORGANIZATION_ADMIN') || roles.includes('SUPER_ADMIN'),
         canManageApps: organizationRoles.includes('ORGANIZATION_ADMIN') || roles.includes('SUPER_ADMIN'),
@@ -45,6 +55,7 @@ export const usePermissions = () => {
   return {
     ...permissions,
     isLoading,
+    permissions: permissions?.permissions || [],
     isSuperAdmin: permissions?.isSuperAdmin || false,
     isOrganizationAdmin: permissions?.isOrganizationAdmin || false,
     canManageApps: permissions?.canManageApps || false,

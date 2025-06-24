@@ -5,9 +5,9 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { AuthContextProvider } from "./context/AuthContext";
+import { AuthProvider } from "./context/AuthContext";
 import { AsoDataProvider } from "./context/AsoDataContext";
-import { AppContextProvider } from "./context/AppContext";
+import { AppProvider } from "./context/AppContext";
 import { AsoAiHubProvider } from "./context/AsoAiHubContext";
 import { WorkflowProvider } from "./context/WorkflowContext";
 
@@ -39,9 +39,9 @@ function App() {
         <Toaster />
         <Sonner />
         <BrowserRouter>
-          <AuthContextProvider>
+          <AuthProvider>
             <AsoDataProvider>
-              <AppContextProvider>
+              <AppProvider>
                 <AsoAiHubProvider>
                   <WorkflowProvider>
                     <Suspense fallback={<div>Loading...</div>}>
@@ -68,9 +68,9 @@ function App() {
                     </Suspense>
                   </WorkflowProvider>
                 </AsoAiHubProvider>
-              </AppContextProvider>
+              </AppProvider>
             </AsoDataProvider>
-          </AuthContextProvider>
+          </AuthProvider>
         </BrowserRouter>
       </TooltipProvider>
     </QueryClientProvider>
