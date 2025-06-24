@@ -15,6 +15,8 @@ import AppsPage from "./pages/apps";
 import Dashboard from "./pages/dashboard";
 import OverviewPage from "./pages/overview";
 import ConversionAnalysisPage from "./pages/conversion-analysis";
+import AdminPage from "./pages/admin";
+import SettingsPage from "./pages/settings";
 
 const queryClient = new QueryClient();
 
@@ -36,6 +38,8 @@ const App = () => (
                 <Route path="/aso-ai-hub" element={<AsoAiHubPage />} />
                 <Route path="/aso-intelligence" element={<AsoIntelligencePage />} />
                 <Route path="/keyword-intelligence" element={<KeywordIntelligencePage />} />
+                <Route path="/admin" element={<AdminPage />} />
+                <Route path="/settings" element={<SettingsPage />} />
                 {/* Legacy routes for backward compatibility */}
                 <Route path="/metadata-copilot" element={<AsoIntelligencePage />} />
                 <Route path="/app-audit" element={<AsoIntelligencePage />} />
