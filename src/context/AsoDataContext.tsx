@@ -67,8 +67,9 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
     filters.trafficSources
   );
 
-  // Fallback to mock data - fix the function call to match the hook signature
+  // Fallback to mock data - pass all required arguments
   const mockResult = useMockAsoData(
+    filters.clients,
     filters.dateRange,
     filters.trafficSources
   );
