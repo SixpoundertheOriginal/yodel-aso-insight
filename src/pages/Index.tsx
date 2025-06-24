@@ -1,163 +1,122 @@
 
-import React from "react";
-import MainLayout from "../layouts/MainLayout";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Link } from "react-router-dom";
-import { useAuth } from "@/context/AuthContext";
-import { useNavigate } from "react-router-dom";
-import { Brain, Zap } from "lucide-react";
+import { useAuth } from '@/context/AuthContext';
+import { MainLayout } from '@/layouts';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Navigate } from 'react-router-dom';
+import { BarChart3, TrendingUp, Bot, Smartphone } from 'lucide-react';
 
 const Index = () => {
-  const { session } = useAuth();
-  const navigate = useNavigate();
+  const { user, loading } = useAuth();
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-zinc-950">
+        <div className="text-white">Loading...</div>
+      </div>
+    );
+  }
+
+  // If user is authenticated, redirect to dashboard
+  if (user) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  // Landing page for non-authenticated users
   return (
-    <div className="min-h-screen bg-gradient-to-br from-zinc-900 via-zinc-800 to-zinc-900">
-      <MainLayout>
-        <div className="py-10">
-          <div className="text-center mb-10">
-            <h1 className="text-3xl md:text-4xl font-bold text-white mb-4">
-              YodelMobile ASO Tool
-            </h1>
-            <p className="text-zinc-400 text-lg max-w-2xl mx-auto">
-              Optimize your app's visibility and increase downloads with our powerful App Store Optimization platform.
-            </p>
-          </div>
-          
-          <div className="container mx-auto px-4 pb-20">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-              <Card 
-                className="bg-zinc-900/50 border-zinc-800 hover:bg-zinc-900/70 transition-colors cursor-pointer group"
-                onClick={() => navigate('/aso-intelligence')}
-              >
-                <CardContent className="p-8 text-center">
-                  <div className="w-16 h-16 bg-yodel-orange/20 rounded-full flex items-center justify-center mx-auto mb-6 group-hover:bg-yodel-orange/30 transition-colors">
-                    <Brain className="h-8 w-8 text-yodel-orange" />
-                  </div>
-                  <h3 className="text-xl font-semibold text-white mb-3">ASO Intelligence Hub</h3>
-                  <p className="text-zinc-400 leading-relaxed">
-                    Unified platform for metadata optimization, keyword analysis, and competitive intelligence.
-                  </p>
-                </CardContent>
-              </Card>
-
-              <Card 
-                className="bg-zinc-900/50 border-zinc-800 hover:bg-zinc-900/70 transition-colors cursor-pointer group"
-                onClick={() => navigate('/aso-ai-hub')}
-              >
-                <CardContent className="p-8 text-center">
-                  <div className="w-16 h-16 bg-blue-500/20 rounded-full flex items-center justify-center mx-auto mb-6 group-hover:bg-blue-500/30 transition-colors">
-                    <Zap className="h-8 w-8 text-blue-400" />
-                  </div>
-                  <h3 className="text-xl font-semibold text-white mb-3">AI Copilots</h3>
-                  <p className="text-zinc-400 leading-relaxed">
-                    Specialized AI assistants for specific ASO tasks and workflow automation.
-                  </p>
-                </CardContent>
-              </Card>
-              
-              <Card className="bg-zinc-800 border-zinc-700">
-                <CardHeader>
-                  <CardTitle className="text-white">App Analytics</CardTitle>
-                  <CardDescription className="text-zinc-400">
-                    Track your app's performance metrics
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-zinc-300">
-                    Monitor downloads, visibility, and user engagement with comprehensive analytics dashboards.
-                  </p>
-                </CardContent>
-                <CardFooter>
-                  <Button 
-                    variant="outline" 
-                    className="w-full border-zinc-700 text-zinc-300 hover:bg-zinc-700"
-                    asChild
-                  >
-                    <Link to={session ? "/dashboard" : "/auth/sign-in"}>
-                      View Analytics
-                    </Link>
-                  </Button>
-                </CardFooter>
-              </Card>
-              
-              <Card className="bg-zinc-800 border-zinc-700">
-                <CardHeader>
-                  <CardTitle className="text-white">Keyword Research</CardTitle>
-                  <CardDescription className="text-zinc-400">
-                    Find the best keywords for your app
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-zinc-300">
-                    Discover high-performing keywords to increase your app's visibility in the app stores.
-                  </p>
-                </CardContent>
-                <CardFooter>
-                  <Button 
-                    variant="outline" 
-                    className="w-full border-zinc-700 text-zinc-300 hover:bg-zinc-700"
-                    asChild
-                  >
-                    <Link to={session ? "/dashboard" : "/auth/sign-in"}>
-                      Research Keywords
-                    </Link>
-                  </Button>
-                </CardFooter>
-              </Card>
-              
-              <Card className="bg-zinc-800 border-zinc-700">
-                <CardHeader>
-                  <CardTitle className="text-white">Competitor Analysis</CardTitle>
-                  <CardDescription className="text-zinc-400">
-                    Stay ahead of your competition
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-zinc-300">
-                    Track competitor rankings, keywords, and strategies to optimize your market position.
-                  </p>
-                </CardContent>
-                <CardFooter>
-                  <Button 
-                    variant="outline" 
-                    className="w-full border-zinc-700 text-zinc-300 hover:bg-zinc-700"
-                    asChild
-                  >
-                    <Link to={session ? "/traffic-sources" : "/auth/sign-in"}>
-                      Analyze Competitors
-                    </Link>
-                  </Button>
-                </CardFooter>
-              </Card>
+    <div className="min-h-screen bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950">
+      <div className="container mx-auto px-4 py-16">
+        {/* Header */}
+        <div className="text-center mb-16">
+          <div className="flex items-center justify-center gap-3 mb-6">
+            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-gradient-to-br from-yodel-orange to-orange-600 shadow-lg">
+              <span className="text-xl font-bold text-white">Y</span>
             </div>
+            <h1 className="text-4xl font-bold text-white">Yodel ASO</h1>
           </div>
-          
-          <div className="text-center">
-            {session ? (
-              <Button asChild>
-                <Link to="/dashboard" className="bg-white text-zinc-900 hover:bg-zinc-200">
-                  Go to Dashboard
-                </Link>
-              </Button>
-            ) : (
-              <div className="flex flex-wrap justify-center gap-4">
-                <Button asChild>
-                  <Link to="/auth/sign-in" className="bg-white text-zinc-900 hover:bg-zinc-200">
-                    Sign In
-                  </Link>
-                </Button>
-                <Button variant="outline" asChild>
-                  <Link to="/auth/sign-up" className="border-white text-white hover:bg-zinc-800">
-                    Create Account
-                  </Link>
-                </Button>
-              </div>
-            )}
+          <p className="text-xl text-zinc-400 mb-8">
+            Enterprise App Store Optimization Insights Platform
+          </p>
+          <div className="flex gap-4 justify-center">
+            <Button asChild className="bg-yodel-orange hover:bg-orange-600 text-white px-8 py-3">
+              <a href="/auth/sign-in">Sign In</a>
+            </Button>
+            <Button asChild variant="outline" className="border-zinc-700 text-white hover:bg-zinc-800 px-8 py-3">
+              <a href="/auth/sign-up">Get Started</a>
+            </Button>
           </div>
         </div>
-      </MainLayout>
+
+        {/* Features Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-16">
+          <Card className="bg-zinc-900/50 border-zinc-800">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-white">
+                <Smartphone className="h-5 w-5 text-yodel-orange" />
+                App Management
+              </CardTitle>
+              <CardDescription className="text-zinc-400">
+                Manage multiple apps with enterprise-grade security
+              </CardDescription>
+            </CardHeader>
+          </Card>
+
+          <Card className="bg-zinc-900/50 border-zinc-800">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-white">
+                <BarChart3 className="h-5 w-5 text-yodel-orange" />
+                Analytics Dashboard
+              </CardTitle>
+              <CardDescription className="text-zinc-400">
+                Real-time insights from BigQuery integration
+              </CardDescription>
+            </CardHeader>
+          </Card>
+
+          <Card className="bg-zinc-900/50 border-zinc-800">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-white">
+                <TrendingUp className="h-5 w-5 text-yodel-orange" />
+                Performance Tracking
+              </CardTitle>
+              <CardDescription className="text-zinc-400">
+                Monitor conversions and traffic sources
+              </CardDescription>
+            </CardHeader>
+          </Card>
+
+          <Card className="bg-zinc-900/50 border-zinc-800">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-white">
+                <Bot className="h-5 w-5 text-yodel-orange" />
+                AI Insights
+              </CardTitle>
+              <CardDescription className="text-zinc-400">
+                Automated ASO recommendations and analysis
+              </CardDescription>
+            </CardHeader>
+          </Card>
+        </div>
+
+        {/* CTA Section */}
+        <div className="text-center">
+          <Card className="bg-zinc-900/30 border-zinc-800 max-w-2xl mx-auto">
+            <CardHeader>
+              <CardTitle className="text-2xl text-white">
+                Ready to optimize your app's performance?
+              </CardTitle>
+              <CardDescription className="text-zinc-400 text-lg">
+                Join enterprise teams using Yodel ASO for data-driven app store optimization
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button asChild className="bg-yodel-orange hover:bg-orange-600 text-white px-8 py-3">
+                <a href="/auth/sign-up">Start Free Trial</a>
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
     </div>
   );
 };

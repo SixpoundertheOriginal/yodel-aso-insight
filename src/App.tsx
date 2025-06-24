@@ -44,8 +44,10 @@ function App() {
               <AppProvider>
                 <AsoAiHubProvider>
                   <WorkflowProvider>
-                    <Suspense fallback={<div>Loading...</div>}>
+                    <Suspense fallback={<div className="flex items-center justify-center min-h-screen bg-zinc-950 text-white">Loading...</div>}>
                       <Routes>
+                        <Route path="/auth/sign-in" element={<SignIn />} />
+                        <Route path="/auth/sign-up" element={<SignUp />} />
                         <Route path="/" element={<Index />} />
                         <Route path="/dashboard" element={<Dashboard />} />
                         <Route path="/traffic-sources" element={<TrafficSources />} />
@@ -60,8 +62,6 @@ function App() {
                         <Route path="/profile" element={<Profile />} />
                         <Route path="/settings" element={<Settings />} />
                         <Route path="/admin" element={<Admin />} />
-                        <Route path="/auth/sign-in" element={<SignIn />} />
-                        <Route path="/auth/sign-up" element={<SignUp />} />
                         <Route path="/404" element={<NotFound />} />
                         <Route path="*" element={<Navigate to="/404" replace />} />
                       </Routes>

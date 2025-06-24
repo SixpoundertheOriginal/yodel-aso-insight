@@ -1,160 +1,159 @@
 
-import React, { useState } from 'react';
+import React from 'react';
 import { MainLayout } from '@/layouts';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
-import { useUserProfile } from '@/hooks/useUserProfile';
+import { useAuth } from '@/context/AuthContext';
 import { usePermissions } from '@/hooks/usePermissions';
+import { User, Mail, Building, Shield, LogOut } from 'lucide-react';
+import { Navigate } from 'react-router-dom';
 
-const ProfilePage: React.FC = () => {
-  const { profile, isLoading, updateProfile, isUpdating } = useUserProfile();
-  const { permissions, isSuperAdmin } = usePermissions();
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
+const Profile: React.FC = () => {
+  const { user, loading: authLoading, signOut } = useAuth();
+  const { organizationId, roles, isLoading: permissionsLoading } = usePermissions();
 
-  React.useEffect(() => {
-    if (profile) {
-      setFirstName(profile.first_name || '');
-      setLastName(profile.last_name || '');
-    }
-  }, [profile]);
-
-  const handleSave = () => {
-    updateProfile({
-      first_name: firstName,
-      last_name: lastName,
-    });
-  };
-
-  if (isLoading) {
+  if (authLoading || permissionsLoading) {
     return (
-      <MainLayout>
-        <div className="flex items-center justify-center h-64">
-          <div className="text-zinc-400">Loading profile...</div>
-        </div>
-      </MainLayout>
+      <div className="flex items-center justify-center min-h-screen bg-zinc-950">
+        <div className="text-white">Loading...</div>
+      </div>
     );
   }
+
+  // If user is not authenticated, redirect to sign in
+  if (!user) {
+    return <Navigate to="/auth/sign-in" replace />;
+  }
+
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+    } catch (error) {
+      console.error('Error signing out:', error);
+    }
+  };
 
   return (
     <MainLayout>
       <div className="space-y-6">
         <div>
           <h1 className="text-3xl font-bold text-white mb-2">Profile</h1>
-          <p className="text-zinc-400">
-            Manage your account settings and preferences
-          </p>
+          <p className="text-zinc-400">Manage your account settings and preferences</p>
         </div>
 
-        <div className="grid gap-6 md:grid-cols-2">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Profile Information */}
           <Card className="bg-zinc-900 border-zinc-800">
             <CardHeader>
-              <CardTitle className="text-white">Personal Information</CardTitle>
+              <CardTitle className="text-white flex items-center gap-2">
+                <User className="h-5 w-5" />
+                Profile Information
+              </CardTitle>
               <CardDescription className="text-zinc-400">
-                Update your personal details
+                Your account details and personal information
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="email" className="text-zinc-300">Email</Label>
+                <Label htmlFor="email" className="text-zinc-200">Email Address</Label>
                 <Input
                   id="email"
-                  value={profile?.email || ''}
+                  type="email"
+                  value={user.email || ''}
                   disabled
-                  className="bg-zinc-800 border-zinc-700 text-zinc-400"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="firstName" className="text-zinc-300">First Name</Label>
-                <Input
-                  id="firstName"
-                  value={firstName}
-                  onChange={(e) => setFirstName(e.target.value)}
                   className="bg-zinc-800 border-zinc-700 text-white"
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="lastName" className="text-zinc-300">Last Name</Label>
+                <Label htmlFor="userId" className="text-zinc-200">User ID</Label>
                 <Input
-                  id="lastName"
-                  value={lastName}
-                  onChange={(e) => setLastName(e.target.value)}
+                  id="userId"
+                  value={user.id}
+                  disabled
+                  className="bg-zinc-800 border-zinc-700 text-white font-mono text-sm"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="created" className="text-zinc-200">Member Since</Label>
+                <Input
+                  id="created"
+                  value={user.created_at ? new Date(user.created_at).toLocaleDateString() : 'N/A'}
+                  disabled
                   className="bg-zinc-800 border-zinc-700 text-white"
                 />
               </div>
-              <Button 
-                onClick={handleSave} 
-                disabled={isUpdating}
-                className="bg-yodel-orange hover:bg-orange-600"
-              >
-                {isUpdating ? 'Saving...' : 'Save Changes'}
-              </Button>
             </CardContent>
           </Card>
 
+          {/* Organization & Roles */}
           <Card className="bg-zinc-900 border-zinc-800">
             <CardHeader>
-              <CardTitle className="text-white">Organization</CardTitle>
+              <CardTitle className="text-white flex items-center gap-2">
+                <Building className="h-5 w-5" />
+                Organization & Roles
+              </CardTitle>
               <CardDescription className="text-zinc-400">
-                Your organization membership
+                Your organization membership and permissions
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label className="text-zinc-300">Organization</Label>
-                <p className="text-white font-medium">
-                  {profile?.organizations?.name || 'No organization'}
-                </p>
+                <Label className="text-zinc-200">Organization ID</Label>
+                <Input
+                  value={organizationId || 'Not assigned'}
+                  disabled
+                  className="bg-zinc-800 border-zinc-700 text-white font-mono text-sm"
+                />
               </div>
               <div className="space-y-2">
-                <Label className="text-zinc-300">Subscription</Label>
-                <Badge variant="secondary" className="bg-zinc-800 text-zinc-300">
-                  {profile?.organizations?.subscription_tier || 'Free'}
-                </Badge>
-              </div>
-              <div className="space-y-2">
-                <Label className="text-zinc-300">Roles</Label>
+                <Label className="text-zinc-200">Roles</Label>
                 <div className="flex flex-wrap gap-2">
-                  {profile?.user_roles?.map((role, index) => (
-                    <Badge 
-                      key={index} 
-                      variant={role.role === 'SUPER_ADMIN' ? 'default' : 'secondary'}
-                      className={role.role === 'SUPER_ADMIN' ? 'bg-yodel-orange text-white' : 'bg-zinc-800 text-zinc-300'}
-                    >
-                      {role.role.replace('_', ' ')}
-                    </Badge>
-                  )) || <span className="text-zinc-400">No roles assigned</span>}
+                  {roles && roles.length > 0 ? (
+                    roles.map((role) => (
+                      <span
+                        key={role}
+                        className="inline-flex items-center gap-1 px-2 py-1 bg-yodel-orange/20 text-yodel-orange rounded-md text-sm"
+                      >
+                        <Shield className="h-3 w-3" />
+                        {role}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-zinc-500 text-sm">No roles assigned</span>
+                  )}
                 </div>
               </div>
             </CardContent>
           </Card>
-        </div>
 
-        {isSuperAdmin && (
+          {/* Account Actions */}
           <Card className="bg-zinc-900 border-zinc-800">
             <CardHeader>
-              <CardTitle className="text-white">Admin Permissions</CardTitle>
+              <CardTitle className="text-white flex items-center gap-2">
+                <Mail className="h-5 w-5" />
+                Account Actions
+              </CardTitle>
               <CardDescription className="text-zinc-400">
-                Your administrative capabilities
+                Manage your account settings
               </CardDescription>
             </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-                {permissions.map((permission) => (
-                  <Badge key={permission} variant="outline" className="border-zinc-700 text-zinc-300">
-                    {permission.replace(/\./g, ' ').replace(/_/g, ' ')}
-                  </Badge>
-                ))}
-              </div>
+            <CardContent className="space-y-4">
+              <Button
+                onClick={handleSignOut}
+                variant="outline"
+                className="w-full border-red-600 text-red-400 hover:bg-red-600/10"
+              >
+                <LogOut className="h-4 w-4 mr-2" />
+                Sign Out
+              </Button>
             </CardContent>
           </Card>
-        )}
+        </div>
       </div>
     </MainLayout>
   );
 };
 
-export default ProfilePage;
+export default Profile;
