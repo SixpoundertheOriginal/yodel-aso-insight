@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
@@ -29,55 +28,44 @@ interface BigQueryRequest {
   limit?: number;
 }
 
+const isDevelopment = () => {
+  const environment = Deno.env.get('ENVIRONMENT') || 'development';
+  return environment === 'development' || environment === 'preview';
+};
+
 serve(async (req) => {
+  const startTime = Date.now();
+  
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    console.log('🔍 BigQuery ASO Data request received');
-    console.log('📋 Request method:', req.method);
+    console.log('🔍 [BigQuery] ASO Data request received');
+    console.log('📋 [BigQuery] Request method:', req.method);
 
     // Enhanced credential diagnostics
     const credentialString = Deno.env.get('BIGQUERY_CREDENTIALS');
     const projectId = Deno.env.get('BIGQUERY_PROJECT_ID');
     
-    console.log('📋 Environment Variable Diagnostics:');
-    console.log('- Credential string exists:', !!credentialString);
-    console.log('- Credential string length:', credentialString?.length || 0);
-    console.log('- Project ID exists:', !!projectId);
-    console.log('- Project ID value:', projectId);
-    
-    if (credentialString) {
-      console.log('- First 50 chars:', credentialString.substring(0, 50));
-      console.log('- Last 50 chars:', credentialString.substring(credentialString.length - 50));
-      console.log('- Contains opening brace:', credentialString.includes('{'));
-      console.log('- Contains closing brace:', credentialString.includes('}'));
-      
-      // Check for common formatting issues
-      const trimmedCreds = credentialString.trim();
-      console.log('- Length after trim:', trimmedCreds.length);
-      console.log('- Starts with {:', trimmedCreds.startsWith('{'));
-      console.log('- Ends with }:', trimmedCreds.endsWith('}'));
+    if (isDevelopment()) {
+      console.log('📋 [BigQuery] Environment Variable Diagnostics:');
+      console.log('- Credential string exists:', !!credentialString);
+      console.log('- Credential string length:', credentialString?.length || 0);
+      console.log('- Project ID exists:', !!projectId);
+      console.log('- Project ID value:', projectId);
     }
-
-    // List available environment variables (for debugging)
-    const availableVars = Object.keys(Deno.env.toObject());
-    console.log('- Available env vars:', availableVars.filter(key => 
-      key.includes('BIGQUERY') || key.includes('SUPABASE')
-    ));
 
     if (!projectId || !credentialString) {
       return new Response(
         JSON.stringify({
           success: false,
           error: 'Missing BigQuery configuration',
-          details: {
+          meta: {
             hasProjectId: !!projectId,
             hasCredentials: !!credentialString,
-            credentialLength: credentialString?.length || 0,
-            availableVars: availableVars.filter(key => key.includes('BIGQUERY'))
+            executionTimeMs: Date.now() - startTime
           }
         }),
         {
@@ -93,24 +81,25 @@ serve(async (req) => {
     // Handle GET vs POST requests
     let body: BigQueryRequest;
     if (req.method === 'GET') {
-      // Default parameters for GET requests (testing/debugging)
       body = { 
         organizationId: "yodel_pimsleur", 
         limit: 10 
       };
-      console.log('📊 GET request - using default params:', body);
+      console.log('📊 [BigQuery] GET request - using default params:', body);
     } else if (req.method === 'POST') {
-      // Parse JSON body for POST requests
       try {
         body = await req.json();
-        console.log('📊 POST request body:', body);
+        console.log('📊 [BigQuery] POST request body:', body);
       } catch (parseError) {
-        console.error('❌ Failed to parse POST request body:', parseError);
+        console.error('❌ [BigQuery] Failed to parse POST request body:', parseError);
         return new Response(
           JSON.stringify({
             success: false,
             error: 'Invalid JSON in request body',
-            details: parseError.message
+            meta: {
+              executionTimeMs: Date.now() - startTime,
+              parseError: parseError.message
+            }
           }),
           {
             status: 400,
@@ -143,70 +132,44 @@ serve(async (req) => {
       throw new Error('organizationId is required');
     }
 
-    // Parse BigQuery credentials with enhanced error handling
+    // Parse BigQuery credentials
     let credentials: BigQueryCredentials;
     try {
-      console.log('🔐 Attempting to parse credentials...');
-      
-      // Try parsing the original string first
       credentials = JSON.parse(credentialString);
-      console.log('✅ Successfully parsed credentials');
-      console.log('- Credential type:', credentials.type);
-      console.log('- Project ID from creds:', credentials.project_id);
-      console.log('- Client email:', credentials.client_email?.substring(0, 20) + '...');
-      
-    } catch (parseError) {
-      console.error('❌ JSON parse error:', parseError.message);
-      
-      // Try parsing trimmed version
-      try {
-        console.log('🔄 Trying trimmed credentials...');
-        credentials = JSON.parse(credentialString.trim());
-        console.log('✅ Successfully parsed trimmed credentials');
-      } catch (trimmedError) {
-        console.error('❌ Trimmed parse error:', trimmedError.message);
-        
-        // Try removing potential BOM or hidden characters
-        try {
-          console.log('🔄 Trying cleaned credentials...');
-          const cleanedCreds = credentialString.replace(/^\uFEFF/, '').replace(/[^\x20-\x7E\{\}\[\]\,\:\"\\\n\r\t]/g, '');
-          credentials = JSON.parse(cleanedCreds);
-          console.log('✅ Successfully parsed cleaned credentials');
-        } catch (cleanedError) {
-          console.error('❌ Cleaned parse error:', cleanedError.message);
-          
-          return new Response(
-            JSON.stringify({
-              success: false,
-              error: 'Invalid BIGQUERY_CREDENTIALS JSON format',
-              details: {
-                originalError: parseError.message,
-                trimmedError: trimmedError.message,
-                cleanedError: cleanedError.message,
-                credentialLength: credentialString.length,
-                firstChars: credentialString.substring(0, 100),
-                lastChars: credentialString.substring(credentialString.length - 100)
-              }
-            }),
-            {
-              status: 500,
-              headers: {
-                ...corsHeaders,
-                'Content-Type': 'application/json',
-              },
-            }
-          );
-        }
+      if (isDevelopment()) {
+        console.log('✅ [BigQuery] Successfully parsed credentials');
+        console.log('- Credential type:', credentials.type);
+        console.log('- Project ID from creds:', credentials.project_id);
+        console.log('- Client email:', credentials.client_email?.substring(0, 20) + '...');
       }
+    } catch (parseError) {
+      console.error('❌ [BigQuery] Invalid BIGQUERY_CREDENTIALS JSON format:', parseError.message);
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'Invalid BIGQUERY_CREDENTIALS JSON format',
+          meta: {
+            parseError: parseError.message,
+            executionTimeMs: Date.now() - startTime
+          }
+        }),
+        {
+          status: 500,
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
     }
 
     // Get Google OAuth token
-    console.log('🔐 Getting Google OAuth token...');
+    console.log('🔐 [BigQuery] Getting Google OAuth token...');
     const tokenResponse = await getGoogleOAuthToken(credentials);
     const accessToken = tokenResponse.access_token;
 
     // Build BigQuery SQL query with correct schema
-    const limit = body.limit || 10;
+    const limit = body.limit || 100;
     const query = `
       SELECT 
         date,
@@ -255,15 +218,18 @@ serve(async (req) => {
       maxResults: limit
     };
 
-    // Add detailed logging before the BigQuery request
-    console.log('🔍 BigQuery request URL:', `https://bigquery.googleapis.com/bigquery/v2/projects/${projectId}/queries`);
-    console.log('🔍 BigQuery request body:', JSON.stringify(requestBody, null, 2));
-    console.log('🔍 Authorization header length:', accessToken?.length);
-    console.log('🔍 Query parameters count:', queryParams.length);
-    console.log('🔍 Query preview:', query.replace(/\s+/g, ' ').trim());
+    // Enhanced logging for debugging
+    if (isDevelopment()) {
+      console.log('🔍 [BigQuery] Final Query Details:');
+      console.log('- Query:', query.replace(/\s+/g, ' ').trim());
+      console.log('- Organization ID:', body.organizationId);
+      console.log('- Date Range:', body.dateRange || 'No date filter');
+      console.log('- Limit:', limit);
+      console.log('- Query Parameters:', queryParams.map(p => `${p.name}: ${p.parameterValue.value}`).join(', '));
+    }
 
     // Execute BigQuery request
-    console.log('🔍 Executing BigQuery query...');
+    console.log('🔍 [BigQuery] Executing query...');
     const bigQueryResponse = await fetch(
       `https://bigquery.googleapis.com/bigquery/v2/projects/${projectId}/queries`,
       {
@@ -278,12 +244,16 @@ serve(async (req) => {
 
     if (!bigQueryResponse.ok) {
       const errorText = await bigQueryResponse.text();
-      console.error('❌ BigQuery API error:', errorText);
+      console.error('❌ [BigQuery] API error:', errorText);
       throw new Error(`BigQuery API error: ${bigQueryResponse.status} - ${errorText}`);
     }
 
     const queryResult = await bigQueryResponse.json();
-    console.log('✅ BigQuery query successful, rows returned:', queryResult.totalRows);
+    const executionTimeMs = Date.now() - startTime;
+    
+    console.log('✅ [BigQuery] Query completed successfully');
+    console.log('- Rows returned:', queryResult.totalRows || 0);
+    console.log('- Execution time:', executionTimeMs + 'ms');
 
     // Transform BigQuery response to match frontend interface
     const rows = queryResult.rows || [];
@@ -305,18 +275,34 @@ serve(async (req) => {
       };
     });
 
-    console.log('📊 Transformed data sample:', transformedData[0]);
+    if (isDevelopment() && transformedData.length > 0) {
+      console.log('📊 [BigQuery] Sample transformed data:', transformedData[0]);
+    }
 
-    // Return response
+    // Enhanced response with comprehensive metadata
     return new Response(
       JSON.stringify({
         success: true,
         data: transformedData,
-        totalRows: parseInt(queryResult.totalRows || '0'),
-        executionTime: queryResult.jobComplete ? 'completed' : 'pending',
-        projectId,
-        organizationId: body.organizationId,
-        requestMethod: req.method
+        meta: {
+          rowCount: transformedData.length,
+          totalRows: parseInt(queryResult.totalRows || '0'),
+          executionTimeMs,
+          queryParams: {
+            organizationId: body.organizationId,
+            dateRange: body.dateRange || null,
+            limit
+          },
+          projectId,
+          timestamp: new Date().toISOString(),
+          ...(isDevelopment() && {
+            debug: {
+              queryPreview: query.replace(/\s+/g, ' ').trim(),
+              parameterCount: queryParams.length,
+              jobComplete: queryResult.jobComplete
+            }
+          })
+        }
       }),
       {
         headers: {
@@ -327,16 +313,20 @@ serve(async (req) => {
     );
 
   } catch (error: any) {
-    console.error('💥 BigQuery function error:', error.message);
-    console.error('💥 Error stack:', error.stack);
+    const executionTimeMs = Date.now() - startTime;
+    console.error('💥 [BigQuery] Function error:', error.message);
+    console.error('💥 [BigQuery] Error stack:', error.stack);
     
     return new Response(
       JSON.stringify({
         success: false,
         error: error.message,
-        timestamp: new Date().toISOString(),
-        stack: error.stack,
-        requestMethod: req.method
+        meta: {
+          executionTimeMs,
+          timestamp: new Date().toISOString(),
+          requestMethod: req.method,
+          errorType: error.constructor.name
+        }
       }),
       {
         status: 500,

@@ -17,29 +17,56 @@ interface BigQueryDataPoint {
   data_source: string;
 }
 
+interface BigQueryMeta {
+  rowCount: number;
+  totalRows: number;
+  executionTimeMs: number;
+  queryParams: {
+    organizationId: string;
+    dateRange: { from: string; to: string } | null;
+    limit: number;
+  };
+  projectId: string;
+  timestamp: string;
+  debug?: {
+    queryPreview: string;
+    parameterCount: number;
+    jobComplete: boolean;
+  };
+}
+
 interface BigQueryResponse {
   success: boolean;
   data: BigQueryDataPoint[];
-  totalRows: number;
+  meta: BigQueryMeta;
   error?: string;
+}
+
+interface BigQueryDataResult {
+  data: AsoData | null;
+  loading: boolean;
+  error: Error | null;
+  meta?: BigQueryMeta;
 }
 
 export const useBigQueryData = (
   clientList: string[],
   dateRange: DateRange,
   trafficSources: string[]
-): { data: AsoData | null; loading: boolean; error: Error | null } => {
+): BigQueryDataResult => {
   const [data, setData] = useState<AsoData | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<Error | null>(null);
+  const [meta, setMeta] = useState<BigQueryMeta | undefined>(undefined);
 
   useEffect(() => {
     const fetchBigQueryData = async () => {
       try {
         setLoading(true);
         setError(null);
+        setMeta(undefined);
 
-        console.log('🔍 [BigQuery] Fetching data with params:', {
+        console.log('🔍 [BigQuery Hook] Fetching data with params:', {
           clientList,
           dateRange,
           trafficSources
@@ -57,7 +84,7 @@ export const useBigQueryData = (
           limit: 100
         };
 
-        console.log('📤 [BigQuery] Making request to edge function...');
+        console.log('📤 [BigQuery Hook] Making request to edge function...');
 
         const { data: response, error: functionError } = await supabase.functions.invoke(
           'bigquery-aso-data',
@@ -67,39 +94,44 @@ export const useBigQueryData = (
         );
 
         if (functionError) {
-          console.error('❌ [BigQuery] Edge function error:', functionError);
+          console.error('❌ [BigQuery Hook] Edge function error:', functionError);
           throw new Error(`BigQuery function error: ${functionError.message}`);
         }
 
         const bigQueryResponse = response as BigQueryResponse;
 
         if (!bigQueryResponse.success) {
-          console.error('❌ [BigQuery] Service error:', bigQueryResponse.error);
+          console.error('❌ [BigQuery Hook] Service error:', bigQueryResponse.error);
           throw new Error(bigQueryResponse.error || 'BigQuery request failed');
         }
 
-        console.log('✅ [BigQuery] Raw data received:', bigQueryResponse.data?.length, 'records');
+        console.log('✅ [BigQuery Hook] Raw data received:', bigQueryResponse.data?.length, 'records');
+        console.log('📊 [BigQuery Hook] Query metadata:', bigQueryResponse.meta);
+
+        // Store metadata for debugging and empty state handling
+        setMeta(bigQueryResponse.meta);
 
         // Transform BigQuery data to AsoData format
         const transformedData = transformBigQueryToAsoData(
           bigQueryResponse.data || [],
-          trafficSources
+          trafficSources,
+          bigQueryResponse.meta
         );
 
         setData(transformedData);
-        console.log('✅ [BigQuery] Data transformed successfully');
+        console.log('✅ [BigQuery Hook] Data transformed successfully');
 
       } catch (err) {
-        console.error('❌ [BigQuery] Error fetching data:', err);
+        console.error('❌ [BigQuery Hook] Error fetching data:', err);
         
         // Enhanced error logging for BigQuery issues
         if (err instanceof Error) {
           if (err.message.includes('403') || err.message.includes('permission')) {
-            console.error('🔐 [BigQuery] Permission denied - check BigQuery credentials and table access');
+            console.error('🔐 [BigQuery Hook] Permission denied - check BigQuery credentials and table access');
           } else if (err.message.includes('404')) {
-            console.error('🔍 [BigQuery] Table not found - verify table name and project ID');
+            console.error('🔍 [BigQuery Hook] Table not found - verify table name and project ID');
           } else if (err.message.includes('non-2xx status')) {
-            console.error('🚫 [BigQuery] Edge function failed - check edge function logs');
+            console.error('🚫 [BigQuery Hook] Edge function failed - check edge function logs');
           }
         }
         
@@ -112,12 +144,13 @@ export const useBigQueryData = (
     fetchBigQueryData();
   }, [clientList, dateRange.from, dateRange.to, trafficSources]);
 
-  return { data, loading, error };
+  return { data, loading, error, meta };
 };
 
 function transformBigQueryToAsoData(
   bigQueryData: BigQueryDataPoint[],
-  trafficSources: string[]
+  trafficSources: string[],
+  meta: BigQueryMeta
 ): AsoData {
   // Group data by date for timeseries
   const dateGroups = bigQueryData.reduce((acc, item) => {
