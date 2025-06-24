@@ -10,6 +10,10 @@ import Index from "./pages/Index";
 import AsoAiHubPage from "./pages/aso-ai-hub";
 import AsoIntelligencePage from "./pages/aso-intelligence";
 import KeywordIntelligencePage from "./pages/keyword-intelligence";
+import AppsPage from "./pages/apps";
+import Dashboard from "./pages/dashboard";
+import OverviewPage from "./pages/overview";
+import ConversionAnalysisPage from "./pages/conversion-analysis";
 
 const queryClient = new QueryClient();
 
@@ -23,6 +27,10 @@ const App = () => (
             <Sonner />
             <Routes>
               <Route path="/" element={<Index />} />
+              <Route path="/apps" element={<AppsPage />} />
+              <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/overview" element={<OverviewPage />} />
+              <Route path="/conversion-analysis" element={<ConversionAnalysisPage />} />
               <Route path="/aso-ai-hub" element={<AsoAiHubPage />} />
               <Route path="/aso-intelligence" element={<AsoIntelligencePage />} />
               <Route path="/keyword-intelligence" element={<KeywordIntelligencePage />} />
