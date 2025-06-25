@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
@@ -26,7 +25,8 @@ interface BigQueryRequest {
     from: string;
     to: string;
   };
-  selectedApps?: string[]; // New parameter for app filtering
+  selectedApps?: string[];
+  trafficSources?: string[];
   limit?: number;
 }
 
@@ -37,6 +37,30 @@ const isDevelopment = () => {
 
 // EMERGENCY BYPASS: Known BigQuery clients for immediate data access
 const KNOWN_BIGQUERY_CLIENTS = ['AppSeven', 'AppTwo', 'AppFour', 'AppOne', 'AppSix', 'AppThree', 'AppFive'];
+
+// Traffic source mapping: BigQuery internal names → Frontend display names
+const TRAFFIC_SOURCE_MAPPING = {
+  'Apple_Search_Ads': 'Apple Search Ads',
+  'App_Store_Search': 'App Store Search',
+  'App_Referrer': 'App Referrer',
+  'Web_Referrer': 'Web Referrer',
+  'Event_Notification': 'Event Notification',
+  'Institutional_Purchase': 'Institutional Purchase',
+  'Unavailable': 'Other'
+};
+
+// Reverse mapping: Frontend display names → BigQuery internal names
+const REVERSE_TRAFFIC_SOURCE_MAPPING = Object.fromEntries(
+  Object.entries(TRAFFIC_SOURCE_MAPPING).map(([key, value]) => [value, key])
+);
+
+function mapTrafficSourceToDisplay(bigQuerySource: string): string {
+  return TRAFFIC_SOURCE_MAPPING[bigQuerySource as keyof typeof TRAFFIC_SOURCE_MAPPING] || bigQuerySource;
+}
+
+function mapTrafficSourceToBigQuery(displaySource: string): string {
+  return REVERSE_TRAFFIC_SOURCE_MAPPING[displaySource] || displaySource;
+}
 
 serve(async (req) => {
   const startTime = Date.now();
@@ -159,6 +183,22 @@ serve(async (req) => {
     // Build WHERE clause for approved apps
     const clientsFilter = clientsToQuery.map(app => `'${app}'`).join(', ');
     
+    // NEW: Build traffic source filter if provided
+    let trafficSourceFilter = '';
+    const queryParams: any[] = [];
+    
+    if (body.trafficSources && body.trafficSources.length > 0) {
+      // Convert frontend display names to BigQuery internal names
+      const bigQueryTrafficSources = body.trafficSources.map(source => 
+        mapTrafficSourceToBigQuery(source)
+      );
+      
+      console.log('🎯 [BigQuery] Filtering traffic sources:', body.trafficSources, '→', bigQueryTrafficSources);
+      
+      const trafficSourcesList = bigQueryTrafficSources.map(source => `'${source}'`).join(', ');
+      trafficSourceFilter = `AND traffic_source IN (${trafficSourcesList})`;
+    }
+    
     const query = `
       SELECT 
         date,
@@ -170,11 +210,10 @@ serve(async (req) => {
       FROM \`${projectId}.client_reports.aso_all_apple\`
       WHERE client IN (${clientsFilter})
       ${body.dateRange ? 'AND date BETWEEN @dateFrom AND @dateTo' : 'AND date >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)'}
+      ${trafficSourceFilter}
       ORDER BY date DESC
       LIMIT ${limit}
     `;
-
-    const queryParams: any[] = [];
 
     if (body.dateRange) {
       queryParams.push(
@@ -201,6 +240,7 @@ serve(async (req) => {
 
     if (isDevelopment()) {
       console.log('🔍 [BigQuery] Query with clients filter:', clientsToQuery);
+      console.log('🔍 [BigQuery] Traffic source filter applied:', trafficSourceFilter);
       console.log('🔍 [BigQuery] Final Query:', query.replace(/\s+/g, ' ').trim());
     }
 
@@ -234,10 +274,13 @@ serve(async (req) => {
     const rows = queryResult.rows || [];
     const transformedData = rows.map((row: any) => {
       const fields = row.f;
+      const originalTrafficSource = fields[2]?.v || 'organic';
+      
       return {
         date: fields[0]?.v || null,
         organization_id: fields[1]?.v || body.organizationId,
-        traffic_source: fields[2]?.v || 'organic',
+        traffic_source: mapTrafficSourceToDisplay(originalTrafficSource), // Map to display name
+        traffic_source_raw: originalTrafficSource, // Keep original for debugging
         impressions: parseInt(fields[3]?.v || '0'),
         downloads: parseInt(fields[4]?.v || '0'),
         product_page_views: parseInt(fields[5]?.v || '0'),
@@ -292,6 +335,7 @@ serve(async (req) => {
 
     if (isDevelopment() && transformedData.length > 0) {
       console.log('📊 [BigQuery] Sample transformed data:', transformedData[0]);
+      console.log('📊 [BigQuery] Available traffic sources:', [...new Set(transformedData.map(d => d.traffic_source))]);
     }
 
     // Enhanced response with comprehensive metadata
@@ -306,7 +350,8 @@ serve(async (req) => {
           queryParams: {
             organizationId: body.organizationId,
             dateRange: body.dateRange || null,
-            selectedApps: body.selectedApps || null, // Include selected apps in metadata
+            selectedApps: body.selectedApps || null,
+            trafficSources: body.trafficSources || null,
             limit
           },
           projectId,
@@ -314,13 +359,16 @@ serve(async (req) => {
           approvedApps: approvedAppIdentifiers,
           queriedClients: clientsToQuery,
           filteredBySelection: !!(body.selectedApps && body.selectedApps.length > 0),
+          filteredByTrafficSource: !!(body.trafficSources && body.trafficSources.length > 0),
+          availableTrafficSources: [...new Set(transformedData.map(d => d.traffic_source))].sort(),
           emergencyBypass: shouldAutoApprove,
           autoApprovalTriggered: shouldAutoApprove && transformedData.length > 0,
           ...(isDevelopment() && {
             debug: {
               queryPreview: query.replace(/\s+/g, ' ').trim(),
               parameterCount: queryParams.length,
-              jobComplete: queryResult.jobComplete
+              jobComplete: queryResult.jobComplete,
+              trafficSourceMapping: TRAFFIC_SOURCE_MAPPING
             }
           })
         }
