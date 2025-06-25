@@ -1,5 +1,5 @@
 
-import React, { useState } from "react";
+import React from "react";
 import { MainLayout } from "../layouts";
 import { useAsoData } from "../context/AsoDataContext";
 import ComparisonChart from "../components/ComparisonChart";
@@ -12,16 +12,10 @@ import { TrafficSourceSelect } from "@/components/Filters";
 const OverviewPage: React.FC = () => {
   const { data, loading, filters, setFilters } = useAsoData();
   const { current, previous, loading: comparisonLoading, deltas } = useComparisonData('period');
-  
-  // Local state for traffic source selection to avoid global state conflicts
-  const [selectedSources, setSelectedSources] = useState<string[]>(
-    filters.trafficSources
-  );
 
-  // Handle traffic source filter change
+  // Handle traffic source filter change - now supports multi-select
   const handleSourceChange = (sources: string[]) => {
-    console.log('🎯 [Overview] Traffic source filter changed:', sources);
-    setSelectedSources(sources);
+    console.log('🎯 [Overview] Multi-select traffic source filter changed:', sources);
     setFilters(prev => ({
       ...prev,
       trafficSources: sources
@@ -30,11 +24,11 @@ const OverviewPage: React.FC = () => {
 
   const isLoading = loading || comparisonLoading;
 
-  console.log('📊 [Overview] Current data:', { 
+  console.log('📊 [Overview] Current state:', { 
     loading: isLoading, 
     hasData: !!data, 
-    selectedSources,
-    filtersTrafficSources: filters.trafficSources,
+    selectedTrafficSources: filters.trafficSources,
+    selectedTrafficSourcesCount: filters.trafficSources.length,
     deltas
   });
 
@@ -50,9 +44,9 @@ const OverviewPage: React.FC = () => {
           <h1 className="text-4xl font-bold text-white">Performance Overview</h1>
           
           <div className="flex gap-4">
-            {/* Traffic Source Filter - Only control that should be on page level */}
+            {/* Multi-Select Traffic Source Filter */}
             <TrafficSourceSelect 
-              selectedSources={selectedSources}
+              selectedSources={filters.trafficSources}
               onSourceChange={handleSourceChange}
             />
           </div>
@@ -76,7 +70,7 @@ const OverviewPage: React.FC = () => {
           </div>
         )}
         
-        {/* Charts */}
+        {/* Charts with Real Period Comparison */}
         {!isLoading && current && previous && (
           <div className="grid grid-cols-1 gap-10">
             {/* Impressions Chart */}
@@ -109,7 +103,7 @@ const OverviewPage: React.FC = () => {
               </CardContent>
             </Card>
             
-            {/* Conversion Rate Chart - now using real deltas */}
+            {/* Conversion Rate Chart with Real Deltas */}
             <Card className="bg-zinc-900 border-zinc-800 shadow-xl overflow-hidden">
               <CardHeader className="bg-zinc-900/80 backdrop-filter backdrop-blur-sm border-b border-zinc-800/50">
                 <CardTitle className="text-2xl font-bold text-white">Conversion Rate</CardTitle>
