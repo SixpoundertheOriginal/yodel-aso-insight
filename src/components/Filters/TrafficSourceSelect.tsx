@@ -22,12 +22,14 @@ const TrafficSourceSelect: React.FC<TrafficSourceSelectProps> = ({
   
   if (!data?.trafficSources) return null;
   
-  // Get unique traffic sources from BigQuery data
-  const sources = data.trafficSources.map(source => source.name).filter(Boolean);
+  // Get unique traffic sources from BigQuery data - STABLE reference that doesn't change with selection
+  const allAvailableSources = React.useMemo(() => {
+    return data.trafficSources.map(source => source.name).filter(Boolean);
+  }, [data.trafficSources]);
   
   // Determine current selection value for the dropdown
   const getCurrentValue = () => {
-    if (selectedSources.length === 0 || selectedSources.length === sources.length) {
+    if (selectedSources.length === 0 || selectedSources.length === allAvailableSources.length) {
       return "all";
     }
     if (selectedSources.length === 1) {
@@ -53,7 +55,7 @@ const TrafficSourceSelect: React.FC<TrafficSourceSelectProps> = ({
   const displayValue = () => {
     const currentValue = getCurrentValue();
     if (currentValue === "all") {
-      return `All Sources (${sources.length})`;
+      return `All Sources (${allAvailableSources.length})`;
     }
     if (currentValue === "multiple") {
       return `${selectedSources.length} Selected`;
@@ -61,7 +63,7 @@ const TrafficSourceSelect: React.FC<TrafficSourceSelectProps> = ({
     return currentValue;
   };
   
-  console.log('📊 [TrafficSourceSelect] Available sources:', sources);
+  console.log('📊 [TrafficSourceSelect] Available sources (stable):', allAvailableSources);
   console.log('📊 [TrafficSourceSelect] Selected sources:', selectedSources);
   console.log('📊 [TrafficSourceSelect] Current value:', getCurrentValue());
   
@@ -78,9 +80,10 @@ const TrafficSourceSelect: React.FC<TrafficSourceSelectProps> = ({
         </SelectTrigger>
         <SelectContent className="bg-zinc-800 border-zinc-700">
           <SelectItem value="all" className="text-white hover:bg-zinc-700">
-            All Sources ({sources.length})
+            All Sources ({allAvailableSources.length})
           </SelectItem>
-          {sources.map((source) => (
+          {/* Use stable allAvailableSources instead of dynamic sources */}
+          {allAvailableSources.map((source) => (
             <SelectItem 
               key={source} 
               value={source}

@@ -4,29 +4,23 @@ import { MainLayout } from "../layouts";
 import { useAsoData } from "../context/AsoDataContext";
 import ComparisonChart from "../components/ComparisonChart";
 import { useComparisonData } from "../hooks";
-import { DateRange } from "../hooks/useMockAsoData";
 import { Card, CardContent, CardTitle, CardHeader } from "@/components/ui/card";
-import { ChartContainer } from "@/components/ui/chart";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AiInsightsPanel } from "../components/AiInsightsPanel";
-import { 
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { TrafficSourceSelect } from "@/components/Filters";
 
 const OverviewPage: React.FC = () => {
   const { data, loading, filters, setFilters } = useAsoData();
   const { current, previous } = useComparisonData('period');
+  
+  // Local state for traffic source selection to avoid global state conflicts
   const [selectedSources, setSelectedSources] = useState<string[]>(
     filters.trafficSources
   );
 
-  // Handle filter change
+  // Handle traffic source filter change
   const handleSourceChange = (sources: string[]) => {
+    console.log('🎯 [Overview] Traffic source filter changed:', sources);
     setSelectedSources(sources);
     setFilters(prev => ({
       ...prev,
@@ -34,35 +28,12 @@ const OverviewPage: React.FC = () => {
     }));
   };
 
-  // Handle date range change
-  const handleDateRangeChange = (value: string) => {
-    const today = new Date();
-    let from = new Date();
-    
-    switch(value) {
-      case '7d':
-        from.setDate(today.getDate() - 7);
-        break;
-      case '30d':
-        from.setDate(today.getDate() - 30);
-        break;
-      case '90d':
-        from.setDate(today.getDate() - 90);
-        break;
-      default:
-        from.setDate(today.getDate() - 30);
-    }
-    
-    const newDateRange: DateRange = {
-      from,
-      to: today
-    };
-    
-    setFilters(prev => ({
-      ...prev,
-      dateRange: newDateRange
-    }));
-  };
+  console.log('📊 [Overview] Current data:', { 
+    loading, 
+    hasData: !!data, 
+    selectedSources,
+    filtersTrafficSources: filters.trafficSources 
+  });
 
   return (
     <MainLayout>
@@ -76,19 +47,7 @@ const OverviewPage: React.FC = () => {
           <h1 className="text-4xl font-bold text-white">Performance Overview</h1>
           
           <div className="flex gap-4">
-            {/* Date Range Filter */}
-            <Select defaultValue="30d" onValueChange={handleDateRangeChange}>
-              <SelectTrigger className="w-[180px] bg-zinc-900 border-zinc-800 text-zinc-100">
-                <SelectValue placeholder="Select period" />
-              </SelectTrigger>
-              <SelectContent className="bg-zinc-900 border-zinc-800 text-zinc-100">
-                <SelectItem value="7d">Last 7 days</SelectItem>
-                <SelectItem value="30d">Last 30 days</SelectItem>
-                <SelectItem value="90d">Last 90 days</SelectItem>
-              </SelectContent>
-            </Select>
-            
-            {/* Traffic Source Filter */}
+            {/* Traffic Source Filter - Only control that should be on page level */}
             <TrafficSourceSelect 
               selectedSources={selectedSources}
               onSourceChange={handleSourceChange}
