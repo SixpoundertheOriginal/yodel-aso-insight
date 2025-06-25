@@ -11,7 +11,7 @@ import { TrafficSourceSelect } from "@/components/Filters";
 
 const OverviewPage: React.FC = () => {
   const { data, loading, filters, setFilters } = useAsoData();
-  const { current, previous } = useComparisonData('period');
+  const { current, previous, loading: comparisonLoading, deltas } = useComparisonData('period');
   
   // Local state for traffic source selection to avoid global state conflicts
   const [selectedSources, setSelectedSources] = useState<string[]>(
@@ -28,11 +28,14 @@ const OverviewPage: React.FC = () => {
     }));
   };
 
+  const isLoading = loading || comparisonLoading;
+
   console.log('📊 [Overview] Current data:', { 
-    loading, 
+    loading: isLoading, 
     hasData: !!data, 
     selectedSources,
-    filtersTrafficSources: filters.trafficSources 
+    filtersTrafficSources: filters.trafficSources,
+    deltas
   });
 
   return (
@@ -56,7 +59,7 @@ const OverviewPage: React.FC = () => {
         </div>
         
         {/* Loading State */}
-        {loading && (
+        {isLoading && (
           <div className="grid grid-cols-1 gap-10">
             {[1, 2, 3].map((_, index) => (
               <Card key={index} className="bg-zinc-900 border-zinc-800 shadow-lg">
@@ -74,7 +77,7 @@ const OverviewPage: React.FC = () => {
         )}
         
         {/* Charts */}
-        {!loading && current && previous && (
+        {!isLoading && current && previous && (
           <div className="grid grid-cols-1 gap-10">
             {/* Impressions Chart */}
             <Card className="bg-zinc-900 border-zinc-800 shadow-xl overflow-hidden">
@@ -106,13 +109,13 @@ const OverviewPage: React.FC = () => {
               </CardContent>
             </Card>
             
-            {/* Conversion Rate Chart - calculated as (downloads/impressions)*100 */}
+            {/* Conversion Rate Chart - now using real deltas */}
             <Card className="bg-zinc-900 border-zinc-800 shadow-xl overflow-hidden">
               <CardHeader className="bg-zinc-900/80 backdrop-filter backdrop-blur-sm border-b border-zinc-800/50">
                 <CardTitle className="text-2xl font-bold text-white">Conversion Rate</CardTitle>
               </CardHeader>
               <CardContent className="p-8">
-                {data && data.summary && (
+                {data && data.summary && deltas && (
                   <>
                     <div className="mb-10">
                       <div className="h-[250px]">
@@ -121,9 +124,9 @@ const OverviewPage: React.FC = () => {
                             {((data.summary.downloads.value / data.summary.impressions.value) * 100).toFixed(1)}%
                           </div>
                           <div className="flex items-center mt-8">
-                            <span className={`text-2xl ${data.summary.cvr.delta >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                              {data.summary.cvr.delta >= 0 ? '↑' : '↓'}
-                              {Math.abs(data.summary.cvr.delta).toFixed(1)}%
+                            <span className={`text-2xl ${deltas.cvr >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                              {deltas.cvr >= 0 ? '↑' : '↓'}
+                              {Math.abs(deltas.cvr).toFixed(1)}%
                             </span>
                             <span className="text-xl text-zinc-400 ml-3">vs previous period</span>
                           </div>
@@ -139,9 +142,9 @@ const OverviewPage: React.FC = () => {
                             <div className="text-4xl font-bold text-white">
                               {data.summary.impressions.value.toLocaleString()}
                             </div>
-                            <div className={`text-base mt-4 ${data.summary.impressions.delta >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                              {data.summary.impressions.delta >= 0 ? '↑' : '↓'} 
-                              {Math.abs(data.summary.impressions.delta).toFixed(1)}% vs previous
+                            <div className={`text-base mt-4 ${deltas.impressions >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                              {deltas.impressions >= 0 ? '↑' : '↓'} 
+                              {Math.abs(deltas.impressions).toFixed(1)}% vs previous
                             </div>
                           </div>
                           
@@ -150,9 +153,9 @@ const OverviewPage: React.FC = () => {
                             <div className="text-4xl font-bold text-white">
                               {data.summary.downloads.value.toLocaleString()}
                             </div>
-                            <div className={`text-base mt-4 ${data.summary.downloads.delta >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                              {data.summary.downloads.delta >= 0 ? '↑' : '↓'} 
-                              {Math.abs(data.summary.downloads.delta).toFixed(1)}% vs previous
+                            <div className={`text-base mt-4 ${deltas.downloads >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                              {deltas.downloads >= 0 ? '↑' : '↓'} 
+                              {Math.abs(deltas.downloads).toFixed(1)}% vs previous
                             </div>
                           </div>
                         </div>
