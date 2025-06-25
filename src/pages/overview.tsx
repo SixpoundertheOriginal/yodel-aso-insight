@@ -7,7 +7,7 @@ import { useComparisonData } from "../hooks";
 import { Card, CardContent, CardTitle, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AiInsightsPanel } from "../components/AiInsightsPanel";
-import { TrafficSourceSelect } from "@/components/Filters";
+import { AnalyticsTrafficSourceFilter } from "@/components/Filters";
 
 const OverviewPage: React.FC = () => {
   const { data, loading, filters, setFilters } = useAsoData();
@@ -44,10 +44,10 @@ const OverviewPage: React.FC = () => {
           <h1 className="text-4xl font-bold text-white">Performance Overview</h1>
           
           <div className="flex gap-4">
-            {/* Multi-Select Traffic Source Filter */}
-            <TrafficSourceSelect 
+            {/* Shared Analytics Traffic Source Filter */}
+            <AnalyticsTrafficSourceFilter 
               selectedSources={filters.trafficSources}
-              onSourceChange={handleSourceChange}
+              onChange={handleSourceChange}
             />
           </div>
         </div>
