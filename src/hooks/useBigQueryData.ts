@@ -79,7 +79,10 @@ export const useBigQueryData = (
         console.log('🔍 [BigQuery Hook] Fetching data with params:', {
           clientList,
           selectedApps,
-          dateRange,
+          dateRange: {
+            from: dateRange.from.toISOString().split('T')[0],
+            to: dateRange.to.toISOString().split('T')[0]
+          },
           trafficSources
         });
 
@@ -93,7 +96,7 @@ export const useBigQueryData = (
             to: dateRange.to.toISOString().split('T')[0]
           },
           selectedApps: selectedApps.length > 0 ? selectedApps : undefined,
-          trafficSources: trafficSources.length > 0 ? trafficSources : undefined, // Pass traffic source filter
+          trafficSources: trafficSources.length > 0 ? trafficSources : undefined,
           limit: 100
         };
 
@@ -156,7 +159,13 @@ export const useBigQueryData = (
     };
 
     fetchBigQueryData();
-  }, [clientList, dateRange.from, dateRange.to, trafficSources, selectedApps]); // Add trafficSources to dependencies
+  }, [
+    clientList, 
+    dateRange.from.toISOString().split('T')[0], // Only trigger on date changes
+    dateRange.to.toISOString().split('T')[0], 
+    trafficSources, 
+    selectedApps
+  ]);
 
   return { data, loading, error, meta };
 };

@@ -2,6 +2,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useBigQueryData } from '../hooks/useBigQueryData';
 import { useMockAsoData, type AsoData, type DateRange, type TrafficSource } from '../hooks/useMockAsoData';
+import { subDays } from 'date-fns';
 
 interface AsoDataFilters {
   dateRange: DateRange;
@@ -53,11 +54,20 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
   
   const [filters, setFilters] = useState<AsoDataFilters>({
     dateRange: {
-      from: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), // 30 days ago
+      from: subDays(new Date(), 30), // Default to last 30 days
       to: new Date(),
     },
-    trafficSources: ['Apple Search Ads', 'App Store Browse', 'App Store Search'],
+    trafficSources: [], // Empty array means all sources
     clients: ['TUI'], // Default client for BigQuery
+  });
+
+  console.log('🎯 [AsoDataContext] Current filters:', {
+    dateRange: {
+      from: filters.dateRange.from.toISOString().split('T')[0],
+      to: filters.dateRange.to.toISOString().split('T')[0]
+    },
+    trafficSources: filters.trafficSources,
+    clients: filters.clients
   });
 
   // Try BigQuery first
