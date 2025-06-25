@@ -12,7 +12,8 @@ import {
   User,
   Settings as SettingsIcon,
   Smartphone,
-  Database
+  Database,
+  PieChart
 } from "lucide-react";
 import {
   Sidebar,
@@ -29,49 +30,45 @@ import {
 } from "@/components/ui/sidebar";
 import { usePermissions } from "@/hooks/usePermissions";
 
-const navigationItems = [
+// Analytics & Insights - Pure data visualization from BigQuery
+const analyticsItems = [
   {
-    title: "Apps & Analytics",
-    items: [
-      {
-        title: "Apps",
-        url: "/apps",
-        icon: Smartphone,
-      },
-      {
-        title: "Overview",
-        url: "/overview",
-        icon: Home,
-      },
-      {
-        title: "Store Performance", 
-        url: "/dashboard",
-        icon: BarChart3,
-      },
-      {
-        title: "Conversion Analysis",
-        url: "/conversion-analysis", 
-        icon: Target,
-      },
-    ],
+    title: "Overview",
+    url: "/overview",
+    icon: Home,
   },
   {
-    title: "AI Copilots",
-    items: [
-      {
-        title: "ASO AI Hub",
-        url: "/aso-ai-hub",
-        icon: Bot,
-      },
-      {
-        title: "Keyword Intelligence",
-        url: "/keyword-intelligence",
-        icon: Search,
-      },
-    ],
+    title: "Store Performance", 
+    url: "/dashboard",
+    icon: BarChart3,
+  },
+  {
+    title: "Conversion Analysis",
+    url: "/conversion-analysis", 
+    icon: Target,
   },
 ];
 
+// AI Copilots & Tools - Manual management and AI features
+const aiToolsItems = [
+  {
+    title: "ASO AI Hub",
+    url: "/aso-ai-hub",
+    icon: Bot,
+  },
+  {
+    title: "Keyword Intelligence",
+    url: "/keyword-intelligence",
+    icon: Search,
+  },
+  {
+    title: "Apps",
+    url: "/apps",
+    icon: Smartphone,
+  },
+];
+
+// User account items
 const userItems = [
   {
     title: "Profile",
@@ -104,41 +101,69 @@ export function AppSidebar() {
       </SidebarHeader>
 
       <SidebarContent className="px-2 py-4">
-        {navigationItems.map((section) => (
-          <SidebarGroup key={section.title}>
-            <SidebarGroupLabel className="px-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
-              {section.title}
-            </SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {section.items.map((item) => {
-                  const isActive = location.pathname === item.url;
-                  return (
-                    <SidebarMenuItem key={item.title}>
-                      <SidebarMenuButton
-                        asChild
-                        isActive={isActive}
-                        tooltip={item.title}
-                        className="h-10 data-[active=true]:bg-yodel-orange data-[active=true]:text-white hover:bg-zinc-800 hover:text-white"
-                      >
-                        <Link to={item.url} className="flex items-center gap-3">
-                          <item.icon className="h-4 w-4 shrink-0" />
-                          <span className="truncate">{item.title}</span>
-                        </Link>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  );
-                })}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        ))}
+        {/* Analytics & Insights Section */}
+        <SidebarGroup>
+          <SidebarGroupLabel className="px-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
+            📊 Analytics & Insights
+          </SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {analyticsItems.map((item) => {
+                const isActive = location.pathname === item.url;
+                return (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton
+                      asChild
+                      isActive={isActive}
+                      tooltip={item.title}
+                      className="h-10 data-[active=true]:bg-yodel-orange data-[active=true]:text-white hover:bg-zinc-800 hover:text-white"
+                    >
+                      <Link to={item.url} className="flex items-center gap-3">
+                        <item.icon className="h-4 w-4 shrink-0" />
+                        <span className="truncate">{item.title}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                );
+              })}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
 
-        {/* Admin Section - visible to org admins and super admins */}
+        {/* AI Copilots & Tools Section */}
+        <SidebarGroup>
+          <SidebarGroupLabel className="px-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
+            🤖 AI Copilots & Tools
+          </SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {aiToolsItems.map((item) => {
+                const isActive = location.pathname === item.url;
+                return (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton
+                      asChild
+                      isActive={isActive}
+                      tooltip={item.title}
+                      className="h-10 data-[active=true]:bg-yodel-orange data-[active=true]:text-white hover:bg-zinc-800 hover:text-white"
+                    >
+                      <Link to={item.url} className="flex items-center gap-3">
+                        <item.icon className="h-4 w-4 shrink-0" />
+                        <span className="truncate">{item.title}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                );
+              })}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        {/* Administration Section - visible to org admins and super admins */}
         {(isSuperAdmin || isOrganizationAdmin) && (
           <SidebarGroup>
             <SidebarGroupLabel className="px-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
-              Administration
+              🔧 Administration
             </SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
@@ -176,7 +201,7 @@ export function AppSidebar() {
           </SidebarGroup>
         )}
 
-        {/* User Section */}
+        {/* Account Section */}
         <SidebarGroup>
           <SidebarGroupLabel className="px-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
             Account
