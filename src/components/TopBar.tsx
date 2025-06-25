@@ -37,7 +37,13 @@ const TopBar: React.FC = React.memo(() => {
   };
 
   const showDateControls = ['/dashboard', '/overview', '/conversion-analysis'].includes(location.pathname);
-  const showAppSelector = !['/auth/sign-in', '/auth/sign-up', '/', '/profile', '/settings', '/admin'].includes(location.pathname);
+  
+  // Hide AppSelector on Analytics pages - these show BigQuery data, not manual organizations
+  const analyticsPages = ['/dashboard', '/overview', '/conversion-analysis'];
+  const isAnalyticsPage = analyticsPages.includes(location.pathname);
+  const authPages = ['/auth/sign-in', '/auth/sign-up', '/'];
+  const systemPages = ['/profile', '/settings', '/admin'];
+  const showAppSelector = !isAnalyticsPage && !authPages.includes(location.pathname) && !systemPages.includes(location.pathname);
 
   return (
     <header className="sticky top-0 z-40 border-b border-zinc-700 bg-zinc-900/80 backdrop-blur-sm">
@@ -49,6 +55,13 @@ const TopBar: React.FC = React.memo(() => {
             <Heading3 className="text-lg font-semibold text-white sm:text-2xl">
               {getPageTitle()}
             </Heading3>
+            {isAnalyticsPage && (
+              <div className="hidden sm:flex items-center gap-2 ml-4">
+                <div className="px-2 py-1 bg-zinc-800 rounded-md text-xs text-zinc-400">
+                  Data Source: BigQuery
+                </div>
+              </div>
+            )}
           </div>
         </div>
         
