@@ -9,12 +9,12 @@ import { AppSelector } from "./AppSelector";
 import { BigQueryAppSelector } from "./BigQueryAppSelector";
 import { Heading3 } from "./ui/design-system";
 import { useBigQueryAppSelection } from "@/context/BigQueryAppContext";
-import { useAuth } from "@/context/AuthContext";
+import { useUserProfile } from "@/hooks/useUserProfile";
 
 const TopBar: React.FC = React.memo(() => {
   const location = useLocation();
   const { selectedApps, setSelectedApps } = useBigQueryAppSelection();
-  const { user } = useAuth();
+  const { profile, isLoading: profileLoading } = useUserProfile();
   
   const getPageTitle = () => {
     switch (location.pathname) {
@@ -74,10 +74,10 @@ const TopBar: React.FC = React.memo(() => {
         
         <div className="flex items-center gap-4">
           {/* BigQuery App Selector for Analytics pages */}
-          {isAnalyticsPage && (
+          {isAnalyticsPage && !profileLoading && (
             <div className="hidden md:block">
               <BigQueryAppSelector
-                organizationId={user?.organization_id}
+                organizationId={profile?.organization_id}
                 selectedApps={selectedApps}
                 onSelectionChange={setSelectedApps}
               />
@@ -106,9 +106,9 @@ const TopBar: React.FC = React.memo(() => {
       {/* Mobile controls - show below header on mobile when needed */}
       <div className="border-t border-zinc-800 px-4 py-3 md:hidden">
         <div className="flex items-center justify-between">
-          {isAnalyticsPage && (
+          {isAnalyticsPage && !profileLoading && (
             <BigQueryAppSelector
-              organizationId={user?.organization_id}
+              organizationId={profile?.organization_id}
               selectedApps={selectedApps}
               onSelectionChange={setSelectedApps}
             />
