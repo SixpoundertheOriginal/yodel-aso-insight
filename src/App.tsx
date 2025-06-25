@@ -1,4 +1,3 @@
-
 import { Suspense, lazy } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
@@ -10,6 +9,7 @@ import { AsoDataProvider } from "./context/AsoDataContext";
 import { AppProvider } from "./context/AppContext";
 import { AsoAiHubProvider } from "./context/AsoAiHubContext";
 import { WorkflowProvider } from "./context/WorkflowContext";
+import { BigQueryAppProvider } from "./context/BigQueryAppContext";
 
 // Lazy load components
 const Index = lazy(() => import("./pages/Index"));
@@ -40,36 +40,38 @@ function App() {
         <Sonner />
         <BrowserRouter>
           <AuthProvider>
-            <AsoDataProvider>
-              <AppProvider>
-                <AsoAiHubProvider>
-                  <WorkflowProvider>
-                    <Suspense fallback={<div className="flex items-center justify-center min-h-screen bg-zinc-950 text-white">Loading...</div>}>
-                      <Routes>
-                        <Route path="/auth/sign-in" element={<SignIn />} />
-                        <Route path="/auth/sign-up" element={<SignUp />} />
-                        <Route path="/" element={<Index />} />
-                        <Route path="/dashboard" element={<Dashboard />} />
-                        <Route path="/traffic-sources" element={<TrafficSources />} />
-                        <Route path="/conversion-analysis" element={<ConversionAnalysis />} />
-                        <Route path="/overview" element={<Overview />} />
-                        <Route path="/keyword-intelligence" element={<KeywordIntelligence />} />
-                        <Route path="/aso-ai-hub" element={<AsoAiHub />} />
-                        <Route path="/aso-intelligence" element={<AsoIntelligence />} />
-                        <Route path="/featuring-toolkit" element={<FeaturingToolkit />} />
-                        <Route path="/apps" element={<Apps />} />
-                        <Route path="/app-discovery" element={<AppDiscovery />} />
-                        <Route path="/profile" element={<Profile />} />
-                        <Route path="/settings" element={<Settings />} />
-                        <Route path="/admin" element={<Admin />} />
-                        <Route path="/404" element={<NotFound />} />
-                        <Route path="*" element={<Navigate to="/404" replace />} />
-                      </Routes>
-                    </Suspense>
-                  </WorkflowProvider>
-                </AsoAiHubProvider>
-              </AppProvider>
-            </AsoDataProvider>
+            <BigQueryAppProvider>
+              <AsoDataProvider>
+                <AppProvider>
+                  <AsoAiHubProvider>
+                    <WorkflowProvider>
+                      <Suspense fallback={<div className="flex items-center justify-center min-h-screen bg-zinc-950 text-white">Loading...</div>}>
+                        <Routes>
+                          <Route path="/auth/sign-in" element={<SignIn />} />
+                          <Route path="/auth/sign-up" element={<SignUp />} />
+                          <Route path="/" element={<Index />} />
+                          <Route path="/dashboard" element={<Dashboard />} />
+                          <Route path="/traffic-sources" element={<TrafficSources />} />
+                          <Route path="/conversion-analysis" element={<ConversionAnalysis />} />
+                          <Route path="/overview" element={<Overview />} />
+                          <Route path="/keyword-intelligence" element={<KeywordIntelligence />} />
+                          <Route path="/aso-ai-hub" element={<AsoAiHub />} />
+                          <Route path="/aso-intelligence" element={<AsoIntelligence />} />
+                          <Route path="/featuring-toolkit" element={<FeaturingToolkit />} />
+                          <Route path="/apps" element={<Apps />} />
+                          <Route path="/app-discovery" element={<AppDiscovery />} />
+                          <Route path="/profile" element={<Profile />} />
+                          <Route path="/settings" element={<Settings />} />
+                          <Route path="/admin" element={<Admin />} />
+                          <Route path="/404" element={<NotFound />} />
+                          <Route path="*" element={<Navigate to="/404" replace />} />
+                        </Routes>
+                      </Suspense>
+                    </WorkflowProvider>
+                  </AsoAiHubProvider>
+                </AppProvider>
+              </AsoDataProvider>
+            </BigQueryAppProvider>
           </AuthProvider>
         </BrowserRouter>
       </TooltipProvider>

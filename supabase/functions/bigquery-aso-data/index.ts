@@ -26,6 +26,7 @@ interface BigQueryRequest {
     from: string;
     to: string;
   };
+  selectedApps?: string[]; // New parameter for app filtering
   limit?: number;
 }
 
@@ -132,7 +133,22 @@ serve(async (req) => {
       shouldAutoApprove = true;
     }
 
-    console.log('🎯 [BigQuery] Querying for clients:', clientsToQuery);
+    // NEW: Apply selectedApps filtering if provided
+    if (body.selectedApps && body.selectedApps.length > 0) {
+      // Filter clientsToQuery to only include selected apps
+      const filteredClients = clientsToQuery.filter(client => 
+        body.selectedApps!.includes(client)
+      );
+      
+      if (filteredClients.length > 0) {
+        clientsToQuery = filteredClients;
+        console.log('🎯 [BigQuery] Filtered to selected apps:', clientsToQuery);
+      } else {
+        console.log('⚠️ [BigQuery] No matching selected apps found, using all approved apps');
+      }
+    }
+
+    console.log('🎯 [BigQuery] Final querying for clients:', clientsToQuery);
 
     const credentials: BigQueryCredentials = JSON.parse(credentialString);
     const tokenResponse = await getGoogleOAuthToken(credentials);
@@ -290,12 +306,14 @@ serve(async (req) => {
           queryParams: {
             organizationId: body.organizationId,
             dateRange: body.dateRange || null,
+            selectedApps: body.selectedApps || null, // Include selected apps in metadata
             limit
           },
           projectId,
           timestamp: new Date().toISOString(),
           approvedApps: approvedAppIdentifiers,
           queriedClients: clientsToQuery,
+          filteredBySelection: !!(body.selectedApps && body.selectedApps.length > 0),
           emergencyBypass: shouldAutoApprove,
           autoApprovalTriggered: shouldAutoApprove && transformedData.length > 0,
           ...(isDevelopment() && {

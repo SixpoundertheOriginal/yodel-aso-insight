@@ -6,10 +6,15 @@ import DatePicker from "./DatePicker";
 import ResetButton from "./ResetButton";
 import { UserMenu } from "./UserMenu";
 import { AppSelector } from "./AppSelector";
+import { BigQueryAppSelector } from "./BigQueryAppSelector";
 import { Heading3 } from "./ui/design-system";
+import { useBigQueryAppSelection } from "@/context/BigQueryAppContext";
+import { useAuth } from "@/context/AuthContext";
 
 const TopBar: React.FC = React.memo(() => {
   const location = useLocation();
+  const { selectedApps, setSelectedApps } = useBigQueryAppSelection();
+  const { user } = useAuth();
   
   const getPageTitle = () => {
     switch (location.pathname) {
@@ -38,15 +43,17 @@ const TopBar: React.FC = React.memo(() => {
 
   const showDateControls = ['/dashboard', '/overview', '/conversion-analysis'].includes(location.pathname);
   
-  // Hide AppSelector on Analytics pages - these show BigQuery data, not manual organizations
+  // Analytics pages use BigQuery data
   const analyticsPages = ['/dashboard', '/overview', '/conversion-analysis'];
   const isAnalyticsPage = analyticsPages.includes(location.pathname);
+  
+  // AI Copilots pages use manual apps
   const authPages = ['/auth/sign-in', '/auth/sign-up', '/'];
   const systemPages = ['/profile', '/settings', '/admin'];
-  const showAppSelector = !isAnalyticsPage && !authPages.includes(location.pathname) && !systemPages.includes(location.pathname);
+  const showManualAppSelector = !isAnalyticsPage && !authPages.includes(location.pathname) && !systemPages.includes(location.pathname);
 
   return (
-    <header className="sticky top-0 z-40 border-b border-zinc-700 bg-zinc-900/80 backdrop-blur-sm">
+    <div className="sticky top-0 z-40 border-b border-zinc-700 bg-zinc-900/80 backdrop-blur-sm">
       <div className="flex h-16 items-center justify-between px-4 sm:px-6">
         <div className="flex items-center gap-4">
           <SidebarTrigger className="h-8 w-8 text-zinc-400 hover:text-white" />
@@ -66,11 +73,24 @@ const TopBar: React.FC = React.memo(() => {
         </div>
         
         <div className="flex items-center gap-4">
-          {showAppSelector && (
+          {/* BigQuery App Selector for Analytics pages */}
+          {isAnalyticsPage && (
+            <div className="hidden md:block">
+              <BigQueryAppSelector
+                organizationId={user?.organization_id}
+                selectedApps={selectedApps}
+                onSelectionChange={setSelectedApps}
+              />
+            </div>
+          )}
+          
+          {/* Manual App Selector for AI Copilots pages */}
+          {showManualAppSelector && (
             <div className="hidden md:block">
               <AppSelector />
             </div>
           )}
+          
           {showDateControls && (
             <div className="flex items-center gap-2 sm:gap-4">
               <div className="hidden sm:block">
@@ -86,11 +106,18 @@ const TopBar: React.FC = React.memo(() => {
       {/* Mobile controls - show below header on mobile when needed */}
       <div className="border-t border-zinc-800 px-4 py-3 md:hidden">
         <div className="flex items-center justify-between">
-          {showAppSelector && <AppSelector />}
+          {isAnalyticsPage && (
+            <BigQueryAppSelector
+              organizationId={user?.organization_id}
+              selectedApps={selectedApps}
+              onSelectionChange={setSelectedApps}
+            />
+          )}
+          {showManualAppSelector && <AppSelector />}
           {showDateControls && <DatePicker />}
         </div>
       </div>
-    </header>
+    </div>
   );
 });
 

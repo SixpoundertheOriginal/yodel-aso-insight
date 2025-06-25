@@ -1,7 +1,7 @@
-
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { DateRange, AsoData, TimeSeriesPoint, MetricSummary, TrafficSource } from './useMockAsoData';
+import { useBigQueryAppSelection } from '@/context/BigQueryAppContext';
 
 interface BigQueryDataPoint {
   date: string;
@@ -58,6 +58,9 @@ export const useBigQueryData = (
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<Error | null>(null);
   const [meta, setMeta] = useState<BigQueryMeta | undefined>(undefined);
+  
+  // Get selected apps from BigQuery app selector
+  const { selectedApps } = useBigQueryAppSelection();
 
   useEffect(() => {
     const fetchBigQueryData = async () => {
@@ -68,6 +71,7 @@ export const useBigQueryData = (
 
         console.log('🔍 [BigQuery Hook] Fetching data with params:', {
           clientList,
+          selectedApps,
           dateRange,
           trafficSources
         });
@@ -81,6 +85,7 @@ export const useBigQueryData = (
             from: dateRange.from.toISOString().split('T')[0],
             to: dateRange.to.toISOString().split('T')[0]
           },
+          selectedApps: selectedApps.length > 0 ? selectedApps : undefined, // Pass selected apps for filtering
           limit: 100
         };
 
@@ -142,7 +147,7 @@ export const useBigQueryData = (
     };
 
     fetchBigQueryData();
-  }, [clientList, dateRange.from, dateRange.to, trafficSources]);
+  }, [clientList, dateRange.from, dateRange.to, trafficSources, selectedApps]); // Add selectedApps to dependencies
 
   return { data, loading, error, meta };
 };
