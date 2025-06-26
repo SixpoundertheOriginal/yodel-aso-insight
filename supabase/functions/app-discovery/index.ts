@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
@@ -25,6 +24,14 @@ interface AppDiscoveryRequest {
   action: 'discover' | 'approve' | 'reject';
   appId?: string;
   status?: string;
+}
+
+function cleanAppName(appId: string): string {
+  return appId
+    .replace(/^com\./, '')
+    .replace(/[^a-zA-Z0-9]+/g, ' ')
+    .replace(/\b\w/g, c => c.toUpperCase())
+    .trim();
 }
 
 serve(async (req) => {
@@ -145,20 +152,24 @@ serve(async (req) => {
             days_with_data: parseInt(fields[4]?.v || '0')
           };
 
-          // Insert or update in organization_apps table
+          // Clean the app name for better readability
+          const cleanedAppName = cleanAppName(appData.app_identifier);
+
+          // Insert or update in organization_apps table with forced updates
           const { error: upsertError } = await supabaseClient
             .from('organization_apps')
             .upsert({
               organization_id: body.organizationId,
               app_identifier: appData.app_identifier,
-              app_name: appData.app_identifier, // Use identifier as name initially
+              app_name: cleanedAppName,
               data_source: 'bigquery',
               approval_status: 'pending',
               app_metadata: {
                 record_count: appData.record_count,
                 first_seen: appData.first_seen,
                 last_seen: appData.last_seen,
-                days_with_data: appData.days_with_data
+                days_with_data: appData.days_with_data,
+                cleaned_name: cleanedAppName
               }
             }, {
               onConflict: 'organization_id,app_identifier,data_source',
@@ -166,12 +177,17 @@ serve(async (req) => {
             });
 
           if (!upsertError) {
-            discoveredApps.push(appData);
+            discoveredApps.push({
+              ...appData,
+              cleaned_name: cleanedAppName
+            });
+          } else {
+            console.error(`❌ [App Discovery] Failed to upsert ${appData.app_identifier}:`, upsertError);
           }
         }
       }
 
-      console.log(`✅ [App Discovery] Discovered ${discoveredApps.length} apps`);
+      console.log(`✅ [App Discovery] Discovered ${discoveredApps.length} apps with cleaned names`);
 
       return new Response(
         JSON.stringify({
