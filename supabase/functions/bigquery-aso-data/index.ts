@@ -39,10 +39,11 @@ const isDevelopment = () => {
 // Known BigQuery clients for emergency bypass
 const KNOWN_BIGQUERY_CLIENTS = ['AppSeven', 'AppTwo', 'AppFour', 'AppOne', 'AppSix', 'AppThree', 'AppFive'];
 
-// Traffic source mapping
+// Enhanced Traffic source mapping with missing sources
 const TRAFFIC_SOURCE_MAPPING = {
   'Apple_Search_Ads': 'Apple Search Ads',
   'App_Store_Search': 'App Store Search',
+  'App_Store_Browse': 'App Store Browse',
   'App_Referrer': 'App Referrer',
   'Web_Referrer': 'Web Referrer',
   'Event_Notification': 'Event Notification',
@@ -60,6 +61,34 @@ function mapTrafficSourceToDisplay(bigQuerySource: string): string {
 
 function mapTrafficSourceToBigQuery(displaySource: string): string {
   return REVERSE_TRAFFIC_SOURCE_MAPPING[displaySource] || displaySource;
+}
+
+// Defensive array normalization helper
+function normalizeTrafficSourcesArray(trafficSources: any): string[] {
+  console.log('🔧 [BigQuery] Raw trafficSources input:', trafficSources, typeof trafficSources);
+  
+  // Handle null/undefined
+  if (!trafficSources) {
+    console.log('📝 [BigQuery] No traffic sources provided, returning empty array');
+    return [];
+  }
+  
+  // Handle already an array
+  if (Array.isArray(trafficSources)) {
+    const filtered = trafficSources.filter(source => typeof source === 'string' && source.trim().length > 0);
+    console.log('📝 [BigQuery] Normalized array:', filtered);
+    return filtered;
+  }
+  
+  // Handle single string value
+  if (typeof trafficSources === 'string' && trafficSources.trim().length > 0) {
+    console.log('📝 [BigQuery] Converting single string to array:', [trafficSources]);
+    return [trafficSources];
+  }
+  
+  // Fallback for any other type
+  console.log('📝 [BigQuery] Unexpected type, returning empty array');
+  return [];
 }
 
 serve(async (req) => {
@@ -175,25 +204,28 @@ serve(async (req) => {
     // Build query components
     const clientsFilter = clientsToQuery.map(app => `'${app}'`).join(', ');
     
-    // Enhanced traffic source filtering logic
-    console.log('📦 [BigQuery] Traffic sources filter:', body.trafficSources);
+    // Enhanced traffic source filtering logic with defensive normalization
+    const normalizedTrafficSources = normalizeTrafficSourcesArray(body.trafficSources);
+    console.log('📦 [BigQuery] Normalized traffic sources filter:', normalizedTrafficSources);
     
     let trafficSourceFilter = '';
     const queryParams: any[] = [];
     
-    if (body.trafficSources && body.trafficSources.length > 0) {
+    if (normalizedTrafficSources.length > 0) {
       // Map display names to BigQuery format
-      const bigQueryTrafficSources = body.trafficSources.map(source => 
+      const bigQueryTrafficSources = normalizedTrafficSources.map(source => 
         mapTrafficSourceToBigQuery(source)
       );
       
       console.log('🔄 [BigQuery] Mapped traffic sources:', bigQueryTrafficSources);
+      console.log('🔄 [BigQuery] Display -> BigQuery mapping check:', 
+        normalizedTrafficSources.map(source => `${source} -> ${mapTrafficSourceToBigQuery(source)}`));
       
-      // Use UNNEST for better BigQuery compatibility with arrays
-      trafficSourceFilter = 'AND traffic_source IN UNNEST(@trafficSources)';
+      // Enhanced conditional WHERE clause using UNNEST for better BigQuery compatibility
+      trafficSourceFilter = 'AND (@trafficSourcesArray IS NULL OR ARRAY_LENGTH(@trafficSourcesArray) = 0 OR traffic_source IN UNNEST(@trafficSourcesArray))';
       
       queryParams.push({
-        name: 'trafficSources',
+        name: 'trafficSourcesArray',
         parameterType: { 
           type: 'ARRAY',
           arrayType: { type: 'STRING' }
@@ -204,7 +236,17 @@ serve(async (req) => {
       });
     } else {
       console.log('ℹ️ [BigQuery] No traffic source filter applied - returning all sources');
-      // No filter needed when empty - will return all traffic sources
+      // Add empty array parameter to prevent query parameter errors
+      queryParams.push({
+        name: 'trafficSourcesArray',
+        parameterType: { 
+          type: 'ARRAY',
+          arrayType: { type: 'STRING' }
+        },
+        parameterValue: { 
+          arrayValues: []
+        }
+      });
     }
     
     // Add date range parameters if provided
@@ -223,7 +265,7 @@ serve(async (req) => {
       );
     }
     
-    // Build final query
+    // Build final query with enhanced conditional logic
     const query = `
       SELECT 
         date,
@@ -235,7 +277,7 @@ serve(async (req) => {
       FROM \`${projectId}.client_reports.aso_all_apple\`
       WHERE client IN (${clientsFilter})
       ${body.dateRange ? 'AND date BETWEEN @dateFrom AND @dateTo' : 'AND date >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)'}
-      ${trafficSourceFilter}
+      ${normalizedTrafficSources.length > 0 ? 'AND traffic_source IN UNNEST(@trafficSourcesArray)' : ''}
       ORDER BY date DESC
       LIMIT ${limit}
     `;
@@ -251,6 +293,12 @@ serve(async (req) => {
     if (isDevelopment()) {
       console.log('🔍 [BigQuery] Final Query:', query.replace(/\s+/g, ' ').trim());
       console.log('📊 [BigQuery] Query Parameters:', JSON.stringify(queryParams, null, 2));
+      console.log('🎯 [BigQuery] Traffic source debug summary:', {
+        originalInput: body.trafficSources,
+        normalizedArray: normalizedTrafficSources,
+        mappedToBigQuery: normalizedTrafficSources.map(s => mapTrafficSourceToBigQuery(s)),
+        willFilterBy: normalizedTrafficSources.length > 0 ? 'specific sources' : 'all sources'
+      });
     }
 
     // Execute BigQuery request
@@ -355,12 +403,12 @@ serve(async (req) => {
             client: clientParam,
             dateRange: body.dateRange || null,
             selectedApps: body.selectedApps || null,
-            trafficSources: body.trafficSources || null,
+            trafficSources: normalizedTrafficSources || null,
             limit
           },
           availableTrafficSources,
           filteredBySelection: !!(body.selectedApps && body.selectedApps.length > 0),
-          filteredByTrafficSource: !!(body.trafficSources && body.trafficSources.length > 0),
+          filteredByTrafficSource: normalizedTrafficSources.length > 0,
           projectId,
           timestamp: new Date().toISOString(),
           approvedApps: approvedAppIdentifiers,
@@ -372,7 +420,12 @@ serve(async (req) => {
               queryPreview: query.replace(/\s+/g, ' ').trim(),
               parameterCount: queryParams.length,
               jobComplete: queryResult.jobComplete,
-              trafficSourceMapping: TRAFFIC_SOURCE_MAPPING
+              trafficSourceMapping: TRAFFIC_SOURCE_MAPPING,
+              normalizedInputs: {
+                originalTrafficSources: body.trafficSources,
+                normalizedTrafficSources,
+                mappedToBigQuery: normalizedTrafficSources.map(s => mapTrafficSourceToBigQuery(s))
+              }
             }
           })
         }
