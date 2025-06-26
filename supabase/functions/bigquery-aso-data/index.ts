@@ -20,7 +20,7 @@ interface BigQueryCredentials {
 }
 
 interface BigQueryRequest {
-  organizationId: string;
+  client: string;
   dateRange?: {
     from: string;
     to: string;
@@ -112,7 +112,7 @@ serve(async (req) => {
 
     let body: BigQueryRequest;
     if (req.method === 'GET') {
-      body = { organizationId: "84728f94-91db-4f9c-b025-5221fbed4065", limit: 100 };
+      body = { client: "84728f94-91db-4f9c-b025-5221fbed4065", limit: 100 };
     } else {
       try {
         body = await req.json();
@@ -131,14 +131,14 @@ serve(async (req) => {
       }
     }
 
-    if (!body.organizationId) {
-      throw new Error('organizationId is required');
+    if (!body.client) {
+      throw new Error('client is required');
     }
 
     // Get approved apps for this organization
-    console.log('🔍 [BigQuery] Getting approved apps for organization:', body.organizationId);
+    console.log('🔍 [BigQuery] Getting approved apps for organization:', body.client);
     const { data: approvedApps, error: approvedAppsError } = await supabaseClient
-      .rpc('get_approved_apps', { p_organization_id: body.organizationId });
+      .rpc('get_approved_apps', { p_organization_id: body.client });
 
     if (approvedAppsError) {
       console.error('❌ [BigQuery] Failed to get approved apps:', approvedAppsError);
@@ -278,7 +278,7 @@ serve(async (req) => {
       
       return {
         date: fields[0]?.v || null,
-        organization_id: fields[1]?.v || body.organizationId,
+        organization_id: fields[1]?.v || body.client,
         traffic_source: mapTrafficSourceToDisplay(originalTrafficSource), // Map to display name
         traffic_source_raw: originalTrafficSource, // Keep original for debugging
         impressions: parseInt(fields[3]?.v || '0'),
@@ -305,7 +305,7 @@ serve(async (req) => {
           const { error: upsertError } = await supabaseClient
             .from('organization_apps')
             .upsert({
-              organization_id: body.organizationId,
+              organization_id: body.client,
               app_identifier: client,
               app_name: client,
               data_source: 'bigquery',
@@ -348,7 +348,7 @@ serve(async (req) => {
           totalRows: parseInt(queryResult.totalRows || '0'),
           executionTimeMs,
           queryParams: {
-            organizationId: body.organizationId,
+            client: body.client,
             dateRange: body.dateRange || null,
             selectedApps: body.selectedApps || null,
             trafficSources: body.trafficSources || null,

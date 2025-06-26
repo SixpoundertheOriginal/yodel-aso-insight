@@ -18,7 +18,7 @@ interface BigQueryMeta {
   totalRows: number;
   executionTimeMs: number;
   queryParams: {
-    organizationId: string;
+    client: string;
     dateRange: { from: string; to: string } | null;
     limit: number;
   };
