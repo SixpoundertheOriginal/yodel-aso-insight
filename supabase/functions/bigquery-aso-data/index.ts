@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
@@ -20,7 +21,8 @@ interface BigQueryCredentials {
 }
 
 interface BigQueryRequest {
-  client: string;
+  client?: string;
+  organizationId?: string; // Deprecated fallback
   dateRange?: {
     from: string;
     to: string;
@@ -35,10 +37,10 @@ const isDevelopment = () => {
   return environment === 'development' || environment === 'preview';
 };
 
-// EMERGENCY BYPASS: Known BigQuery clients for immediate data access
+// Known BigQuery clients for emergency bypass
 const KNOWN_BIGQUERY_CLIENTS = ['AppSeven', 'AppTwo', 'AppFour', 'AppOne', 'AppSix', 'AppThree', 'AppFive'];
 
-// Traffic source mapping: BigQuery internal names → Frontend display names
+// Traffic source mapping
 const TRAFFIC_SOURCE_MAPPING = {
   'Apple_Search_Ads': 'Apple Search Ads',
   'App_Store_Search': 'App Store Search',
@@ -49,7 +51,6 @@ const TRAFFIC_SOURCE_MAPPING = {
   'Unavailable': 'Other'
 };
 
-// Reverse mapping: Frontend display names → BigQuery internal names
 const REVERSE_TRAFFIC_SOURCE_MAPPING = Object.fromEntries(
   Object.entries(TRAFFIC_SOURCE_MAPPING).map(([key, value]) => [value, key])
 );
@@ -72,7 +73,7 @@ serve(async (req) => {
   try {
     console.log('🔍 [BigQuery] ASO Data request received');
 
-    // Initialize Supabase client for approved apps lookup
+    // Initialize Supabase client
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? '',
@@ -86,12 +87,6 @@ serve(async (req) => {
     const credentialString = Deno.env.get('BIGQUERY_CREDENTIALS');
     const projectId = Deno.env.get('BIGQUERY_PROJECT_ID');
     
-    if (isDevelopment()) {
-      console.log('📋 [BigQuery] Environment Variable Diagnostics:');
-      console.log('- Credential string exists:', !!credentialString);
-      console.log('- Project ID exists:', !!projectId);
-    }
-
     if (!projectId || !credentialString) {
       return new Response(
         JSON.stringify({
@@ -110,6 +105,7 @@ serve(async (req) => {
       );
     }
 
+    // Parse request body
     let body: BigQueryRequest;
     if (req.method === 'GET') {
       body = { client: "84728f94-91db-4f9c-b025-5221fbed4065", limit: 100 };
@@ -131,74 +127,68 @@ serve(async (req) => {
       }
     }
 
-    if (!body.client) {
-      throw new Error('client is required');
+    // Support both 'client' and legacy 'organizationId'
+    const clientParam = body.client || body.organizationId;
+    if (!clientParam) {
+      throw new Error('client parameter is required');
     }
 
-    // Get approved apps for this organization
-    console.log('🔍 [BigQuery] Getting approved apps for organization:', body.client);
+    console.log(`📋 [BigQuery] Processing request for client: ${clientParam}`);
+
+    // Get approved apps for this client
     const { data: approvedApps, error: approvedAppsError } = await supabaseClient
-      .rpc('get_approved_apps', { p_organization_id: body.client });
+      .rpc('get_approved_apps', { p_organization_id: clientParam });
 
     if (approvedAppsError) {
       console.error('❌ [BigQuery] Failed to get approved apps:', approvedAppsError);
     }
 
     const approvedAppIdentifiers = approvedApps?.map((app: any) => app.app_identifier) || [];
-    console.log('✅ [BigQuery] Found approved apps:', approvedAppIdentifiers);
-
-    // CRITICAL FIX: Emergency bypass for chicken-and-egg problem
+    
+    // Determine clients to query
     let clientsToQuery = approvedAppIdentifiers;
     let shouldAutoApprove = false;
 
     if (approvedAppIdentifiers.length === 0) {
-      console.log('🚨 [BigQuery] EMERGENCY BYPASS: No approved apps found, using all known BigQuery clients');
+      console.log('🚨 [BigQuery] No approved apps found, using emergency bypass');
       clientsToQuery = KNOWN_BIGQUERY_CLIENTS;
       shouldAutoApprove = true;
     }
 
-    // NEW: Apply selectedApps filtering if provided
+    // Apply selectedApps filtering if provided
     if (body.selectedApps && body.selectedApps.length > 0) {
-      // Filter clientsToQuery to only include selected apps
       const filteredClients = clientsToQuery.filter(client => 
         body.selectedApps!.includes(client)
       );
       
       if (filteredClients.length > 0) {
         clientsToQuery = filteredClients;
-        console.log('🎯 [BigQuery] Filtered to selected apps:', clientsToQuery);
-      } else {
-        console.log('⚠️ [BigQuery] No matching selected apps found, using all approved apps');
       }
     }
 
-    console.log('🎯 [BigQuery] Final querying for clients:', clientsToQuery);
-
+    // Get BigQuery OAuth token
     const credentials: BigQueryCredentials = JSON.parse(credentialString);
     const tokenResponse = await getGoogleOAuthToken(credentials);
     const accessToken = tokenResponse.access_token;
 
     const limit = body.limit || 100;
     
-    // Build WHERE clause for approved apps
+    // Build query components
     const clientsFilter = clientsToQuery.map(app => `'${app}'`).join(', ');
     
-    // NEW: Build traffic source filter if provided
     let trafficSourceFilter = '';
     const queryParams: any[] = [];
     
     if (body.trafficSources && body.trafficSources.length > 0) {
-      // Convert frontend display names to BigQuery internal names
       const bigQueryTrafficSources = body.trafficSources.map(source => 
         mapTrafficSourceToBigQuery(source)
       );
-      
-      console.log('🎯 [BigQuery] Filtering traffic sources:', body.trafficSources, '→', bigQueryTrafficSources);
       
       const trafficSourcesList = bigQueryTrafficSources.map(source => `'${source}'`).join(', ');
       trafficSourceFilter = `AND traffic_source IN (${trafficSourcesList})`;
     }
     
+    // Build final query
     const query = `
       SELECT 
         date,
@@ -239,12 +229,10 @@ serve(async (req) => {
     };
 
     if (isDevelopment()) {
-      console.log('🔍 [BigQuery] Query with clients filter:', clientsToQuery);
-      console.log('🔍 [BigQuery] Traffic source filter applied:', trafficSourceFilter);
       console.log('🔍 [BigQuery] Final Query:', query.replace(/\s+/g, ' ').trim());
     }
 
-    console.log('🔍 [BigQuery] Executing query...');
+    // Execute BigQuery request
     const bigQueryResponse = await fetch(
       `https://bigquery.googleapis.com/bigquery/v2/projects/${projectId}/queries`,
       {
@@ -266,11 +254,9 @@ serve(async (req) => {
     const queryResult = await bigQueryResponse.json();
     const executionTimeMs = Date.now() - startTime;
     
-    console.log('✅ [BigQuery] Query completed successfully');
-    console.log('- Rows returned:', queryResult.totalRows || 0);
-    console.log('- Clients queried:', clientsToQuery.length);
+    console.log(`✅ [BigQuery] Query completed: ${queryResult.totalRows || 0} rows in ${executionTimeMs}ms`);
 
-    // Transform BigQuery response to match frontend interface
+    // Transform BigQuery response
     const rows = queryResult.rows || [];
     const transformedData = rows.map((row: any) => {
       const fields = row.f;
@@ -278,9 +264,9 @@ serve(async (req) => {
       
       return {
         date: fields[0]?.v || null,
-        organization_id: fields[1]?.v || body.client,
-        traffic_source: mapTrafficSourceToDisplay(originalTrafficSource), // Map to display name
-        traffic_source_raw: originalTrafficSource, // Keep original for debugging
+        organization_id: fields[1]?.v || clientParam,
+        traffic_source: mapTrafficSourceToDisplay(originalTrafficSource),
+        traffic_source_raw: originalTrafficSource,
         impressions: parseInt(fields[3]?.v || '0'),
         downloads: parseInt(fields[4]?.v || '0'),
         product_page_views: parseInt(fields[5]?.v || '0'),
@@ -293,25 +279,22 @@ serve(async (req) => {
       };
     });
 
-    // AUTO-APPROVAL LOGIC: If emergency bypass was used and we got data, auto-approve all discovered clients
+    // Auto-approval logic
     if (shouldAutoApprove && transformedData.length > 0) {
-      console.log('🔄 [BigQuery] Auto-approving discovered clients for future queries');
-      
       const discoveredClients = [...new Set(transformedData.map(row => row.organization_id))];
-      console.log('📝 [BigQuery] Discovered clients to auto-approve:', discoveredClients);
-
-      for (const client of discoveredClients) {
-        try {
+      
+      try {
+        for (const client of discoveredClients) {
           const { error: upsertError } = await supabaseClient
             .from('organization_apps')
             .upsert({
-              organization_id: body.client,
+              organization_id: clientParam,
               app_identifier: client,
               app_name: client,
               data_source: 'bigquery',
               approval_status: 'approved',
               approved_date: new Date().toISOString(),
-              approved_by: null, // System auto-approval
+              approved_by: null,
               app_metadata: {
                 auto_approved: true,
                 first_discovered: new Date().toISOString(),
@@ -323,22 +306,22 @@ serve(async (req) => {
             });
 
           if (upsertError) {
-            console.error(`❌ [BigQuery] Failed to auto-approve ${client}:`, upsertError);
-          } else {
-            console.log(`✅ [BigQuery] Auto-approved client: ${client}`);
+            console.error(`❌ [BigQuery] Auto-approval failed for ${client}:`, upsertError);
           }
-        } catch (error) {
-          console.error(`❌ [BigQuery] Auto-approval error for ${client}:`, error);
         }
+        console.log(`✅ [BigQuery] Auto-approved ${discoveredClients.length} clients`);
+      } catch (autoApprovalError) {
+        console.error('❌ [BigQuery] Auto-approval process failed:', autoApprovalError);
       }
     }
 
     if (isDevelopment() && transformedData.length > 0) {
-      console.log('📊 [BigQuery] Sample transformed data:', transformedData[0]);
-      console.log('📊 [BigQuery] Available traffic sources:', [...new Set(transformedData.map(d => d.traffic_source))]);
+      console.log('📊 [BigQuery] Sample data:', transformedData[0]);
     }
 
-    // Enhanced response with comprehensive metadata
+    // Build response metadata
+    const availableTrafficSources = [...new Set(transformedData.map(d => d.traffic_source))].sort();
+
     return new Response(
       JSON.stringify({
         success: true,
@@ -348,19 +331,19 @@ serve(async (req) => {
           totalRows: parseInt(queryResult.totalRows || '0'),
           executionTimeMs,
           queryParams: {
-            client: body.client,
+            client: clientParam,
             dateRange: body.dateRange || null,
             selectedApps: body.selectedApps || null,
             trafficSources: body.trafficSources || null,
             limit
           },
+          availableTrafficSources,
+          filteredBySelection: !!(body.selectedApps && body.selectedApps.length > 0),
+          filteredByTrafficSource: !!(body.trafficSources && body.trafficSources.length > 0),
           projectId,
           timestamp: new Date().toISOString(),
           approvedApps: approvedAppIdentifiers,
           queriedClients: clientsToQuery,
-          filteredBySelection: !!(body.selectedApps && body.selectedApps.length > 0),
-          filteredByTrafficSource: !!(body.trafficSources && body.trafficSources.length > 0),
-          availableTrafficSources: [...new Set(transformedData.map(d => d.traffic_source))].sort(),
           emergencyBypass: shouldAutoApprove,
           autoApprovalTriggered: shouldAutoApprove && transformedData.length > 0,
           ...(isDevelopment() && {
