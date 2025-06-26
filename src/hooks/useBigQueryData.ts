@@ -24,7 +24,7 @@ interface BigQueryMeta {
   totalRows: number;
   executionTimeMs: number;
   queryParams: {
-    organizationId: string;
+    client: string;
     dateRange: { from: string; to: string } | null;
     selectedApps?: string[];
     trafficSources?: string[]; // Add traffic source filtering
@@ -86,11 +86,11 @@ export const useBigQueryData = (
           trafficSources
         });
 
-        // Use the first client as organizationId for now
-        const organizationId = clientList[0] || 'yodel_pimsleur';
-        
+        // Use the first client for now
+        const client = clientList[0] || 'yodel_pimsleur';
+
         const requestBody = {
-          organizationId,
+          client,
           dateRange: {
             from: dateRange.from.toISOString().split('T')[0],
             to: dateRange.to.toISOString().split('T')[0]

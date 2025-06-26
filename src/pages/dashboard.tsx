@@ -89,7 +89,7 @@ const Dashboard: React.FC = () => {
             <p className="text-zinc-400 max-w-md">
               {meta ? (
                 <>
-                  No results found for organization "{meta.queryParams.organizationId}" 
+                  No results found for client "{meta.queryParams.client}"
                   {meta.queryParams.dateRange && (
                     <> between {meta.queryParams.dateRange.from} and {meta.queryParams.dateRange.to}</>
                   )}.
@@ -104,7 +104,7 @@ const Dashboard: React.FC = () => {
           {meta && process.env.NODE_ENV === 'development' && (
             <div className="mt-4 p-3 bg-zinc-800/50 rounded-lg text-xs text-zinc-400 text-left">
               <div className="font-medium text-zinc-300 mb-2">Debug Information:</div>
-              <div>Organization ID: {meta.queryParams.organizationId}</div>
+              <div>Client: {meta.queryParams.client}</div>
               <div>Date Range: {meta.queryParams.dateRange ? 
                 `${meta.queryParams.dateRange.from} to ${meta.queryParams.dateRange.to}` : 
                 'No date filter'
