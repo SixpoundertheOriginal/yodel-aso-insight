@@ -37,6 +37,18 @@ export interface AsoData {
   trafficSources: TrafficSource[];
 }
 
+// Complete list of all available traffic sources - static and comprehensive
+const ALL_AVAILABLE_TRAFFIC_SOURCES = [
+  'App Store Search',
+  'App Store Browse', 
+  'Web Referrer',
+  'Apple Search Ads',
+  'App Referrer',
+  'Event Notification',
+  'Institutional Purchase',
+  'Other'
+];
+
 export const useMockAsoData = (
   clientList: string[],
   dateRange: DateRange,
@@ -87,8 +99,9 @@ export const useMockAsoData = (
           });
         }
         
-        // Generate traffic source data
-        const trafficSourceData: TrafficSource[] = trafficSources.map((source) => ({
+        // Generate traffic source data for ALL available sources, not just selected ones
+        // This fixes the circular dependency issue where only selected sources were available
+        const trafficSourceData: TrafficSource[] = ALL_AVAILABLE_TRAFFIC_SOURCES.map((source) => ({
           name: source,
           value: Math.floor(Math.random() * 50000) + 5000,
           delta: parseFloat((Math.random() * 40 - 20).toFixed(1))
@@ -97,7 +110,7 @@ export const useMockAsoData = (
         const mockData: AsoData = {
           summary,
           timeseriesData,
-          trafficSources: trafficSourceData
+          trafficSources: trafficSourceData // Always return all available sources
         };
         
         // Simulate API delay
