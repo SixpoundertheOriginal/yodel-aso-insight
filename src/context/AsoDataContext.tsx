@@ -48,18 +48,57 @@ interface AsoDataProviderProps {
   children: ReactNode;
 }
 
+// Local storage key for persisting filter preferences
+const FILTER_STORAGE_KEY = 'aso-dashboard-filters';
+
+// Load saved filters from localStorage
+const loadSavedFilters = (): Partial<AsoDataFilters> => {
+  try {
+    const saved = localStorage.getItem(FILTER_STORAGE_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      // Only restore traffic sources, not date ranges (those should be fresh)
+      return {
+        trafficSources: Array.isArray(parsed.trafficSources) ? parsed.trafficSources : []
+      };
+    }
+  } catch (error) {
+    console.warn('Failed to load saved filters:', error);
+  }
+  return {};
+};
+
+// Save filters to localStorage
+const saveFilters = (filters: AsoDataFilters) => {
+  try {
+    // Only save traffic sources for persistence
+    localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify({
+      trafficSources: filters.trafficSources
+    }));
+  } catch (error) {
+    console.warn('Failed to save filters:', error);
+  }
+};
+
 export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) => {
   const [currentDataSource, setCurrentDataSource] = useState<DataSource>('bigquery');
   const [dataSourceStatus, setDataSourceStatus] = useState<DataSourceStatus>('loading');
+  
+  const savedFilters = loadSavedFilters();
   
   const [filters, setFilters] = useState<AsoDataFilters>({
     dateRange: {
       from: subDays(new Date(), 30), // Default to last 30 days
       to: new Date(),
     },
-    trafficSources: [], // Empty array means all sources
+    trafficSources: savedFilters.trafficSources || [], // Restore from localStorage
     clients: ['TUI'], // Default client for BigQuery
   });
+
+  // Save filters to localStorage when they change
+  useEffect(() => {
+    saveFilters(filters);
+  }, [filters]);
 
   console.log('🎯 [AsoDataContext] Current filters:', {
     dateRange: {
@@ -67,6 +106,7 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
       to: filters.dateRange.to.toISOString().split('T')[0]
     },
     trafficSources: filters.trafficSources,
+    trafficSourcesCount: filters.trafficSources.length,
     clients: filters.clients
   });
 

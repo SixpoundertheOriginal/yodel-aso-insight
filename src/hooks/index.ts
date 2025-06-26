@@ -32,3 +32,6 @@ export { useKeywordIntelligenceManager } from './useKeywordIntelligenceManager';
 
 // Add new keyword discovery service
 export { keywordDiscoveryService } from '../services/keyword-discovery.service';
+
+// Add debounced filters hook
+export { useDebouncedFilters } from './useDebouncedFilters';

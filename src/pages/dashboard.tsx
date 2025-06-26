@@ -7,11 +7,12 @@ import TimeSeriesChart from "../components/TimeSeriesChart";
 import ComparisonChart from "../components/ComparisonChart";
 import { DataSourceIndicator } from "../components/DataSourceIndicator";
 import { AiInsightsPanel } from "../components/AiInsightsPanel";
+import { AnalyticsTrafficSourceFilter } from "../components/Filters";
 import { useAsoData } from "../context/AsoDataContext";
 import { useComparisonData } from "../hooks/useComparisonData";
 import { Toggle } from "@/components/ui/toggle";
 import { Card, CardContent } from "@/components/ui/card";
-import { AlertCircle, Calendar, Database } from "lucide-react";
+import { AlertCircle, Calendar, Database, Filter } from "lucide-react";
 
 const Dashboard: React.FC = () => {
   const [excludeAsa, setExcludeAsa] = useState(false);
@@ -24,6 +25,17 @@ const Dashboard: React.FC = () => {
     dataSourceStatus,
     meta 
   } = useAsoData();
+
+  // Debounced filter updates to prevent excessive API calls
+  const [debouncedFilters, setDebouncedFilters] = useState(filters);
+
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      setDebouncedFilters(filters);
+    }, 300); // 300ms debounce
+
+    return () => clearTimeout(timeoutId);
+  }, [filters]);
 
   // Update traffic sources when excludeAsa toggles
   useEffect(() => {
@@ -40,6 +52,14 @@ const Dashboard: React.FC = () => {
       );
     }
   }, [excludeAsa, setFilters]);
+
+  // Handle traffic source filter changes
+  const handleTrafficSourceChange = (sources: string[]) => {
+    setFilters(prev => ({
+      ...prev,
+      trafficSources: sources
+    }));
+  };
 
   const periodComparison = useComparisonData("period");
   const yearComparison = useComparisonData("year");
@@ -92,6 +112,9 @@ const Dashboard: React.FC = () => {
                   No results found for organization "{meta.queryParams.client}"
                   {meta.queryParams.dateRange && (
                     <> between {meta.queryParams.dateRange.from} and {meta.queryParams.dateRange.to}</>
+                  )}
+                  {filters.trafficSources.length > 0 && (
+                    <> with traffic sources: {filters.trafficSources.join(", ")}</>
                   )}.
                 </>
               ) : (
@@ -109,6 +132,7 @@ const Dashboard: React.FC = () => {
                 `${meta.queryParams.dateRange.from} to ${meta.queryParams.dateRange.to}` : 
                 'No date filter'
               }</div>
+              <div>Traffic Sources: {filters.trafficSources.length || 'All sources'}</div>
               <div>Query Limit: {meta.queryParams.limit}</div>
               <div>Execution Time: {meta.executionTimeMs}ms</div>
               <div>Total Rows Found: {meta.totalRows}</div>
@@ -119,6 +143,10 @@ const Dashboard: React.FC = () => {
             <div className="flex items-center space-x-2">
               <Calendar className="h-4 w-4" />
               <span>Try adjusting your date range</span>
+            </div>
+            <div className="flex items-center space-x-2">
+              <Filter className="h-4 w-4" />
+              <span>Try clearing traffic source filters</span>
             </div>
             <div className="flex items-center space-x-2">
               <Database className="h-4 w-4" />
@@ -179,8 +207,25 @@ const Dashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* Exclude ASA Toggle */}
-      <div className="flex justify-end mb-4">
+      {/* Enhanced Filter Controls */}
+      <div className="flex justify-between items-center mb-4 gap-4">
+        <div className="flex items-center gap-4">
+          <AnalyticsTrafficSourceFilter
+            selectedSources={filters.trafficSources}
+            onChange={handleTrafficSourceChange}
+            placeholder="Filter Traffic Sources"
+            widthClass="w-64"
+          />
+          {filters.trafficSources.length > 0 && (
+            <div className="text-sm text-zinc-400">
+              {filters.trafficSources.length === 1 
+                ? `Showing: ${filters.trafficSources[0]}`
+                : `${filters.trafficSources.length} sources selected`
+              }
+            </div>
+          )}
+        </div>
+        
         <div className="flex items-center">
           <span className="text-sm text-zinc-400 mr-2">Exclude ASA</span>
           <Toggle
