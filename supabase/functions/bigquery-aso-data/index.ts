@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
@@ -176,16 +175,52 @@ serve(async (req) => {
     // Build query components
     const clientsFilter = clientsToQuery.map(app => `'${app}'`).join(', ');
     
+    // Enhanced traffic source filtering logic
+    console.log('📦 [BigQuery] Traffic sources filter:', body.trafficSources);
+    
     let trafficSourceFilter = '';
     const queryParams: any[] = [];
     
     if (body.trafficSources && body.trafficSources.length > 0) {
+      // Map display names to BigQuery format
       const bigQueryTrafficSources = body.trafficSources.map(source => 
         mapTrafficSourceToBigQuery(source)
       );
       
-      const trafficSourcesList = bigQueryTrafficSources.map(source => `'${source}'`).join(', ');
-      trafficSourceFilter = `AND traffic_source IN (${trafficSourcesList})`;
+      console.log('🔄 [BigQuery] Mapped traffic sources:', bigQueryTrafficSources);
+      
+      // Use UNNEST for better BigQuery compatibility with arrays
+      trafficSourceFilter = 'AND traffic_source IN UNNEST(@trafficSources)';
+      
+      queryParams.push({
+        name: 'trafficSources',
+        parameterType: { 
+          type: 'ARRAY',
+          arrayType: { type: 'STRING' }
+        },
+        parameterValue: { 
+          arrayValues: bigQueryTrafficSources.map(source => ({ value: source }))
+        }
+      });
+    } else {
+      console.log('ℹ️ [BigQuery] No traffic source filter applied - returning all sources');
+      // No filter needed when empty - will return all traffic sources
+    }
+    
+    // Add date range parameters if provided
+    if (body.dateRange) {
+      queryParams.push(
+        {
+          name: 'dateFrom',
+          parameterType: { type: 'DATE' },
+          parameterValue: { value: body.dateRange.from }
+        },
+        {
+          name: 'dateTo',
+          parameterType: { type: 'DATE' },
+          parameterValue: { value: body.dateRange.to }
+        }
+      );
     }
     
     // Build final query
@@ -205,21 +240,6 @@ serve(async (req) => {
       LIMIT ${limit}
     `;
 
-    if (body.dateRange) {
-      queryParams.push(
-        {
-          name: 'dateFrom',
-          parameterType: { type: 'DATE' },
-          parameterValue: { value: body.dateRange.from }
-        },
-        {
-          name: 'dateTo',
-          parameterType: { type: 'DATE' },
-          parameterValue: { value: body.dateRange.to }
-        }
-      );
-    }
-
     const requestBody = {
       query,
       parameterMode: 'NAMED',
@@ -230,6 +250,7 @@ serve(async (req) => {
 
     if (isDevelopment()) {
       console.log('🔍 [BigQuery] Final Query:', query.replace(/\s+/g, ' ').trim());
+      console.log('📊 [BigQuery] Query Parameters:', JSON.stringify(queryParams, null, 2));
     }
 
     // Execute BigQuery request
