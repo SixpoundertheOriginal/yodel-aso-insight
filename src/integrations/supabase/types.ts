@@ -131,6 +131,7 @@ export type Database = {
           impressions: number
           organization_id: string
           product_page_views: number
+          client: string | null
           raw_data: Json | null
           revenue: number | null
           sessions: number | null
@@ -147,6 +148,7 @@ export type Database = {
           impressions?: number
           organization_id: string
           product_page_views?: number
+          client?: string | null
           raw_data?: Json | null
           revenue?: number | null
           sessions?: number | null
@@ -163,6 +165,7 @@ export type Database = {
           impressions?: number
           organization_id?: string
           product_page_views?: number
+          client?: string | null
           raw_data?: Json | null
           revenue?: number | null
           sessions?: number | null
