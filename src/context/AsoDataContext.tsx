@@ -108,7 +108,7 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
     if (filters.trafficSources.length === 0 && !firstQueryCompleted) {
       console.log('🚀 [AsoDataContext] Initial discovery query running with no traffic source filter');
     }
-  }, []);
+  }, [filters.trafficSources, firstQueryCompleted]);
 
   // Enhanced filter change logging with state validation
   useEffect(() => {
