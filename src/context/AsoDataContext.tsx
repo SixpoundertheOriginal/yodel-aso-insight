@@ -1,5 +1,5 @@
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, ReactNode } from 'react';
 import { useBigQueryData } from '../hooks/useBigQueryData';
 import { useMockAsoData, type AsoData, type DateRange, type TrafficSource } from '../hooks/useMockAsoData';
 import { subDays } from 'date-fns';
@@ -157,20 +157,24 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
     }
   }, [bigQueryResult.loading, bigQueryResult.error, bigQueryResult.data]);
 
-  // **PHASE 1: Preserve first complete discovery metadata**
-  useEffect(() => {
-    if (currentDataSource === 'bigquery' && 
-        bigQueryResult.meta?.availableTrafficSources &&
-        bigQueryResult.meta.availableTrafficSources.length > discoveryMetadata.length) {
-      console.log('🔒 [Context] Preserving discovery metadata:', bigQueryResult.meta.availableTrafficSources);
-      setDiscoveryMetadata(bigQueryResult.meta.availableTrafficSources);
-    }
-  }, [bigQueryResult.meta?.availableTrafficSources, discoveryMetadata.length, currentDataSource]);
-
   // Select the appropriate data source
   const selectedResult = currentDataSource === 'bigquery' && !bigQueryResult.error 
     ? bigQueryResult 
     : mockResult;
+
+  // **SYNCHRONOUS PRESERVATION: Compute best available traffic sources inline**
+  const bestAvailableTrafficSources = useMemo(() => {
+    if (currentDataSource === 'bigquery' && bigQueryResult.meta?.availableTrafficSources) {
+      const currentSources = bigQueryResult.meta.availableTrafficSources;
+      // Preserve discovery metadata inline (synchronous)
+      if (currentSources.length > discoveryMetadata.length) {
+        setDiscoveryMetadata(currentSources);
+        return currentSources;
+      }
+      return discoveryMetadata.length > 0 ? discoveryMetadata : currentSources;
+    }
+    return discoveryMetadata;
+  }, [currentDataSource, bigQueryResult.meta?.availableTrafficSources, discoveryMetadata]);
 
   const contextValue: AsoDataContextType = {
     data: selectedResult.data,
@@ -181,19 +185,8 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
     currentDataSource,
     dataSourceStatus,
     meta: currentDataSource === 'bigquery' ? bigQueryResult.meta : undefined,
-    availableTrafficSources: discoveryMetadata.length > 0 ? discoveryMetadata : 
-      (currentDataSource === 'bigquery' ? bigQueryResult.meta?.availableTrafficSources : undefined),
+    availableTrafficSources: bestAvailableTrafficSources,
   };
-
-  // 🚨 TEMPORARY DIAGNOSTIC - REMOVE AFTER DIAGNOSIS  
-  console.log('🔍 [DIAGNOSIS] Context providing:', {
-    discoveryMetadata_length: discoveryMetadata.length,
-    discoveryMetadata_actual: discoveryMetadata,
-    bigQueryMeta_length: bigQueryResult.meta?.availableTrafficSources?.length,
-    bigQueryMeta_actual: bigQueryResult.meta?.availableTrafficSources,
-    final_availableTrafficSources: contextValue.availableTrafficSources,
-    timestamp: new Date().toISOString()
-  });
 
   return (
     <AsoDataContext.Provider value={contextValue}>
