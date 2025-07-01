@@ -16,14 +16,15 @@ import { AlertCircle, Calendar, Database, Filter } from "lucide-react";
 
 const Dashboard: React.FC = () => {
   const [excludeAsa, setExcludeAsa] = useState(false);
-  const { 
-    data, 
-    loading, 
-    filters, 
-    setFilters, 
-    currentDataSource, 
+  const {
+    data,
+    loading,
+    filters,
+    setFilters,
+    setUserTouchedFilters,
+    currentDataSource,
     dataSourceStatus,
-    meta 
+    meta
   } = useAsoData();
 
   // Debounced filter updates to prevent excessive API calls
@@ -45,7 +46,8 @@ const Dashboard: React.FC = () => {
       isEmpty: sources.length === 0,
       filterDecision: sources.length === 0 ? 'CLEAR_FILTER_SHOW_ALL' : 'APPLY_SPECIFIC_FILTER'
     });
-    
+
+    setUserTouchedFilters(true);
     setFilters(prev => ({
       ...prev,
       trafficSources: sources
@@ -60,6 +62,7 @@ const Dashboard: React.FC = () => {
   // Update exclude ASA logic to work with clear filter state
   useEffect(() => {
     if (excludeAsa) {
+      setUserTouchedFilters(true);
       setFilters(prev => ({
         ...prev,
         trafficSources: prev.trafficSources.filter(src => src !== "Apple Search Ads"),
@@ -67,6 +70,7 @@ const Dashboard: React.FC = () => {
       console.debug('🚫 [Dashboard] Excluding Apple Search Ads from filter');
     } else {
       // Only add ASA back if it was previously filtered and we have other sources selected
+      setUserTouchedFilters(true);
       setFilters(prev => {
         if (prev.trafficSources.length > 0 && !prev.trafficSources.includes("Apple Search Ads")) {
           return { ...prev, trafficSources: [...prev.trafficSources, "Apple Search Ads"] };
@@ -75,7 +79,7 @@ const Dashboard: React.FC = () => {
       });
       console.debug('✅ [Dashboard] Including Apple Search Ads in filter');
     }
-  }, [excludeAsa, setFilters]);
+  }, [excludeAsa, setFilters, setUserTouchedFilters]);
 
   const periodComparison = useComparisonData("period");
   const yearComparison = useComparisonData("year");

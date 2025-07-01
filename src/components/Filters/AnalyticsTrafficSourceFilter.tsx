@@ -74,7 +74,7 @@ const AnalyticsTrafficSourceFilter: React.FC<AnalyticsTrafficSourceFilterProps> 
   placeholder = "All Traffic Sources",
   widthClass = "w-full md:w-80"
 }) => {
-  const { data, availableTrafficSources } = useAsoData();
+  const { data, availableTrafficSources, setUserTouchedFilters } = useAsoData();
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   
@@ -125,27 +125,39 @@ const AnalyticsTrafficSourceFilter: React.FC<AnalyticsTrafficSourceFilterProps> 
   }, [allAvailableSources, searchTerm]);
   
   // Memoized handlers for performance
-  const handleSourceToggle = useMemo(() => (source: string, checked: boolean) => {
-    if (disabledSources.includes(source)) return;
-    
-    const newSources = checked 
-      ? [...selectedSources, source].filter((s, i, arr) => arr.indexOf(s) === i)
-      : selectedSources.filter(s => s !== source);
-    onChange(newSources);
-  }, [selectedSources, onChange, disabledSources]);
+  const handleSourceToggle = useMemo(
+    () => (source: string, checked: boolean) => {
+      if (disabledSources.includes(source)) return;
+
+      const newSources = checked
+        ? [...selectedSources, source].filter((s, i, arr) => arr.indexOf(s) === i)
+        : selectedSources.filter(s => s !== source);
+      setUserTouchedFilters(true);
+      onChange(newSources);
+    },
+    [selectedSources, onChange, disabledSources, setUserTouchedFilters]
+  );
   
-  const handleSelectAll = useMemo(() => () => {
-    if (!allowSelectAll) return;
-    const enabledSources = allAvailableSources.filter(source => 
-      !disabledSources.includes(source)
-    );
-    onChange([...enabledSources]);
-  }, [allowSelectAll, allAvailableSources, disabledSources, onChange]);
+  const handleSelectAll = useMemo(
+    () => () => {
+      if (!allowSelectAll) return;
+      const enabledSources = allAvailableSources.filter(
+        source => !disabledSources.includes(source)
+      );
+      setUserTouchedFilters(true);
+      onChange([...enabledSources]);
+    },
+    [allowSelectAll, allAvailableSources, disabledSources, onChange, setUserTouchedFilters]
+  );
   
-  const handleClearAll = useMemo(() => () => {
-    if (!allowClear) return;
-    onChange([]);
-  }, [allowClear, onChange]);
+  const handleClearAll = useMemo(
+    () => () => {
+      if (!allowClear) return;
+      setUserTouchedFilters(true);
+      onChange([]);
+    },
+    [allowClear, onChange, setUserTouchedFilters]
+  );
   
   // Memoized display text for performance
   const displayText = useMemo(() => {
@@ -177,7 +189,13 @@ const AnalyticsTrafficSourceFilter: React.FC<AnalyticsTrafficSourceFilterProps> 
   
   return (
     <div className={widthClass}>
-      <Popover open={isOpen} onOpenChange={setIsOpen}>
+      <Popover
+        open={isOpen}
+        onOpenChange={(open) => {
+          setIsOpen(open);
+          setUserTouchedFilters(true);
+        }}
+      >
         <PopoverTrigger asChild>
           <Button 
             variant="outline" 

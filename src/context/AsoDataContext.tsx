@@ -41,6 +41,8 @@ interface AsoDataContextType {
   dataSourceStatus: DataSourceStatus;
   meta?: BigQueryMeta;
   availableTrafficSources?: string[];
+  userTouchedFilters: boolean;
+  setUserTouchedFilters: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
 const AsoDataContext = createContext<AsoDataContextType | undefined>(undefined);
@@ -92,6 +94,9 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
 
   // Track completion of the very first BigQuery request
   const [firstQueryCompleted, setFirstQueryCompleted] = useState(false);
+
+  // Track if the user has manually modified filters in the UI
+  const [userTouchedFilters, setUserTouchedFilters] = useState(false);
 
   // Always start with an empty traffic source filter so discovery query is unfiltered
   const [filters, setFilters] = useState<AsoDataFilters>({
@@ -205,17 +210,20 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
 
   // Reapply saved filters after discovery metadata is known and first query finished
   useEffect(() => {
+    if (userTouchedFilters || filters.trafficSources.length > 0) {
+      return;
+    }
+
     if (
       firstQueryCompleted &&
       discoveryMetadata.length > 0 &&
       savedFilters.trafficSources &&
-      savedFilters.trafficSources.length > 0 &&
-      filters.trafficSources.length === 0
+      savedFilters.trafficSources.length > 0
     ) {
       console.log('🔄 [AsoDataContext] Reapplying saved traffic source filters:', savedFilters.trafficSources);
       setFilters(prev => ({ ...prev, trafficSources: savedFilters.trafficSources as string[] }));
     }
-  }, [firstQueryCompleted, discoveryMetadata.length, filters.trafficSources.length]);
+  }, [firstQueryCompleted, discoveryMetadata.length, filters.trafficSources.length, userTouchedFilters]);
 
   // **COMPUTATION: Determine best available sources**
   const bestAvailableTrafficSources = useMemo(() => {
@@ -240,6 +248,8 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
     meta: currentDataSource === 'bigquery' ? bigQueryResult.meta : undefined,
     // Spread to avoid accidental external mutation of context state
     availableTrafficSources: [...bestAvailableTrafficSources],
+    userTouchedFilters,
+    setUserTouchedFilters,
   };
 
   // **DIAGNOSTIC: Understanding the traffic source issue**
