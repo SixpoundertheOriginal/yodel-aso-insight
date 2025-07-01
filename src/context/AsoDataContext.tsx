@@ -196,7 +196,10 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
         '🔒 [Context] Preserving discovery metadata:',
         bigQueryResult.meta.availableTrafficSources
       );
-      setDiscoveryMetadata(bigQueryResult.meta.availableTrafficSources);
+      // Spread to ensure a fresh array reference is stored
+      setDiscoveryMetadata([
+        ...bigQueryResult.meta.availableTrafficSources
+      ]);
     }
   }, [currentDataSource, bigQueryResult.meta?.availableTrafficSources, discoveryMetadata]);
 
@@ -218,12 +221,12 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
   const bestAvailableTrafficSources = useMemo(() => {
     // Return preserved metadata if available
     if (discoveryMetadata.length > 0) {
-      return discoveryMetadata;
+      return [...discoveryMetadata];
     }
     // Otherwise return current metadata
-    return currentDataSource === 'bigquery' ? 
-      bigQueryResult.meta?.availableTrafficSources || [] : 
-      [];
+    return currentDataSource === 'bigquery'
+      ? [...(bigQueryResult.meta?.availableTrafficSources || [])]
+      : [];
   }, [discoveryMetadata, currentDataSource, bigQueryResult.meta?.availableTrafficSources]);
 
   const contextValue: AsoDataContextType = {
@@ -235,7 +238,8 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
     currentDataSource,
     dataSourceStatus,
     meta: currentDataSource === 'bigquery' ? bigQueryResult.meta : undefined,
-    availableTrafficSources: bestAvailableTrafficSources,
+    // Spread to avoid accidental external mutation of context state
+    availableTrafficSources: [...bestAvailableTrafficSources],
   };
 
   // **DIAGNOSTIC: Understanding the traffic source issue**
