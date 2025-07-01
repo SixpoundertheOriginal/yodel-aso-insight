@@ -85,6 +85,9 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
   const [currentDataSource, setCurrentDataSource] = useState<DataSource>('bigquery');
   const [dataSourceStatus, setDataSourceStatus] = useState<DataSourceStatus>('loading');
   
+  // **PHASE 1: Preserve discovery metadata across filter changes**
+  const [discoveryMetadata, setDiscoveryMetadata] = useState<string[]>([]);
+  
   const savedFilters = loadSavedFilters();
   
   // Enhanced initial state - ensure no default traffic sources are injected
@@ -154,6 +157,16 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
     }
   }, [bigQueryResult.loading, bigQueryResult.error, bigQueryResult.data]);
 
+  // **PHASE 1: Preserve first complete discovery metadata**
+  useEffect(() => {
+    if (currentDataSource === 'bigquery' && 
+        bigQueryResult.meta?.availableTrafficSources?.length > 1 && 
+        discoveryMetadata.length === 0) {
+      console.log('🔒 [Context] Preserving discovery metadata:', bigQueryResult.meta.availableTrafficSources);
+      setDiscoveryMetadata(bigQueryResult.meta.availableTrafficSources);
+    }
+  }, [bigQueryResult.meta?.availableTrafficSources, discoveryMetadata.length, currentDataSource]);
+
   // Select the appropriate data source
   const selectedResult = currentDataSource === 'bigquery' && !bigQueryResult.error 
     ? bigQueryResult 
@@ -168,7 +181,8 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
     currentDataSource,
     dataSourceStatus,
     meta: currentDataSource === 'bigquery' ? bigQueryResult.meta : undefined,
-    availableTrafficSources: currentDataSource === 'bigquery' ? bigQueryResult.meta?.availableTrafficSources : undefined,
+    availableTrafficSources: discoveryMetadata.length > 0 ? discoveryMetadata : 
+      (currentDataSource === 'bigquery' ? bigQueryResult.meta?.availableTrafficSources : undefined),
   };
 
   return (
