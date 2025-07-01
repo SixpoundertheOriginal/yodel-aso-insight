@@ -331,18 +331,34 @@ serve(async (req) => {
       const fields = row.f;
       const originalTrafficSource = fields[2]?.v || 'organic';
       
+      // Fix field mapping - remove sessions field that was overwriting product_page_views
+      const productPageViews = parseInt(fields[5]?.v || '0');
+      const downloads = parseInt(fields[4]?.v || '0');
+      const impressions = parseInt(fields[3]?.v || '0');
+      
+      // Debug logging for field mapping verification
+      if (isDevelopment()) {
+        console.log('🔧 [BigQuery] Field mapping debug:', {
+          originalTrafficSource,
+          impressions,
+          downloads,
+          productPageViews,
+          rawFields: fields.map((f: any, i: number) => `field[${i}]: ${f?.v}`)
+        });
+      }
+      
       return {
         date: fields[0]?.v || null,
         organization_id: fields[1]?.v || clientParam,
         traffic_source: mapTrafficSourceToDisplay(originalTrafficSource),
         traffic_source_raw: originalTrafficSource,
-        impressions: parseInt(fields[3]?.v || '0'),
-        downloads: parseInt(fields[4]?.v || '0'),
-        product_page_views: parseInt(fields[5]?.v || '0'),
-        conversion_rate: fields[4]?.v && fields[5]?.v ? 
-          (parseInt(fields[4].v) / parseInt(fields[5].v) * 100) : 0,
+        impressions,
+        downloads,
+        product_page_views: productPageViews,
+        conversion_rate: productPageViews > 0 ? 
+          (downloads / productPageViews * 100) : 0,
         revenue: 0,
-        sessions: parseInt(fields[5]?.v || '0'),
+        // Removed: sessions: parseInt(fields[5]?.v || '0'), - This was overwriting product_page_views
         country: 'US',
         data_source: 'bigquery'
       };
