@@ -339,7 +339,7 @@ serve(async (req) => {
     
     console.log(`✅ [BigQuery] Query completed: ${queryResult.totalRows || 0} rows in ${executionTimeMs}ms`);
 
-    // Transform BigQuery response with enhanced field debugging
+    // Transform BigQuery response with proper NULL handling
     const rows = queryResult.rows || [];
     const transformedData = rows.map((row: any, index: number) => {
       const fields = row.f;
@@ -358,7 +358,13 @@ serve(async (req) => {
       const originalTrafficSource = fields[2]?.v || 'organic';
       const impressions = parseInt(fields[3]?.v || '0');
       const downloads = parseInt(fields[4]?.v || '0');
-      const productPageViews = parseInt(fields[5]?.v || '0');
+      
+      // **FIX: Preserve NULL values instead of converting to 0**
+      // Check if the value is actually null/undefined from BigQuery
+      const rawProductPageViews = fields[5]?.v;
+      const productPageViews = (rawProductPageViews === null || rawProductPageViews === undefined) 
+        ? null  // Preserve NULL for aggregation logic
+        : parseInt(rawProductPageViews || '0');
       
       // Debug logging for field mapping verification
       if (isDevelopment() && index < 3) {
@@ -368,7 +374,9 @@ serve(async (req) => {
           originalTrafficSource,
           impressions,
           downloads,
+          rawProductPageViews,
           productPageViews,
+          isNull: rawProductPageViews === null,
           fieldValues: {
             'fields[0]': fields[0]?.v,
             'fields[1]': fields[1]?.v,
@@ -380,8 +388,8 @@ serve(async (req) => {
         });
       }
       
-      // Calculate conversion rate properly
-      const conversionRate = productPageViews > 0 ? 
+      // Calculate conversion rate only when product_page_views is not null
+      const conversionRate = (productPageViews !== null && productPageViews > 0) ? 
         (downloads / productPageViews * 100) : 0;
       
       return {
@@ -391,7 +399,7 @@ serve(async (req) => {
         traffic_source_raw: originalTrafficSource,
         impressions,
         downloads,
-        product_page_views: productPageViews,
+        product_page_views: productPageViews, // This can now be null
         conversion_rate: conversionRate,
         revenue: 0,
         country: 'US',
@@ -437,11 +445,19 @@ serve(async (req) => {
 
     if (isDevelopment() && transformedData.length > 0) {
       console.log('📊 [BigQuery] Sample transformed data:', transformedData[0]);
+      
+      // **ENHANCED: Better statistics for debugging NULL handling**
+      const nonNullPageViews = transformedData.filter(d => d.product_page_views !== null);
+      const nullPageViews = transformedData.filter(d => d.product_page_views === null);
+      
       console.log('📊 [BigQuery] Product page views summary:', {
         totalRows: transformedData.length,
-        rowsWithPageViews: transformedData.filter(d => d.product_page_views > 0).length,
-        maxPageViews: Math.max(...transformedData.map(d => d.product_page_views)),
-        avgPageViews: transformedData.reduce((sum, d) => sum + d.product_page_views, 0) / transformedData.length
+        rowsWithNonNullPageViews: nonNullPageViews.length,
+        rowsWithNullPageViews: nullPageViews.length,
+        maxPageViews: nonNullPageViews.length > 0 ? Math.max(...nonNullPageViews.map(d => d.product_page_views)) : 0,
+        avgPageViews: nonNullPageViews.length > 0 ? 
+          nonNullPageViews.reduce((sum, d) => sum + d.product_page_views, 0) / nonNullPageViews.length : 0,
+        nullHandling: 'NULLs preserved for proper aggregation'
       });
     }
 

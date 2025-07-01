@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { DateRange, AsoData, TimeSeriesPoint, MetricSummary, TrafficSource } from './useMockAsoData';
@@ -185,14 +184,15 @@ function transformBigQueryToAsoData(
     return acc;
   }, {} as Record<string, BigQueryDataPoint[]>);
 
-  // Create timeseries data
+  // Create timeseries data with proper NULL handling
   const timeseriesData: TimeSeriesPoint[] = Object.entries(dateGroups)
     .map(([date, items]) => {
       const dayTotals = items.reduce(
         (sum, item) => ({
           impressions: sum.impressions + item.impressions,
           downloads: sum.downloads + item.downloads,
-          product_page_views: sum.product_page_views + item.product_page_views
+          // **FIX: Only sum non-null product_page_views**
+          product_page_views: sum.product_page_views + (item.product_page_views || 0)
         }),
         { impressions: 0, downloads: 0, product_page_views: 0 }
       );
@@ -206,12 +206,13 @@ function transformBigQueryToAsoData(
     })
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-  // Calculate summary metrics
+  // **FIX: Calculate summary metrics with proper NULL handling**
   const totals = bigQueryData.reduce(
     (sum, item) => ({
       impressions: sum.impressions + item.impressions,
       downloads: sum.downloads + item.downloads,
-      product_page_views: sum.product_page_views + item.product_page_views
+      // Only include non-null product_page_views in the sum
+      product_page_views: sum.product_page_views + (item.product_page_views || 0)
     }),
     { impressions: 0, downloads: 0, product_page_views: 0 }
   );
@@ -224,7 +225,10 @@ function transformBigQueryToAsoData(
     downloads: { value: totals.downloads, delta: generateMockDelta() },
     product_page_views: { value: totals.product_page_views, delta: generateMockDelta() },
     cvr: { 
-      value: totals.impressions > 0 ? (totals.downloads / totals.impressions) * 100 : 0, 
+      // **FIX: Use product_page_views for CVR calculation, fallback to impressions**
+      value: totals.product_page_views > 0 ? 
+        (totals.downloads / totals.product_page_views) * 100 : 
+        (totals.impressions > 0 ? (totals.downloads / totals.impressions) * 100 : 0), 
       delta: generateMockDelta() 
     }
   };
@@ -254,9 +258,12 @@ function transformBigQueryToAsoData(
     delta: trafficSourceGroups[source]?.delta || 0
   }));
 
-  console.log('📊 [Transform] Traffic source data:', {
+  console.log('📊 [Transform] Traffic source data with NULL handling:', {
     availableFromBigQuery: availableTrafficSources,
     requestedSources: trafficSources,
+    totalProductPageViews: totals.product_page_views,
+    nonNullRows: bigQueryData.filter(d => d.product_page_views !== null && d.product_page_views > 0).length,
+    nullRows: bigQueryData.filter(d => d.product_page_views === null).length,
     finalTrafficSourceData: trafficSourceData
   });
 
