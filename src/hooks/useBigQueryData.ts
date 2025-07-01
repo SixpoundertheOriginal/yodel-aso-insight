@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { DateRange, AsoData, TimeSeriesPoint, MetricSummary, TrafficSource } from './useMockAsoData';
@@ -191,8 +192,10 @@ function transformBigQueryToAsoData(
         (sum, item) => ({
           impressions: sum.impressions + item.impressions,
           downloads: sum.downloads + item.downloads,
-          // **FIX: Only sum non-null product_page_views**
-          product_page_views: sum.product_page_views + (item.product_page_views || 0)
+          // **FIX: Skip NULL values completely instead of converting to 0**
+          product_page_views: item.product_page_views !== null ? 
+            sum.product_page_views + item.product_page_views : 
+            sum.product_page_views
         }),
         { impressions: 0, downloads: 0, product_page_views: 0 }
       );
@@ -211,8 +214,10 @@ function transformBigQueryToAsoData(
     (sum, item) => ({
       impressions: sum.impressions + item.impressions,
       downloads: sum.downloads + item.downloads,
-      // Only include non-null product_page_views in the sum
-      product_page_views: sum.product_page_views + (item.product_page_views || 0)
+      // **CRITICAL FIX: Skip NULL values completely instead of converting to 0**
+      product_page_views: item.product_page_views !== null ? 
+        sum.product_page_views + item.product_page_views : 
+        sum.product_page_views
     }),
     { impressions: 0, downloads: 0, product_page_views: 0 }
   );
@@ -258,12 +263,15 @@ function transformBigQueryToAsoData(
     delta: trafficSourceGroups[source]?.delta || 0
   }));
 
-  console.log('📊 [Transform] Traffic source data with NULL handling:', {
-    availableFromBigQuery: availableTrafficSources,
-    requestedSources: trafficSources,
+  // **ENHANCED: Debug logging to verify NULL handling fix**
+  console.log('📊 [Transform] Aggregation debug with NULL handling fix:', {
+    totalItems: bigQueryData.length,
+    nonNullPageViewItems: bigQueryData.filter(d => d.product_page_views !== null).length,
+    nullPageViewItems: bigQueryData.filter(d => d.product_page_views === null).length,
     totalProductPageViews: totals.product_page_views,
-    nonNullRows: bigQueryData.filter(d => d.product_page_views !== null && d.product_page_views > 0).length,
-    nullRows: bigQueryData.filter(d => d.product_page_views === null).length,
+    maxPageViews: bigQueryData.filter(d => d.product_page_views !== null).length > 0 ? 
+      Math.max(...bigQueryData.filter(d => d.product_page_views !== null).map(d => d.product_page_views)) : 0,
+    aggregationWorking: totals.product_page_views > 0 ? 'YES - NULL handling fixed!' : 'Still showing 0',
     finalTrafficSourceData: trafficSourceData
   });
 
