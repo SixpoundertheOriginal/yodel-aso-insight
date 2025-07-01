@@ -87,16 +87,21 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
   
   // **PHASE 1: Preserve discovery metadata across filter changes**
   const [discoveryMetadata, setDiscoveryMetadata] = useState<string[]>([]);
-  
+
   const savedFilters = loadSavedFilters();
-  
-  // Enhanced initial state - ensure no default traffic sources are injected
+
+  // Track whether the first BigQuery request has completed
+  const [firstQueryCompleted, setFirstQueryCompleted] = useState(false);
+
+  // Start with no traffic source filter applied to guarantee an unfiltered
+  // request. Saved filters will be re-applied after discovery metadata is
+  // captured.
   const [filters, setFilters] = useState<AsoDataFilters>({
     dateRange: {
       from: subDays(new Date(), 30), // Default to last 30 days
       to: new Date(),
     },
-    trafficSources: savedFilters.trafficSources || [], // Start with empty array - no defaults
+    trafficSources: [],
     clients: ['TUI'], // Default client for BigQuery
   });
 
@@ -125,11 +130,18 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
     saveFilters(filters);
   }, [filters]);
 
+  // Determine which traffic sources to send to the BigQuery hook. Until the
+  // initial request completes we ignore any saved filters and send an empty
+  // array so BigQuery can return discovery metadata for all sources.
+  const trafficSourcesForQuery = firstQueryCompleted
+    ? filters.trafficSources
+    : [];
+
   // Try BigQuery first
   const bigQueryResult = useBigQueryData(
     filters.clients,
     filters.dateRange,
-    filters.trafficSources
+    trafficSourcesForQuery
   );
 
   // Fallback to mock data - pass all required arguments
@@ -138,6 +150,13 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
     filters.dateRange,
     filters.trafficSources
   );
+
+  // Mark completion of the initial unfiltered BigQuery request
+  useEffect(() => {
+    if (!firstQueryCompleted && !bigQueryResult.loading) {
+      setFirstQueryCompleted(true);
+    }
+  }, [firstQueryCompleted, bigQueryResult.loading]);
 
   // Determine which data source to use and manage status
   useEffect(() => {
@@ -158,19 +177,34 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
   }, [bigQueryResult.loading, bigQueryResult.error, bigQueryResult.data]);
 
   // Select the appropriate data source
-  const selectedResult = currentDataSource === 'bigquery' && !bigQueryResult.error 
-    ? bigQueryResult 
+  const selectedResult = currentDataSource === 'bigquery' && !bigQueryResult.error
+    ? bigQueryResult
     : mockResult;
 
   // **PRESERVATION: Handle discovery metadata separately**
   useEffect(() => {
-    if (currentDataSource === 'bigquery' && 
+    if (currentDataSource === 'bigquery' &&
         bigQueryResult.meta?.availableTrafficSources &&
         bigQueryResult.meta.availableTrafficSources.length > discoveryMetadata.length) {
       console.log('🔒 [Context] Preserving discovery metadata:', bigQueryResult.meta.availableTrafficSources);
       setDiscoveryMetadata(bigQueryResult.meta.availableTrafficSources);
     }
   }, [currentDataSource, bigQueryResult.meta?.availableTrafficSources, discoveryMetadata.length]);
+
+  // After the first request completes and discovery metadata is stored, reapply
+  // any saved traffic source filters
+  useEffect(() => {
+    if (
+      firstQueryCompleted &&
+      discoveryMetadata.length > 0 &&
+      savedFilters.trafficSources &&
+      savedFilters.trafficSources.length > 0 &&
+      filters.trafficSources.length === 0
+    ) {
+      console.log('🔄 Reapplying saved traffic source filters:', savedFilters.trafficSources);
+      setFilters(prev => ({ ...prev, trafficSources: savedFilters.trafficSources }));
+    }
+  }, [firstQueryCompleted, discoveryMetadata, savedFilters.trafficSources, filters.trafficSources]);
 
   // **COMPUTATION: Determine best available sources**
   const bestAvailableTrafficSources = useMemo(() => {
