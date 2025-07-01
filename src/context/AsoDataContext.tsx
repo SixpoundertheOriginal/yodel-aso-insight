@@ -40,6 +40,7 @@ interface AsoDataContextType {
   currentDataSource: DataSource;
   dataSourceStatus: DataSourceStatus;
   meta?: BigQueryMeta;
+  availableTrafficSources?: string[];
 }
 
 const AsoDataContext = createContext<AsoDataContextType | undefined>(undefined);
@@ -167,6 +168,7 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
     currentDataSource,
     dataSourceStatus,
     meta: currentDataSource === 'bigquery' ? bigQueryResult.meta : undefined,
+    availableTrafficSources: currentDataSource === 'bigquery' ? bigQueryResult.meta?.availableTrafficSources : undefined,
   };
 
   return (

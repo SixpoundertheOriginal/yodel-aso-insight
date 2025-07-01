@@ -74,19 +74,27 @@ const AnalyticsTrafficSourceFilter: React.FC<AnalyticsTrafficSourceFilterProps> 
   placeholder = "All Traffic Sources",
   widthClass = "w-full md:w-80"
 }) => {
-  const { data } = useAsoData();
+  const { data, availableTrafficSources } = useAsoData();
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   
-  // Get stable list of all available traffic sources from BigQuery data
-  // This list should remain consistent and not be filtered by user selection
+  // **PHASE 1 FIX: Use metadata traffic sources instead of filtered data**
+  // Get stable list of all available traffic sources from metadata (not filtered data)
   const allAvailableSources = useMemo(() => {
+    // First try to use metadata from discovery query (Phase 1 architecture)
+    if (availableTrafficSources && availableTrafficSources.length > 0) {
+      console.log('✅ [TrafficSourceFilter] Using Phase 1 metadata sources:', availableTrafficSources);
+      return availableTrafficSources.filter(Boolean).sort();
+    }
+    
+    // Fallback to data sources (legacy behavior)
     if (!data?.trafficSources) return [];
+    console.log('⚠️ [TrafficSourceFilter] Fallback to data sources:', data.trafficSources.map(s => s.name));
     return data.trafficSources
       .map(source => source.name)
       .filter(Boolean)
-      .sort(); // Sort alphabetically for consistent display
-  }, [data?.trafficSources]);
+      .sort();
+  }, [availableTrafficSources, data?.trafficSources]);
   
   // Filter sources based on search term
   const filteredSources = useMemo(() => {
