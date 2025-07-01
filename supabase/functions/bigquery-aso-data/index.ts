@@ -339,40 +339,61 @@ serve(async (req) => {
     
     console.log(`✅ [BigQuery] Query completed: ${queryResult.totalRows || 0} rows in ${executionTimeMs}ms`);
 
-    // Transform BigQuery response
+    // Transform BigQuery response with enhanced field debugging
     const rows = queryResult.rows || [];
-    const transformedData = rows.map((row: any) => {
+    const transformedData = rows.map((row: any, index: number) => {
       const fields = row.f;
-      const originalTrafficSource = fields[2]?.v || 'organic';
       
-      // Fix field mapping - remove sessions field that was overwriting product_page_views
-      const productPageViews = parseInt(fields[5]?.v || '0');
-      const downloads = parseInt(fields[4]?.v || '0');
+      // Enhanced field debugging - log raw field structure for first few rows
+      if (isDevelopment() && index < 3) {
+        console.log(`🔍 [BigQuery] Raw field sample (row ${index}):`, 
+          fields.map((f: any, i: number) => `fields[${i}] = "${f?.v}" (${typeof f?.v})`)
+        );
+      }
+      
+      // Current field mapping based on SELECT order:
+      // 0: date, 1: organization_id, 2: traffic_source, 3: impressions, 4: downloads, 5: product_page_views
+      const date = fields[0]?.v || null;
+      const organizationId = fields[1]?.v || clientParam;
+      const originalTrafficSource = fields[2]?.v || 'organic';
       const impressions = parseInt(fields[3]?.v || '0');
+      const downloads = parseInt(fields[4]?.v || '0');
+      const productPageViews = parseInt(fields[5]?.v || '0');
       
       // Debug logging for field mapping verification
-      if (isDevelopment()) {
-        console.log('🔧 [BigQuery] Field mapping debug:', {
+      if (isDevelopment() && index < 3) {
+        console.log(`🔧 [BigQuery] Field mapping debug (row ${index}):`, {
+          date,
+          organizationId,
           originalTrafficSource,
           impressions,
           downloads,
           productPageViews,
-          rawFields: fields.map((f: any, i: number) => `field[${i}]: ${f?.v}`)
+          fieldValues: {
+            'fields[0]': fields[0]?.v,
+            'fields[1]': fields[1]?.v,
+            'fields[2]': fields[2]?.v,
+            'fields[3]': fields[3]?.v,
+            'fields[4]': fields[4]?.v,
+            'fields[5]': fields[5]?.v
+          }
         });
       }
       
+      // Calculate conversion rate properly
+      const conversionRate = productPageViews > 0 ? 
+        (downloads / productPageViews * 100) : 0;
+      
       return {
-        date: fields[0]?.v || null,
-        organization_id: fields[1]?.v || clientParam,
+        date,
+        organization_id: organizationId,
         traffic_source: mapTrafficSourceToDisplay(originalTrafficSource),
         traffic_source_raw: originalTrafficSource,
         impressions,
         downloads,
         product_page_views: productPageViews,
-        conversion_rate: productPageViews > 0 ? 
-          (downloads / productPageViews * 100) : 0,
+        conversion_rate: conversionRate,
         revenue: 0,
-        // Removed: sessions: parseInt(fields[5]?.v || '0'), - This was overwriting product_page_views
         country: 'US',
         data_source: 'bigquery'
       };
@@ -415,7 +436,13 @@ serve(async (req) => {
     }
 
     if (isDevelopment() && transformedData.length > 0) {
-      console.log('📊 [BigQuery] Sample data:', transformedData[0]);
+      console.log('📊 [BigQuery] Sample transformed data:', transformedData[0]);
+      console.log('📊 [BigQuery] Product page views summary:', {
+        totalRows: transformedData.length,
+        rowsWithPageViews: transformedData.filter(d => d.product_page_views > 0).length,
+        maxPageViews: Math.max(...transformedData.map(d => d.product_page_views)),
+        avgPageViews: transformedData.reduce((sum, d) => sum + d.product_page_views, 0) / transformedData.length
+      });
     }
 
     // Build response metadata
