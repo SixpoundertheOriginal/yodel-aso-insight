@@ -164,9 +164,12 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
 
   // **PRESERVATION: Handle discovery metadata separately**
   useEffect(() => {
-    if (currentDataSource === 'bigquery' && 
-        bigQueryResult.meta?.availableTrafficSources &&
-        bigQueryResult.meta.availableTrafficSources.length > discoveryMetadata.length) {
+    if (
+      currentDataSource === 'bigquery' &&
+      bigQueryResult.meta?.availableTrafficSources &&
+      bigQueryResult.meta.availableTrafficSources.length > discoveryMetadata.length &&
+      !discoveryMetadata.every(src => bigQueryResult.meta!.availableTrafficSources?.includes(src))
+    ) {
       console.log('🔒 [Context] Preserving discovery metadata:', bigQueryResult.meta.availableTrafficSources);
       setDiscoveryMetadata(bigQueryResult.meta.availableTrafficSources);
     }
