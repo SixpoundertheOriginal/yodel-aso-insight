@@ -215,7 +215,7 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
       console.log('🔄 [AsoDataContext] Reapplying saved traffic source filters:', savedFilters.trafficSources);
       setFilters(prev => ({ ...prev, trafficSources: savedFilters.trafficSources as string[] }));
     }
-  }, [firstQueryCompleted, discoveryMetadata.length]);
+  }, [firstQueryCompleted, discoveryMetadata.length, filters.trafficSources.length]);
 
   // **COMPUTATION: Determine best available sources**
   const bestAvailableTrafficSources = useMemo(() => {
