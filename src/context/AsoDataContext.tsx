@@ -57,7 +57,7 @@ const loadSavedFilters = (): Partial<AsoDataFilters> => {
     const saved = localStorage.getItem(FILTER_STORAGE_KEY);
     if (saved) {
       const parsed = JSON.parse(saved);
-      // Only restore traffic sources, not date ranges (those should be fresh)
+      // Only restore traffic sources if they exist and are an array, not date ranges (those should be fresh)
       return {
         trafficSources: Array.isArray(parsed.trafficSources) ? parsed.trafficSources : []
       };
@@ -86,29 +86,40 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
   
   const savedFilters = loadSavedFilters();
   
+  // Enhanced initial state - ensure no default traffic sources are injected
   const [filters, setFilters] = useState<AsoDataFilters>({
     dateRange: {
       from: subDays(new Date(), 30), // Default to last 30 days
       to: new Date(),
     },
-    trafficSources: savedFilters.trafficSources || [], // Restore from localStorage
+    trafficSources: savedFilters.trafficSources || [], // Start with empty array - no defaults
     clients: ['TUI'], // Default client for BigQuery
   });
+
+  // Enhanced filter change logging with state validation
+  useEffect(() => {
+    console.log('🎯 [AsoDataContext] Filter state updated:', {
+      dateRange: {
+        from: filters.dateRange.from.toISOString().split('T')[0],
+        to: filters.dateRange.to.toISOString().split('T')[0]
+      },
+      trafficSources: filters.trafficSources,
+      trafficSourcesCount: filters.trafficSources.length,
+      trafficSourcesEmpty: filters.trafficSources.length === 0,
+      clients: filters.clients,
+      filterDecision: filters.trafficSources.length === 0 ? 'NO_FILTER_ALL_SOURCES' : 'APPLY_SPECIFIC_FILTERS'
+    });
+    
+    // Debug log when filters are completely cleared
+    if (filters.trafficSources.length === 0) {
+      console.debug('✅ [AsoDataContext] Filter cleared → trafficSources = [], expecting ALL traffic sources in response');
+    }
+  }, [filters]);
 
   // Save filters to localStorage when they change
   useEffect(() => {
     saveFilters(filters);
   }, [filters]);
-
-  console.log('🎯 [AsoDataContext] Current filters:', {
-    dateRange: {
-      from: filters.dateRange.from.toISOString().split('T')[0],
-      to: filters.dateRange.to.toISOString().split('T')[0]
-    },
-    trafficSources: filters.trafficSources,
-    trafficSourcesCount: filters.trafficSources.length,
-    clients: filters.clients
-  });
 
   // Try BigQuery first
   const bigQueryResult = useBigQueryData(

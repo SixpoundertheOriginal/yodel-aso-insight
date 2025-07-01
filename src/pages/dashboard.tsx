@@ -37,29 +37,45 @@ const Dashboard: React.FC = () => {
     return () => clearTimeout(timeoutId);
   }, [filters]);
 
-  // Update traffic sources when excludeAsa toggles
+  // Enhanced traffic source filter change handler with validation
+  const handleTrafficSourceChange = (sources: string[]) => {
+    console.log('🎯 [Dashboard] Traffic source filter changed:', {
+      previousSources: filters.trafficSources,
+      newSources: sources,
+      isEmpty: sources.length === 0,
+      filterDecision: sources.length === 0 ? 'CLEAR_FILTER_SHOW_ALL' : 'APPLY_SPECIFIC_FILTER'
+    });
+    
+    setFilters(prev => ({
+      ...prev,
+      trafficSources: sources
+    }));
+    
+    // Debug log for complete filter state validation
+    if (sources.length === 0) {
+      console.debug('✅ [Dashboard] Filter cleared → trafficSources = [], expecting ALL traffic sources in data');
+    }
+  };
+
+  // Update exclude ASA logic to work with clear filter state
   useEffect(() => {
     if (excludeAsa) {
       setFilters(prev => ({
         ...prev,
         trafficSources: prev.trafficSources.filter(src => src !== "Apple Search Ads"),
       }));
+      console.debug('🚫 [Dashboard] Excluding Apple Search Ads from filter');
     } else {
-      setFilters(prev =>
-        prev.trafficSources.includes("Apple Search Ads")
-          ? prev
-          : { ...prev, trafficSources: [...prev.trafficSources, "Apple Search Ads"] }
-      );
+      // Only add ASA back if it was previously filtered and we have other sources selected
+      setFilters(prev => {
+        if (prev.trafficSources.length > 0 && !prev.trafficSources.includes("Apple Search Ads")) {
+          return { ...prev, trafficSources: [...prev.trafficSources, "Apple Search Ads"] };
+        }
+        return prev;
+      });
+      console.debug('✅ [Dashboard] Including Apple Search Ads in filter');
     }
   }, [excludeAsa, setFilters]);
-
-  // Handle traffic source filter changes
-  const handleTrafficSourceChange = (sources: string[]) => {
-    setFilters(prev => ({
-      ...prev,
-      trafficSources: sources
-    }));
-  };
 
   const periodComparison = useComparisonData("period");
   const yearComparison = useComparisonData("year");
@@ -207,7 +223,7 @@ const Dashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* Enhanced Filter Controls */}
+      {/* Enhanced Filter Controls with better debugging */}
       <div className="flex justify-between items-center mb-4 gap-4">
         <div className="flex items-center gap-4">
           <AnalyticsTrafficSourceFilter
@@ -222,6 +238,11 @@ const Dashboard: React.FC = () => {
                 ? `Showing: ${filters.trafficSources[0]}`
                 : `${filters.trafficSources.length} sources selected`
               }
+            </div>
+          )}
+          {filters.trafficSources.length === 0 && (
+            <div className="text-sm text-zinc-500">
+              Showing all traffic sources
             </div>
           )}
         </div>

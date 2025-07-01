@@ -103,11 +103,15 @@ const AnalyticsTrafficSourceFilter: React.FC<AnalyticsTrafficSourceFilterProps> 
     if (checked) {
       // Add source if not already selected
       if (!selectedSources.includes(source)) {
-        onChange([...selectedSources, source]);
+        const newSources = [...selectedSources, source];
+        console.debug(`✅ [TrafficSourceFilter] Source added: ${source}, new selection:`, newSources);
+        onChange(newSources);
       }
     } else {
       // Remove source
-      onChange(selectedSources.filter(s => s !== source));
+      const newSources = selectedSources.filter(s => s !== source);
+      console.debug(`➖ [TrafficSourceFilter] Source removed: ${source}, new selection:`, newSources);
+      onChange(newSources);
     }
   };
   
@@ -117,18 +121,21 @@ const AnalyticsTrafficSourceFilter: React.FC<AnalyticsTrafficSourceFilterProps> 
     const enabledSources = allAvailableSources.filter(source => 
       !disabledSources.includes(source)
     );
+    console.debug('✅ [TrafficSourceFilter] Select All triggered, sources:', enabledSources);
     onChange([...enabledSources]);
   };
   
-  // Handle Clear All
+  // Enhanced Clear All with comprehensive state reset
   const handleClearAll = () => {
     if (!allowClear) return;
-    onChange([]);
+    console.debug('🧹 [TrafficSourceFilter] Clear All triggered → trafficSources = []');
+    onChange([]); // This should result in no filtering (show all sources)
   };
   
   // Generate display text for the button
   const getDisplayText = () => {
     if (selectedSources.length === 0) {
+      // When no sources are selected, we show all sources
       return placeholder;
     }
     
@@ -156,12 +163,16 @@ const AnalyticsTrafficSourceFilter: React.FC<AnalyticsTrafficSourceFilterProps> 
     return null;
   }
   
+  // Enhanced state logging for debugging filter issues
   console.log('📊 [AnalyticsTrafficSourceFilter] Multi-select state:', {
     allAvailableSources: allAvailableSources.length,
     selectedSources: selectedSources.length,
+    selectedSourcesList: selectedSources,
     disabledSources: disabledSources.length,
     displayText: getDisplayText(),
-    searchTerm
+    searchTerm,
+    isNoFilterState: selectedSources.length === 0,
+    filterDecision: selectedSources.length === 0 ? 'SHOW_ALL_SOURCES' : 'APPLY_FILTER'
   });
   
   return (
@@ -275,7 +286,7 @@ const AnalyticsTrafficSourceFilter: React.FC<AnalyticsTrafficSourceFilterProps> 
               )}
             </div>
             
-            {/* Summary footer */}
+            {/* Enhanced summary footer with filter state info */}
             <Separator className="bg-zinc-700 mt-3 mb-2" />
             <div className="text-xs text-zinc-400 px-2">
               {selectedSources.length === 0
