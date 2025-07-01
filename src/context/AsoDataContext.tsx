@@ -149,13 +149,7 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
     bigQueryReady
   );
 
-  // Mark when the initial unfiltered request has finished
-  useEffect(() => {
-    if (!bigQueryResult.loading && !firstQueryCompleted) {
-      setFirstQueryCompleted(true);
-      console.log('✅ [AsoDataContext] Initial discovery query completed');
-    }
-  }, [bigQueryResult.loading, firstQueryCompleted]);
+  // Mark completion of the discovery phase when metadata is preserved
 
   // Fallback to mock data - pass all required arguments
   const mockResult = useMockAsoData(
@@ -189,26 +183,35 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
 
   // **PRESERVATION: Handle discovery metadata separately**
   useEffect(() => {
+    const incomingSources = bigQueryResult.meta?.availableTrafficSources;
+
     if (
       currentDataSource === 'bigquery' &&
-      bigQueryResult.meta?.availableTrafficSources &&
-      JSON.stringify(discoveryMetadata) !==
-        JSON.stringify(bigQueryResult.meta.availableTrafficSources)
+      filters.trafficSources.length === 0 &&
+      incomingSources &&
+      incomingSources.length >= 8 &&
+      !firstQueryCompleted
     ) {
       console.log('🔍 [Debug] Evaluating discovery metadata preservation...', {
         current: discoveryMetadata,
-        incoming: bigQueryResult.meta.availableTrafficSources
+        incoming: incomingSources
       });
-      console.log(
-        '🔒 [Context] Preserving discovery metadata:',
-        bigQueryResult.meta.availableTrafficSources
-      );
+      console.log('🔒 [Context] Preserving discovery metadata:', incomingSources);
+
       // Spread to ensure a fresh array reference is stored
-      setDiscoveryMetadata([
-        ...bigQueryResult.meta.availableTrafficSources
-      ]);
+      setDiscoveryMetadata([...incomingSources]);
+
+      // Mark completion once metadata is preserved
+      setFirstQueryCompleted(true);
+      console.log('✅ [AsoDataContext] Initial discovery query completed');
     }
-  }, [currentDataSource, bigQueryResult.meta?.availableTrafficSources, discoveryMetadata]);
+  }, [
+    currentDataSource,
+    bigQueryResult.meta?.availableTrafficSources,
+    filters.trafficSources.length,
+    firstQueryCompleted,
+    discoveryMetadata
+  ]);
 
   // Reapply saved filters after discovery metadata is known and first query finished
   useEffect(() => {
