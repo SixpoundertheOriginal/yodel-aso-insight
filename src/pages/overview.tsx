@@ -10,12 +10,13 @@ import { AiInsightsPanel } from "../components/AiInsightsPanel";
 import { AnalyticsTrafficSourceFilter } from "@/components/Filters";
 
 const OverviewPage: React.FC = () => {
-  const { data, loading, filters, setFilters } = useAsoData();
+  const { data, loading, filters, setFilters, setUserTouchedFilters } = useAsoData();
   const { current, previous, loading: comparisonLoading, deltas } = useComparisonData('period');
 
   // Handle traffic source filter change - now supports multi-select
   const handleSourceChange = (sources: string[]) => {
     console.log('🎯 [Overview] Multi-select traffic source filter changed:', sources);
+    setUserTouchedFilters(true);
     setFilters(prev => ({
       ...prev,
       trafficSources: sources
