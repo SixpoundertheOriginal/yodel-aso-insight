@@ -24,10 +24,12 @@ export const useAsoDataWithFallback = (
   const [dataSourceStatus, setDataSourceStatus] = useState<'loading' | 'bigquery-success' | 'bigquery-failed-fallback' | 'mock-only'>('loading');
 
   // Always fetch BigQuery data (unless explicitly set to mock-only)
+  const bigQueryReady = clientList.length > 0;
   const bigQueryResult = useBigQueryData(
     clientList,
     dateRange,
-    trafficSources
+    trafficSources,
+    bigQueryReady
   );
 
   // Always prepare mock data as fallback

@@ -70,10 +70,19 @@ interface BigQueryDataResult {
   meta?: BigQueryMeta;
 }
 
+/**
+ * Fetch BigQuery ASO data for the given clients and date range.
+ *
+ * @param clientList - List of BigQuery client identifiers
+ * @param dateRange - Date range to query
+ * @param trafficSources - Optional traffic source filters
+ * @param ready - When false the hook will not fetch until true
+ */
 export const useBigQueryData = (
   clientList: string[],
   dateRange: DateRange,
-  trafficSources: string[]
+  trafficSources: string[],
+  ready: boolean = true
 ): BigQueryDataResult => {
   const [data, setData] = useState<AsoData | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -84,6 +93,8 @@ export const useBigQueryData = (
   const { selectedApps } = useBigQueryAppSelection();
 
   useEffect(() => {
+    if (!clientList.length || !ready) return;
+
     const fetchBigQueryData = async () => {
       try {
         setLoading(true);
@@ -192,8 +203,9 @@ export const useBigQueryData = (
     clientList, 
     dateRange.from.toISOString().split('T')[0], // Only trigger on date changes
     dateRange.to.toISOString().split('T')[0], 
-    trafficSources, 
-    selectedApps
+    trafficSources,
+    selectedApps,
+    ready
   ]);
 
   return { data, loading, error, meta };

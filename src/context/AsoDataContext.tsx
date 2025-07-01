@@ -141,10 +141,12 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
   }, [filters]);
 
   // Try BigQuery first
+  const bigQueryReady = filters.clients.length > 0;
   const bigQueryResult = useBigQueryData(
     filters.clients,
     filters.dateRange,
-    filters.trafficSources
+    filters.trafficSources,
+    bigQueryReady
   );
 
   // Mark when the initial unfiltered request has finished

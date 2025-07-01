@@ -44,14 +44,15 @@ export const useComparisonData = (type: ComparisonType): ComparisonData => {
   const { data: currentData, loading: currentLoading, error: currentError } = useAsoData();
 
   // Fetch previous period data
-  const { 
-    data: previousRawData, 
-    loading: previousLoading, 
-    error: previousError 
+  const {
+    data: previousRawData,
+    loading: previousLoading,
+    error: previousError
   } = useBigQueryData(
     filters.clients,
     previousDateRange,
-    filters.trafficSources
+    filters.trafficSources,
+    filters.clients.length > 0
   );
 
   const comparisonData = useMemo(() => {
