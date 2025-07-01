@@ -160,8 +160,8 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
   // **PHASE 1: Preserve first complete discovery metadata**
   useEffect(() => {
     if (currentDataSource === 'bigquery' && 
-        bigQueryResult.meta?.availableTrafficSources?.length > 1 && 
-        discoveryMetadata.length === 0) {
+        bigQueryResult.meta?.availableTrafficSources &&
+        bigQueryResult.meta.availableTrafficSources.length > discoveryMetadata.length) {
       console.log('🔒 [Context] Preserving discovery metadata:', bigQueryResult.meta.availableTrafficSources);
       setDiscoveryMetadata(bigQueryResult.meta.availableTrafficSources);
     }
