@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { DateRange, AsoData, TimeSeriesPoint, MetricSummary, TrafficSource } from './useMockAsoData';
@@ -34,8 +33,23 @@ interface BigQueryMeta {
   filteredByTrafficSource?: boolean;
   projectId: string;
   timestamp: string;
+  // **PHASE 1: Enhanced metadata structure**
+  dataArchitecture?: {
+    phase: string;
+    discoveryQuery: {
+      executed: boolean;
+      sourcesFound: number;
+      sources: string[];
+    };
+    mainQuery: {
+      executed: boolean;
+      filtered: boolean;
+      rowsReturned: number;
+    };
+  };
   debug?: {
     queryPreview: string;
+    discoveryQueryPreview?: string; // Phase 1 addition
     parameterCount: number;
     jobComplete: boolean;
     trafficSourceMapping?: Record<string, string>;
@@ -123,6 +137,21 @@ export const useBigQueryData = (
 
         console.log('✅ [BigQuery Hook] Raw data received:', bigQueryResponse.data?.length, 'records');
         console.log('📊 [BigQuery Hook] Query metadata:', bigQueryResponse.meta);
+        
+        // **PHASE 1: Enhanced logging for traffic source architecture**
+        if (bigQueryResponse.meta.dataArchitecture) {
+          console.log('🏗️ [Phase 1 Architecture] Data fetching summary:', {
+            phase: bigQueryResponse.meta.dataArchitecture.phase,
+            discoveryExecuted: bigQueryResponse.meta.dataArchitecture.discoveryQuery.executed,
+            allAvailableSources: bigQueryResponse.meta.dataArchitecture.discoveryQuery.sources,
+            totalSourcesFound: bigQueryResponse.meta.dataArchitecture.discoveryQuery.sourcesFound,
+            mainQueryFiltered: bigQueryResponse.meta.dataArchitecture.mainQuery.filtered,
+            dataRowsReturned: bigQueryResponse.meta.dataArchitecture.mainQuery.rowsReturned,
+            requestedSources: trafficSources,
+            metadataAvailableSources: bigQueryResponse.meta.availableTrafficSources
+          });
+        }
+
         console.log('📊 [BigQuery Hook] Available traffic sources:', bigQueryResponse.meta.availableTrafficSources);
 
         // Store metadata for debugging and empty state handling
@@ -253,8 +282,16 @@ function transformBigQueryToAsoData(
     trafficSourceGroups[source].delta = generateMockDelta();
   });
 
-  // Use available traffic sources from BigQuery metadata, fallback to trafficSources parameter
+  // **PHASE 1 CRITICAL: Use available traffic sources from metadata (from discovery query)**
   const availableTrafficSources = meta.availableTrafficSources || [];
+  console.log('🔍 [Transform Phase 1] Using traffic sources from metadata:', {
+    fromMetadata: availableTrafficSources,
+    fromRequestParams: trafficSources,
+    usingMetadata: availableTrafficSources.length > 0,
+    dataArchitecture: meta.dataArchitecture?.phase || 'unknown'
+  });
+  
+  // Use metadata sources (from discovery query) if available, otherwise fallback to request params
   const sourcesToShow = availableTrafficSources.length > 0 ? availableTrafficSources : trafficSources;
   
   const trafficSourceData: TrafficSource[] = sourcesToShow.map(source => ({
@@ -272,7 +309,13 @@ function transformBigQueryToAsoData(
     maxPageViews: bigQueryData.filter(d => d.product_page_views !== null).length > 0 ? 
       Math.max(...bigQueryData.filter(d => d.product_page_views !== null).map(d => d.product_page_views)) : 0,
     aggregationWorking: totals.product_page_views > 0 ? 'YES - NULL handling fixed!' : 'Still showing 0',
-    finalTrafficSourceData: trafficSourceData
+    // **PHASE 1: Enhanced traffic source debugging**
+    trafficSourceArchitecture: {
+      phase: meta.dataArchitecture?.phase || 'unknown',
+      sourcesFromMetadata: availableTrafficSources,
+      sourcesFromParams: trafficSources,
+      finalTrafficSourceData: trafficSourceData.map(ts => ({ name: ts.name, value: ts.value }))
+    }
   });
 
   return {

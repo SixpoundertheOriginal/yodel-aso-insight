@@ -215,7 +215,77 @@ serve(async (req) => {
     // Build query components
     const clientsFilter = clientsToQuery.map(app => `'${app}'`).join(', ');
     
-    // Enhanced traffic source filtering logic with comprehensive debugging
+    // **PHASE 1 IMPLEMENTATION: Two-Pass Data Architecture**
+    
+    // STEP 1: Get ALL available traffic sources (discovery query)
+    console.log('🔍 [Phase 1] Step 1: Discovering all available traffic sources...');
+    
+    const discoveryQuery = `
+      SELECT DISTINCT traffic_source
+      FROM \`${projectId}.client_reports.aso_all_apple\`
+      WHERE client IN (${clientsFilter})
+      ${body.dateRange ? 'AND date BETWEEN @dateFrom AND @dateTo' : 'AND date >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)'}
+      ORDER BY traffic_source
+    `;
+
+    const discoveryParams: any[] = [];
+    if (body.dateRange) {
+      discoveryParams.push(
+        {
+          name: 'dateFrom',
+          parameterType: { type: 'DATE' },
+          parameterValue: { value: body.dateRange.from }
+        },
+        {
+          name: 'dateTo',
+          parameterType: { type: 'DATE' },
+          parameterValue: { value: body.dateRange.to }
+        }
+      );
+    }
+
+    const discoveryRequestBody = {
+      query: discoveryQuery,
+      parameterMode: 'NAMED',
+      queryParameters: discoveryParams,
+      useLegacySql: false,
+      maxResults: 50
+    };
+
+    if (isDevelopment()) {
+      console.log('🔍 [Phase 1] Discovery Query:', discoveryQuery.replace(/\s+/g, ' ').trim());
+    }
+
+    // Execute discovery query
+    const discoveryResponse = await fetch(
+      `https://bigquery.googleapis.com/bigquery/v2/projects/${projectId}/queries`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(discoveryRequestBody)
+      }
+    );
+
+    if (!discoveryResponse.ok) {
+      const errorText = await discoveryResponse.text();
+      console.error('❌ [BigQuery] Discovery query error:', errorText);
+      throw new Error(`BigQuery discovery API error: ${discoveryResponse.status} - ${errorText}`);
+    }
+
+    const discoveryResult = await discoveryResponse.json();
+    const availableTrafficSources = (discoveryResult.rows || [])
+      .map((row: any) => mapTrafficSourceToDisplay(row.f[0]?.v || 'Unknown'))
+      .filter(Boolean)
+      .sort();
+
+    console.log('✅ [Phase 1] Step 1 Complete - Available traffic sources:', availableTrafficSources);
+
+    // STEP 2: Get filtered data (main query with optional traffic source filtering)
+    console.log('🔍 [Phase 1] Step 2: Fetching filtered data...');
+    
     const normalizedTrafficSources = normalizeTrafficSourcesArray(body.trafficSources);
     
     console.log('🔍 [BigQuery] Traffic source filtering debug:', {
@@ -461,8 +531,8 @@ serve(async (req) => {
       });
     }
 
-    // Build response metadata
-    const availableTrafficSources = [...new Set(transformedData.map(d => d.traffic_source))].sort();
+    // **PHASE 1 CRITICAL: Build response metadata with ALL available traffic sources**
+    console.log('✅ [Phase 1] Step 3: Building enhanced metadata with all available traffic sources');
 
     return new Response(
       JSON.stringify({
@@ -479,7 +549,8 @@ serve(async (req) => {
             trafficSources: normalizedTrafficSources || null,
             limit
           },
-          availableTrafficSources,
+          // **PHASE 1 KEY CHANGE: Always return all discovered traffic sources**
+          availableTrafficSources, // This now comes from discovery query, not filtered data
           filteredBySelection: !!(body.selectedApps && body.selectedApps.length > 0),
           filteredByTrafficSource: normalizedTrafficSources.length > 0,
           projectId,
@@ -488,9 +559,24 @@ serve(async (req) => {
           queriedClients: clientsToQuery,
           emergencyBypass: shouldAutoApprove,
           autoApprovalTriggered: shouldAutoApprove && transformedData.length > 0,
+          // **PHASE 1 ARCHITECTURE INFO**
+          dataArchitecture: {
+            phase: 'Phase 1 - Two-Pass Discovery',
+            discoveryQuery: {
+              executed: true,
+              sourcesFound: availableTrafficSources.length,
+              sources: availableTrafficSources
+            },
+            mainQuery: {
+              executed: true,
+              filtered: normalizedTrafficSources.length > 0,
+              rowsReturned: transformedData.length
+            }
+          },
           ...(isDevelopment() && {
             debug: {
               queryPreview: query.replace(/\s+/g, ' ').trim(),
+              discoveryQueryPreview: discoveryQuery.replace(/\s+/g, ' ').trim(),
               parameterCount: queryParams.length,
               jobComplete: queryResult.jobComplete,
               trafficSourceMapping: TRAFFIC_SOURCE_MAPPING,
