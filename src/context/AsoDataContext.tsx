@@ -185,13 +185,20 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
     if (
       currentDataSource === 'bigquery' &&
       bigQueryResult.meta?.availableTrafficSources &&
-      bigQueryResult.meta.availableTrafficSources.length > discoveryMetadata.length &&
-      !discoveryMetadata.every(src => bigQueryResult.meta!.availableTrafficSources?.includes(src))
+      JSON.stringify(discoveryMetadata) !==
+        JSON.stringify(bigQueryResult.meta.availableTrafficSources)
     ) {
-      console.log('🔒 [Context] Preserving discovery metadata:', bigQueryResult.meta.availableTrafficSources);
+      console.log('🔍 [Debug] Evaluating discovery metadata preservation...', {
+        current: discoveryMetadata,
+        incoming: bigQueryResult.meta.availableTrafficSources
+      });
+      console.log(
+        '🔒 [Context] Preserving discovery metadata:',
+        bigQueryResult.meta.availableTrafficSources
+      );
       setDiscoveryMetadata(bigQueryResult.meta.availableTrafficSources);
     }
-  }, [currentDataSource, bigQueryResult.meta?.availableTrafficSources, discoveryMetadata.length]);
+  }, [currentDataSource, bigQueryResult.meta?.availableTrafficSources, discoveryMetadata]);
 
   // Reapply saved filters after discovery metadata is known and first query finished
   useEffect(() => {
