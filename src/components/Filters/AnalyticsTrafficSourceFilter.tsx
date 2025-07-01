@@ -78,6 +78,15 @@ const AnalyticsTrafficSourceFilter: React.FC<AnalyticsTrafficSourceFilterProps> 
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   
+  // **DIAGNOSTIC: Component received data**
+  console.log('🔍 [COMPONENT DIAGNOSTIC] Filter component state:', {
+    availableTrafficSources_length: availableTrafficSources?.length,
+    availableTrafficSources_actual: availableTrafficSources,
+    data_trafficSources_length: data?.trafficSources?.length,
+    data_trafficSources_actual: data?.trafficSources?.map(s => s.name),
+    timestamp: new Date().toISOString()
+  });
+  
   // **ENTERPRISE MULTI-TIER FALLBACK: Always ensure sources available**
   const allAvailableSources = useMemo(() => {
     // Tier 1: Use preserved discovery metadata (best)
@@ -98,6 +107,14 @@ const AnalyticsTrafficSourceFilter: React.FC<AnalyticsTrafficSourceFilterProps> 
       'Other', 'Web Referrer'
     ];
   }, [availableTrafficSources, data?.trafficSources]);
+
+  // **DIAGNOSTIC: Component computed sources**
+  console.log('🔍 [COMPONENT DIAGNOSTIC] Computed allAvailableSources:', {
+    allAvailableSources_length: allAvailableSources.length,
+    allAvailableSources_actual: allAvailableSources,
+    selectedSources_length: selectedSources.length,
+    selectedSources_actual: selectedSources
+  });
   
   // Filter sources based on search term
   const filteredSources = useMemo(() => {

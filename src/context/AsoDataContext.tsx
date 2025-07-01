@@ -162,19 +162,27 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
     ? bigQueryResult 
     : mockResult;
 
-  // **SYNCHRONOUS PRESERVATION: Compute best available traffic sources inline**
-  const bestAvailableTrafficSources = useMemo(() => {
-    if (currentDataSource === 'bigquery' && bigQueryResult.meta?.availableTrafficSources) {
-      const currentSources = bigQueryResult.meta.availableTrafficSources;
-      // Preserve discovery metadata inline (synchronous)
-      if (currentSources.length > discoveryMetadata.length) {
-        setDiscoveryMetadata(currentSources);
-        return currentSources;
-      }
-      return discoveryMetadata.length > 0 ? discoveryMetadata : currentSources;
+  // **PRESERVATION: Handle discovery metadata separately**
+  useEffect(() => {
+    if (currentDataSource === 'bigquery' && 
+        bigQueryResult.meta?.availableTrafficSources &&
+        bigQueryResult.meta.availableTrafficSources.length > discoveryMetadata.length) {
+      console.log('🔒 [Context] Preserving discovery metadata:', bigQueryResult.meta.availableTrafficSources);
+      setDiscoveryMetadata(bigQueryResult.meta.availableTrafficSources);
     }
-    return discoveryMetadata;
-  }, [currentDataSource, bigQueryResult.meta?.availableTrafficSources, discoveryMetadata]);
+  }, [currentDataSource, bigQueryResult.meta?.availableTrafficSources, discoveryMetadata.length]);
+
+  // **COMPUTATION: Determine best available sources**
+  const bestAvailableTrafficSources = useMemo(() => {
+    // Return preserved metadata if available
+    if (discoveryMetadata.length > 0) {
+      return discoveryMetadata;
+    }
+    // Otherwise return current metadata
+    return currentDataSource === 'bigquery' ? 
+      bigQueryResult.meta?.availableTrafficSources || [] : 
+      [];
+  }, [discoveryMetadata, currentDataSource, bigQueryResult.meta?.availableTrafficSources]);
 
   const contextValue: AsoDataContextType = {
     data: selectedResult.data,
@@ -187,6 +195,17 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
     meta: currentDataSource === 'bigquery' ? bigQueryResult.meta : undefined,
     availableTrafficSources: bestAvailableTrafficSources,
   };
+
+  // **DIAGNOSTIC: Understanding the traffic source issue**
+  console.log('🔍 [DIAGNOSTIC] Context state:', {
+    currentDataSource,
+    bigQueryMeta_sources: bigQueryResult.meta?.availableTrafficSources,
+    discoveryMetadata_length: discoveryMetadata.length,
+    discoveryMetadata_actual: discoveryMetadata,
+    bestAvailableTrafficSources_length: bestAvailableTrafficSources?.length,
+    bestAvailableTrafficSources_actual: bestAvailableTrafficSources,
+    contextValue_sources: contextValue.availableTrafficSources
+  });
 
   return (
     <AsoDataContext.Provider value={contextValue}>
