@@ -89,16 +89,26 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
   const [discoveryMetadata, setDiscoveryMetadata] = useState<string[]>([]);
   
   const savedFilters = loadSavedFilters();
-  
-  // Enhanced initial state - ensure no default traffic sources are injected
+
+  // Track completion of the very first BigQuery request
+  const [firstQueryCompleted, setFirstQueryCompleted] = useState(false);
+
+  // Always start with an empty traffic source filter so discovery query is unfiltered
   const [filters, setFilters] = useState<AsoDataFilters>({
     dateRange: {
       from: subDays(new Date(), 30), // Default to last 30 days
       to: new Date(),
     },
-    trafficSources: savedFilters.trafficSources || [], // Start with empty array - no defaults
+    trafficSources: [],
     clients: ['TUI'], // Default client for BigQuery
   });
+
+  // Inform when the unfiltered query kicks off
+  useEffect(() => {
+    if (filters.trafficSources.length === 0 && !firstQueryCompleted) {
+      console.log('🚀 [AsoDataContext] Initial discovery query running with no traffic source filter');
+    }
+  }, []);
 
   // Enhanced filter change logging with state validation
   useEffect(() => {
@@ -131,6 +141,14 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
     filters.dateRange,
     filters.trafficSources
   );
+
+  // Mark when the initial unfiltered request has finished
+  useEffect(() => {
+    if (!bigQueryResult.loading && !firstQueryCompleted) {
+      setFirstQueryCompleted(true);
+      console.log('✅ [AsoDataContext] Initial discovery query completed');
+    }
+  }, [bigQueryResult.loading, firstQueryCompleted]);
 
   // Fallback to mock data - pass all required arguments
   const mockResult = useMockAsoData(
@@ -174,6 +192,20 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
       setDiscoveryMetadata(bigQueryResult.meta.availableTrafficSources);
     }
   }, [currentDataSource, bigQueryResult.meta?.availableTrafficSources, discoveryMetadata.length]);
+
+  // Reapply saved filters after discovery metadata is known and first query finished
+  useEffect(() => {
+    if (
+      firstQueryCompleted &&
+      discoveryMetadata.length > 0 &&
+      savedFilters.trafficSources &&
+      savedFilters.trafficSources.length > 0 &&
+      filters.trafficSources.length === 0
+    ) {
+      console.log('🔄 [AsoDataContext] Reapplying saved traffic source filters:', savedFilters.trafficSources);
+      setFilters(prev => ({ ...prev, trafficSources: savedFilters.trafficSources as string[] }));
+    }
+  }, [firstQueryCompleted, discoveryMetadata.length]);
 
   // **COMPUTATION: Determine best available sources**
   const bestAvailableTrafficSources = useMemo(() => {
