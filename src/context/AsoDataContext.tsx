@@ -185,6 +185,16 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
       (currentDataSource === 'bigquery' ? bigQueryResult.meta?.availableTrafficSources : undefined),
   };
 
+  // 🚨 TEMPORARY DIAGNOSTIC - REMOVE AFTER DIAGNOSIS  
+  console.log('🔍 [DIAGNOSIS] Context providing:', {
+    discoveryMetadata_length: discoveryMetadata.length,
+    discoveryMetadata_actual: discoveryMetadata,
+    bigQueryMeta_length: bigQueryResult.meta?.availableTrafficSources?.length,
+    bigQueryMeta_actual: bigQueryResult.meta?.availableTrafficSources,
+    final_availableTrafficSources: contextValue.availableTrafficSources,
+    timestamp: new Date().toISOString()
+  });
+
   return (
     <AsoDataContext.Provider value={contextValue}>
       {children}

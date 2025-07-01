@@ -78,6 +78,13 @@ const AnalyticsTrafficSourceFilter: React.FC<AnalyticsTrafficSourceFilterProps> 
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   
+  // 🚨 TEMPORARY DIAGNOSTIC - REMOVE AFTER DIAGNOSIS
+  console.log('🔍 [DIAGNOSIS] Component received:', {
+    availableTrafficSources_length: availableTrafficSources?.length,
+    availableTrafficSources_actual: availableTrafficSources,
+    timestamp: new Date().toISOString()
+  });
+  
   // **PHASE 1 FIX: Use metadata traffic sources instead of filtered data**
   // Get stable list of all available traffic sources from metadata (not filtered data)
   const allAvailableSources = useMemo(() => {
