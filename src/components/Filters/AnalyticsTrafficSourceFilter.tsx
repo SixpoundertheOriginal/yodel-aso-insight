@@ -78,14 +78,13 @@ const AnalyticsTrafficSourceFilter: React.FC<AnalyticsTrafficSourceFilterProps> 
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   
-  // **DIAGNOSTIC: Component received data**
-  console.log('🔍 [COMPONENT DIAGNOSTIC] Filter component state:', {
-    availableTrafficSources_length: availableTrafficSources?.length,
-    availableTrafficSources_actual: availableTrafficSources,
-    data_trafficSources_length: data?.trafficSources?.length,
-    data_trafficSources_actual: data?.trafficSources?.map(s => s.name),
-    timestamp: new Date().toISOString()
-  });
+  // **COMPONENT DIAGNOSTIC: Component received data**
+  console.log('🔍 [COMPONENT DIAGNOSTIC] Filter component state:');
+  console.log('  availableTrafficSources_length:', availableTrafficSources?.length);
+  console.log('  availableTrafficSources_actual FULL ARRAY:', JSON.stringify(availableTrafficSources, null, 2));
+  console.log('  data_trafficSources_length:', data?.trafficSources?.length);
+  console.log('  data_trafficSources_actual FULL ARRAY:', JSON.stringify(data?.trafficSources?.map(s => s.name), null, 2));
+  console.log('  timestamp:', new Date().toISOString());
   
   // **ENTERPRISE MULTI-TIER FALLBACK: Always ensure sources available**
   const allAvailableSources = useMemo(() => {

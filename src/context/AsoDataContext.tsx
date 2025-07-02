@@ -207,26 +207,25 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
   useEffect(() => {
     const bestSources = bestMetadata?.availableTrafficSources || [];
     
-    console.log('🔍 [DISCOVERY FIX] Discovery accumulation check:', {
-      bestMetadataExists: !!bestMetadata,
-      bestSources: bestSources,
-      bestSourcesCount: bestSources.length,
-      currentDiscovered: discoveredTrafficSources,
-      currentDiscoveredCount: discoveredTrafficSources.length,
-      shouldUpdate: bestSources.length > 0 && bestSources.length >= discoveredTrafficSources.length,
-      willForceUpdate: bestSources.length >= 8
-    });
+    console.log('🔍 [DISCOVERY FIX] Discovery accumulation check:');
+    console.log('  bestMetadataExists:', !!bestMetadata);
+    console.log('  bestSources FULL ARRAY:', JSON.stringify(bestSources, null, 2));
+    console.log('  bestSourcesCount:', bestSources.length);
+    console.log('  currentDiscovered FULL ARRAY:', JSON.stringify(discoveredTrafficSources, null, 2));
+    console.log('  currentDiscoveredCount:', discoveredTrafficSources.length);
+    console.log('  shouldUpdate:', bestSources.length > 0 && bestSources.length >= discoveredTrafficSources.length);
+    console.log('  willForceUpdate:', bestSources.length >= 8);
     
     // **CRITICAL FIX: Update if we have ANY sources from best metadata**
     if (bestSources.length > 0) {
       // Always update if we found more sources OR if we have the complete set (8+)
       if (bestSources.length > discoveredTrafficSources.length || bestSources.length >= 8) {
-        console.log('🔍 [DISCOVERY FIX] Updating discovered sources:', {
-          reason: bestSources.length >= 8 ? 'COMPLETE_SET_FOUND' : 'MORE_SOURCES_FOUND',
-          from: discoveredTrafficSources.length,
-          to: bestSources.length,
-          newSources: bestSources
-        });
+        console.log('🔍 [DISCOVERY FIX] Updating discovered sources:');
+        console.log('  reason:', bestSources.length >= 8 ? 'COMPLETE_SET_FOUND' : 'MORE_SOURCES_FOUND');
+        console.log('  from count:', discoveredTrafficSources.length);
+        console.log('  to count:', bestSources.length);
+        console.log('  newSources FULL ARRAY:', JSON.stringify(bestSources, null, 2));
+        console.log('  CALLING setDiscoveredTrafficSources with:', bestSources);
         setDiscoveredTrafficSources([...bestSources]);
       }
     }
@@ -236,69 +235,69 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
   useEffect(() => {
     if (bestSourceCount >= 8 && bestMetadata?.availableTrafficSources?.length >= 8) {
       const completeSources = bestMetadata.availableTrafficSources;
-      console.log('⚡ [IMMEDIATE OVERRIDE] Force setting complete traffic sources:', {
-        sources: completeSources,
-        count: completeSources.length,
-        previousDiscovered: discoveredTrafficSources.length
-      });
+      console.log('⚡ [IMMEDIATE OVERRIDE] Force setting complete traffic sources:');
+      console.log('  sources FULL ARRAY:', JSON.stringify(completeSources, null, 2));
+      console.log('  count:', completeSources.length);
+      console.log('  previousDiscovered count:', discoveredTrafficSources.length);
+      console.log('  previousDiscovered FULL ARRAY:', JSON.stringify(discoveredTrafficSources, null, 2));
+      console.log('  CALLING setDiscoveredTrafficSources with COMPLETE SET:', completeSources);
       setDiscoveredTrafficSources([...completeSources]);
     }
   }, [bestSourceCount, bestMetadata?.availableTrafficSources]);
 
   // **ENHANCED: Always return the best available sources with detailed logging**
   const bestAvailableTrafficSources = useMemo(() => {
-    console.log('🔄 [BEST_SOURCES_CALC] Calculating best available sources:', {
-      step: 'CALCULATION_START',
-      discoveredCount: discoveredTrafficSources.length,
-      discoveredSources: discoveredTrafficSources,
-      bestMetadataCount: bestMetadata?.availableTrafficSources?.length || 0,
-      bestMetadataSources: bestMetadata?.availableTrafficSources || [],
-      currentCount: bigQueryResult.meta?.availableTrafficSources?.length || 0,
-      currentSources: bigQueryResult.meta?.availableTrafficSources || []
-    });
+    console.log('🔄 [BEST_SOURCES_CALC] Calculating best available sources:');
+    console.log('  step: CALCULATION_START');
+    console.log('  discoveredCount:', discoveredTrafficSources.length);
+    console.log('  discoveredSources FULL ARRAY:', JSON.stringify(discoveredTrafficSources, null, 2));
+    console.log('  bestMetadataCount:', bestMetadata?.availableTrafficSources?.length || 0);
+    console.log('  bestMetadataSources FULL ARRAY:', JSON.stringify(bestMetadata?.availableTrafficSources || [], null, 2));
+    console.log('  currentCount:', bigQueryResult.meta?.availableTrafficSources?.length || 0);
+    console.log('  currentSources FULL ARRAY:', JSON.stringify(bigQueryResult.meta?.availableTrafficSources || [], null, 2));
 
     // **PRIORITY 1: Use discovered sources if we have the complete set**
     if (discoveredTrafficSources.length >= 8) {
-      console.log('✅ [PRIORITY_1] Using complete discovered traffic sources:', {
-        count: discoveredTrafficSources.length,
-        sources: discoveredTrafficSources
-      });
+      console.log('✅ [PRIORITY_1] Using complete discovered traffic sources:');
+      console.log('  count:', discoveredTrafficSources.length);
+      console.log('  sources FULL ARRAY:', JSON.stringify(discoveredTrafficSources, null, 2));
+      console.log('  RETURNING:', [...discoveredTrafficSources]);
       return [...discoveredTrafficSources];
     }
     
     // **PRIORITY 2: Use best metadata if it has complete sources**
     if (bestMetadata?.availableTrafficSources && bestMetadata.availableTrafficSources.length >= 8) {
-      console.log('✅ [PRIORITY_2] Using complete best metadata sources:', {
-        count: bestMetadata.availableTrafficSources.length,
-        sources: bestMetadata.availableTrafficSources
-      });
+      console.log('✅ [PRIORITY_2] Using complete best metadata sources:');
+      console.log('  count:', bestMetadata.availableTrafficSources.length);
+      console.log('  sources FULL ARRAY:', JSON.stringify(bestMetadata.availableTrafficSources, null, 2));
+      console.log('  RETURNING:', [...bestMetadata.availableTrafficSources]);
       return [...bestMetadata.availableTrafficSources];
     }
 
     // **PRIORITY 3: Use discovered sources even if incomplete**
     if (discoveredTrafficSources.length > 0) {
-      console.log('✅ [PRIORITY_3] Using incomplete discovered sources:', {
-        count: discoveredTrafficSources.length,
-        sources: discoveredTrafficSources
-      });
+      console.log('✅ [PRIORITY_3] Using incomplete discovered sources:');
+      console.log('  count:', discoveredTrafficSources.length);
+      console.log('  sources FULL ARRAY:', JSON.stringify(discoveredTrafficSources, null, 2));
+      console.log('  RETURNING:', [...discoveredTrafficSources]);
       return [...discoveredTrafficSources];
     }
     
     // **PRIORITY 4: Use best metadata even if incomplete**
     if (bestMetadata?.availableTrafficSources && bestMetadata.availableTrafficSources.length > 0) {
-      console.log('✅ [PRIORITY_4] Using incomplete best metadata sources:', {
-        count: bestMetadata.availableTrafficSources.length,
-        sources: bestMetadata.availableTrafficSources
-      });
+      console.log('✅ [PRIORITY_4] Using incomplete best metadata sources:');
+      console.log('  count:', bestMetadata.availableTrafficSources.length);
+      console.log('  sources FULL ARRAY:', JSON.stringify(bestMetadata.availableTrafficSources, null, 2));
+      console.log('  RETURNING:', [...bestMetadata.availableTrafficSources]);
       return [...bestMetadata.availableTrafficSources];
     }
     
     // **PRIORITY 5: Fallback to current hook data**
     const currentSources = bigQueryResult.meta?.availableTrafficSources || [];
-    console.log('⏳ [PRIORITY_5] Using current hook sources as final fallback:', {
-      count: currentSources.length,
-      sources: currentSources
-    });
+    console.log('⏳ [PRIORITY_5] Using current hook sources as final fallback:');
+    console.log('  count:', currentSources.length);
+    console.log('  sources FULL ARRAY:', JSON.stringify(currentSources, null, 2));
+    console.log('  RETURNING:', [...currentSources]);
     return [...currentSources];
   }, [discoveredTrafficSources, bestMetadata?.availableTrafficSources, bigQueryResult.meta?.availableTrafficSources]);
 
@@ -318,14 +317,13 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
   };
 
   // **FINAL VALIDATION: Log what context is providing to components**
-  console.log('🚨 [CONTEXT→COMPONENT] Context providing to components:', {
-    availableTrafficSources: contextValue.availableTrafficSources,
-    sourcesCount: contextValue.availableTrafficSources?.length || 0,
-    bestCalculated: bestAvailableTrafficSources,
-    bestCalculatedCount: bestAvailableTrafficSources.length,
-    bestMetadataExists: !!bestMetadata,
-    bestSourceCount: bestSourceCount
-  });
+  console.log('🚨 [CONTEXT→COMPONENT] Context providing to components:');
+  console.log('  availableTrafficSources FULL ARRAY:', JSON.stringify(contextValue.availableTrafficSources, null, 2));
+  console.log('  sourcesCount:', contextValue.availableTrafficSources?.length || 0);
+  console.log('  bestCalculated FULL ARRAY:', JSON.stringify(bestAvailableTrafficSources, null, 2));
+  console.log('  bestCalculatedCount:', bestAvailableTrafficSources.length);
+  console.log('  bestMetadataExists:', !!bestMetadata);
+  console.log('  bestSourceCount:', bestSourceCount);
 
   // **DEBUG: Monitor hook selection and traffic source state**
   console.log('🔍 [SMART SELECTION DEBUG] Complete state summary:', {
