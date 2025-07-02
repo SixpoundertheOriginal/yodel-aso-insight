@@ -134,7 +134,7 @@ export const useBigQueryData = (
 
     registerHookInstance(instanceId, hookData);
 
-  }, [registerHookInstance, instanceId, data, meta, loading, error, meta?.availableTrafficSources]);
+  }, [instanceId, data, meta, loading, error]); // ✅ FIXED: Removed registerHookInstance from deps
 
   useEffect(() => {
     if (!clientList.length || !ready) return;
