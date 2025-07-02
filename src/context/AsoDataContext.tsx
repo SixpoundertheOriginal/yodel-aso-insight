@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useMemo, ReactNode, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, ReactNode, useCallback, useRef } from 'react';
 import { useBigQueryData } from '../hooks/useBigQueryData';
 import { useMockAsoData, type AsoData, type DateRange, type TrafficSource } from '../hooks/useMockAsoData';
 import { subDays } from 'date-fns';
@@ -101,6 +101,9 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
   // ✅ NEW: Hook Registry to track ALL hook instances
   const [hookRegistry, setHookRegistry] = useState<Map<string, HookInstanceData>>(new Map());
   
+  // ✅ LOOP FIX: Track last registered data to prevent duplicate registrations
+  const lastRegisteredDataRef = useRef<Map<string, string>>(new Map());
+  
   const savedFilters = loadSavedFilters();
   const [userTouchedFilters, setUserTouchedFilters] = useState(false);
 
@@ -118,13 +121,33 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
     saveFilters(filters);
   }, [filters]);
 
-  // ✅ NEW: Hook Registration Function
+  // ✅ LOOP FIX: Stable registration function that prevents duplicate registrations
   const registerHookInstance = useCallback((instanceId: string, data: HookInstanceData) => {
+    // Create a hash of the important data to detect if it actually changed
+    const dataHash = JSON.stringify({
+      sourcesCount: data.sourcesCount,
+      availableTrafficSources: data.availableTrafficSources,
+      loading: data.loading,
+      hasData: !!data.data,
+      hasError: !!data.error
+    });
+
+    // Check if this is the same data as last registration
+    const lastDataHash = lastRegisteredDataRef.current.get(instanceId);
+    if (lastDataHash === dataHash) {
+      console.log(`🚫 [LOOP PREVENTION] Instance ${instanceId} - skipping duplicate registration`);
+      return; // Skip registration - same data
+    }
+
+    // Update the hash tracker
+    lastRegisteredDataRef.current.set(instanceId, dataHash);
+
     console.log(`🔄 [HOOK REGISTRY] Registering instance ${instanceId}:`, {
       sourcesCount: data.sourcesCount,
       hasData: !!data.data,
       loading: data.loading,
-      error: !!data.error
+      error: !!data.error,
+      dataHash: dataHash.slice(0, 50) + '...' // Log partial hash for debugging
     });
 
     setHookRegistry(prev => {
@@ -143,7 +166,7 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
       
       return newRegistry;
     });
-  }, []);
+  }, []); // ✅ LOOP FIX: Empty dependency array - stable reference
 
   // ✅ NEW: Find Best Hook Instance
   const getBestHookData = useCallback((): HookInstanceData | null => {
@@ -191,7 +214,7 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
     bigQueryReady
   );
 
-  // ✅ NEW: Register the fallback hook
+  // ✅ LOOP FIX: Register the fallback hook WITHOUT registerHookInstance in dependencies
   useEffect(() => {
     if (fallbackBigQueryResult.meta?.availableTrafficSources) {
       registerHookInstance('fallback-context-hook', {
@@ -205,7 +228,7 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
         lastUpdated: Date.now()
       });
     }
-  }, [fallbackBigQueryResult.data, fallbackBigQueryResult.meta, fallbackBigQueryResult.loading, fallbackBigQueryResult.error, registerHookInstance]);
+  }, [fallbackBigQueryResult.data, fallbackBigQueryResult.meta, fallbackBigQueryResult.loading, fallbackBigQueryResult.error]); // ✅ LOOP FIX: Removed registerHookInstance from dependencies
 
   // Fallback to mock data
   const mockResult = useMockAsoData(
