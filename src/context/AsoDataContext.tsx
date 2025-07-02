@@ -98,8 +98,8 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
   const [currentDataSource, setCurrentDataSource] = useState<DataSource>('bigquery');
   const [dataSourceStatus, setDataSourceStatus] = useState<DataSourceStatus>('loading');
   
-  // ✅ NEW: Hook Registry to track ALL hook instances
-  const [hookRegistry, setHookRegistry] = useState<Map<string, HookInstanceData>>(new Map());
+  // Simplified hook registry - no longer needed for main data flow
+  const [discoveredTrafficSources, setDiscoveredTrafficSources] = useState<string[]>([]);
   
   const savedFilters = loadSavedFilters();
   const [userTouchedFilters, setUserTouchedFilters] = useState(false);
@@ -118,94 +118,41 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
     saveFilters(filters);
   }, [filters]);
 
-  // ✅ NEW: Hook Registration Function
+  // Simplified registration - just update discovered sources directly
   const registerHookInstance = useCallback((instanceId: string, data: HookInstanceData) => {
-    console.log(`🔄 [HOOK REGISTRY] Registering instance ${instanceId}:`, {
+    console.log(`🔄 [SIMPLE REGISTRATION] Instance ${instanceId}:`, {
       sourcesCount: data.sourcesCount,
-      hasData: !!data.data,
-      loading: data.loading,
-      error: !!data.error
+      sources: data.availableTrafficSources
     });
 
-    setHookRegistry(prev => {
-      const newRegistry = new Map(prev);
-      newRegistry.set(instanceId, {
-        ...data,
-        lastUpdated: Date.now()
+    if (data.availableTrafficSources && data.availableTrafficSources.length > 0) {
+      setDiscoveredTrafficSources(prev => {
+        const newSources = [...new Set([...prev, ...data.availableTrafficSources])];
+        console.log(`📊 [DISCOVERED SOURCES UPDATE] ${prev.length} → ${newSources.length}:`, newSources);
+        return newSources;
       });
-      
-      console.log(`📊 [REGISTRY STATUS] Total registered instances: ${newRegistry.size}`);
-      console.log(`📊 [REGISTRY SUMMARY]`, Array.from(newRegistry.entries()).map(([id, data]) => ({
-        id,
-        sources: data.sourcesCount,
-        hasData: !!data.data
-      })));
-      
-      return newRegistry;
-    });
+    }
   }, []);
 
-  // ✅ NEW: Find Best Hook Instance
-  const getBestHookData = useCallback((): HookInstanceData | null => {
-    let bestInstance: HookInstanceData | null = null;
-    let maxSources = 0;
-    
-    console.log(`🔍 [BEST HOOK SEARCH] Searching through ${hookRegistry.size} registered instances`);
-    
-    for (const [instanceId, data] of hookRegistry.entries()) {
-      console.log(`🔍 [CHECKING INSTANCE] ${instanceId}:`, {
-        sourcesCount: data.sourcesCount,
-        hasData: !!data.data,
-        loading: data.loading,
-        error: !!data.error,
-        sources: data.availableTrafficSources
-      });
-      
-      // Only consider instances with data and no errors
-      if (data.sourcesCount > maxSources && !data.error && !data.loading && data.data) {
-        maxSources = data.sourcesCount;
-        bestInstance = data;
-        console.log(`🎯 [NEW BEST FOUND] Instance ${instanceId} with ${data.sourcesCount} sources`);
-      }
-    }
-    
-    if (bestInstance) {
-      console.log(`✅ [BEST HOOK SELECTED]`, {
-        instanceId: bestInstance.instanceId,
-        sourcesCount: bestInstance.sourcesCount,
-        sources: bestInstance.availableTrafficSources
-      });
-    } else {
-      console.log(`❌ [NO BEST HOOK] No suitable instance found`);
-    }
-    
-    return bestInstance;
-  }, [hookRegistry]);
+  // Simplified - no complex best hook selection needed
 
-  // ✅ MODIFIED: Still create one hook for fallback, but don't rely on it exclusively
+  // Single hook for data - no circular dependency
   const bigQueryReady = filters.clients.length > 0;
-  const fallbackBigQueryResult = useBigQueryData(
+  const bigQueryResult = useBigQueryData(
     filters.clients,
     filters.dateRange,
     filters.trafficSources,
     bigQueryReady
   );
 
-  // ✅ NEW: Register the fallback hook
+  // Register discovered sources from the main hook
   useEffect(() => {
-    if (fallbackBigQueryResult.meta?.availableTrafficSources) {
-      registerHookInstance('fallback-context-hook', {
-        instanceId: 'fallback-context-hook',
-        availableTrafficSources: fallbackBigQueryResult.meta.availableTrafficSources,
-        sourcesCount: fallbackBigQueryResult.meta.availableTrafficSources.length,
-        data: fallbackBigQueryResult.data,
-        metadata: fallbackBigQueryResult.meta,
-        loading: fallbackBigQueryResult.loading,
-        error: fallbackBigQueryResult.error,
-        lastUpdated: Date.now()
-      });
+    if (bigQueryResult.meta?.availableTrafficSources) {
+      const sources = bigQueryResult.meta.availableTrafficSources;
+      console.log(`📊 [MAIN HOOK] Discovered ${sources.length} sources:`, sources);
+      setDiscoveredTrafficSources(sources);
     }
-  }, [fallbackBigQueryResult.data, fallbackBigQueryResult.meta, fallbackBigQueryResult.loading, fallbackBigQueryResult.error, registerHookInstance]);
+  }, [bigQueryResult.meta?.availableTrafficSources]);
 
   // Fallback to mock data
   const mockResult = useMockAsoData(
@@ -214,71 +161,74 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
     filters.trafficSources
   );
 
-  // ✅ NEW: Use Best Hook Data Instead of Single Hook
-  const bestHookData = getBestHookData();
-  const selectedResult = bestHookData || fallbackBigQueryResult;
-
-  // ✅ NEW: Get Available Traffic Sources from Best Hook
+  // Use discovered sources with priority system
   const bestAvailableTrafficSources = useMemo(() => {
-    if (bestHookData?.availableTrafficSources && bestHookData.availableTrafficSources.length > 0) {
-      console.log('✅ [USING BEST HOOK SOURCES]', {
-        instanceId: bestHookData.instanceId,
-        sourcesCount: bestHookData.sourcesCount,
-        sources: bestHookData.availableTrafficSources
-      });
-      return bestHookData.availableTrafficSources;
+    console.log('🔍 [PRIORITY SYSTEM] Evaluating sources:');
+    console.log('  1. discoveredTrafficSources:', discoveredTrafficSources);
+    console.log('  2. bigQueryResult.meta sources:', bigQueryResult.meta?.availableTrafficSources);
+    console.log('  3. data sources:', bigQueryResult.data?.trafficSources?.map(s => s.name));
+    
+    // Priority 1: Discovered sources (from successful queries)
+    if (discoveredTrafficSources.length > 0) {
+      console.log('✅ [PRIORITY 1] Using discoveredTrafficSources:', discoveredTrafficSources);
+      return discoveredTrafficSources;
     }
     
-    // Fallback to fallback hook
-    const fallbackSources = fallbackBigQueryResult.meta?.availableTrafficSources || [];
-    console.log('⏳ [USING FALLBACK SOURCES]', {
-      sourcesCount: fallbackSources.length,
-      sources: fallbackSources
-    });
-    return fallbackSources;
+    // Priority 2: Current meta sources
+    if (bigQueryResult.meta?.availableTrafficSources?.length > 0) {
+      console.log('✅ [PRIORITY 2] Using meta sources:', bigQueryResult.meta.availableTrafficSources);
+      return bigQueryResult.meta.availableTrafficSources;
+    }
     
-  }, [bestHookData, fallbackBigQueryResult.meta?.availableTrafficSources]);
+    // Priority 3: Data sources
+    const dataSources = bigQueryResult.data?.trafficSources?.map(s => s.name).filter(Boolean) || [];
+    if (dataSources.length > 0) {
+      console.log('✅ [PRIORITY 3] Using data sources:', dataSources);
+      return dataSources;
+    }
+    
+    console.log('⚠️ [PRIORITY FALLBACK] Using default sources');
+    return ['App Store Search', 'App Store Browse', 'Apple Search Ads'];
+  }, [discoveredTrafficSources, bigQueryResult.meta?.availableTrafficSources, bigQueryResult.data?.trafficSources]);
 
   // Determine data source status
   useEffect(() => {
-    if (selectedResult.loading) {
+    if (bigQueryResult.loading) {
       setDataSourceStatus('loading');
       setCurrentDataSource('bigquery');
-    } else if (selectedResult.error) {
-      console.warn('BigQuery failed, using mock data:', selectedResult.error.message);
+    } else if (bigQueryResult.error) {
+      console.warn('BigQuery failed, using mock data:', bigQueryResult.error.message);
       setDataSourceStatus('fallback');
       setCurrentDataSource('mock');
-    } else if (selectedResult.data) {
+    } else if (bigQueryResult.data) {
       setDataSourceStatus('available');
       setCurrentDataSource('bigquery');
     } else {
       setDataSourceStatus('fallback'); 
       setCurrentDataSource('mock');
     }
-  }, [selectedResult.loading, selectedResult.error, selectedResult.data]);
+  }, [bigQueryResult.loading, bigQueryResult.error, bigQueryResult.data]);
 
   const contextValue: AsoDataContextType = {
-    data: selectedResult.data,
-    loading: selectedResult.loading,
-    error: selectedResult.error,
+    data: bigQueryResult.data,
+    loading: bigQueryResult.loading,
+    error: bigQueryResult.error,
     filters,
     setFilters,
     currentDataSource,
     dataSourceStatus,
-    meta: currentDataSource === 'bigquery' ? (bestHookData?.metadata || fallbackBigQueryResult.meta) : undefined,
+    meta: currentDataSource === 'bigquery' ? bigQueryResult.meta : undefined,
     availableTrafficSources: [...bestAvailableTrafficSources],
     userTouchedFilters,
     setUserTouchedFilters,
-    registerHookInstance, // ✅ NEW: Expose registration function
+    registerHookInstance,
   };
 
-  // ✅ FINAL: Log what context provides to components
-  console.log('🚨 [CONTEXT→COMPONENT] Context providing to components:');
+  // Final logging
+  console.log('🚨 [CONTEXT→COMPONENT] Final context values:');
   console.log('  availableTrafficSources:', contextValue.availableTrafficSources);
   console.log('  sourcesCount:', contextValue.availableTrafficSources?.length || 0);
-  console.log('  usingBestHook:', !!bestHookData);
-  console.log('  bestHookInstance:', bestHookData?.instanceId || 'none');
-  console.log('  registeredInstances:', hookRegistry.size);
+  console.log('  discoveredTrafficSources:', discoveredTrafficSources);
 
   return (
     <AsoDataContext.Provider value={contextValue}>

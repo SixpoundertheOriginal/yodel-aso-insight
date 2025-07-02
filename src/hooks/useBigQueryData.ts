@@ -84,15 +84,7 @@ export const useBigQueryData = (
   // Get selected apps from BigQuery app selector
   const { selectedApps } = useBigQueryAppSelection();
 
-  // ✅ NEW: Get registration function from context (with fallback for non-context usage)
-  let registerHookInstance: ((instanceId: string, data: any) => void) | undefined;
-  try {
-    const context = useAsoData();
-    registerHookInstance = context.registerHookInstance;
-  } catch (e) {
-    // Hook used outside context - that's fine, just won't register
-    console.log('🔍 [HOOK] Used outside AsoDataContext - no registration needed');
-  }
+  // Remove circular dependency - registration will be handled externally
 
   // Hook instance tracking
   const instanceId = Math.random().toString(36).substr(2, 9);
@@ -105,36 +97,11 @@ export const useBigQueryData = (
       to: dateRange.to.toISOString().split('T')[0]
     },
     ready,
-    hasRegistration: !!registerHookInstance, // ✅ NEW: Log if registration available
+    hasRegistration: false, // Registration removed to break circular dependency
     timestamp: new Date().toISOString()
   });
 
-  // ✅ NEW: Register this hook instance with context whenever data changes
-  useEffect(() => {
-    if (!registerHookInstance) return; // No context available
-
-    const hookData = {
-      instanceId,
-      availableTrafficSources: meta?.availableTrafficSources || [],
-      sourcesCount: meta?.availableTrafficSources?.length || 0,
-      data,
-      metadata: meta,
-      loading,
-      error,
-      lastUpdated: Date.now()
-    };
-
-    console.log(`🔄 [HOOK REGISTRATION] Instance ${instanceId} registering:`, {
-      sourcesCount: hookData.sourcesCount,
-      hasData: !!data,
-      loading,
-      error: !!error,
-      sources: hookData.availableTrafficSources
-    });
-
-    registerHookInstance(instanceId, hookData);
-
-  }, [instanceId, data, meta, loading, error]); // ✅ FIXED: Removed registerHookInstance from deps
+  // Registration removed to break circular dependency
 
   useEffect(() => {
     if (!clientList.length || !ready) return;
@@ -264,7 +231,7 @@ export const useBigQueryData = (
     sourcesCount: meta?.availableTrafficSources?.length || 0,
     loading,
     error: error?.message,
-    willRegister: !!registerHookInstance, // ✅ NEW: Show if this will register
+    willRegister: false, // Registration removed to break circular dependency
     dateRange: {
       from: dateRange.from.toISOString().split('T')[0],
       to: dateRange.to.toISOString().split('T')[0]
