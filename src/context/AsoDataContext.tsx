@@ -168,7 +168,44 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
     });
   }, []); // ✅ LOOP FIX: Empty dependency array - stable reference
 
-  // ✅ MODIFIED: Create fallback hook FIRST - before any memoized calculations
+  // ✅ NEW: Find Best Hook Instance
+  const getBestHookData = useCallback((): HookInstanceData | null => {
+    let bestInstance: HookInstanceData | null = null;
+    let maxSources = 0;
+    
+    console.log(`🔍 [BEST HOOK SEARCH] Searching through ${hookRegistry.size} registered instances`);
+    
+    for (const [instanceId, data] of hookRegistry.entries()) {
+      console.log(`🔍 [CHECKING INSTANCE] ${instanceId}:`, {
+        sourcesCount: data.sourcesCount,
+        hasData: !!data.data,
+        loading: data.loading,
+        error: !!data.error,
+        sources: data.availableTrafficSources
+      });
+      
+      // Only consider instances with data and no errors
+      if (data.sourcesCount > maxSources && !data.error && !data.loading && data.data) {
+        maxSources = data.sourcesCount;
+        bestInstance = data;
+        console.log(`🎯 [NEW BEST FOUND] Instance ${instanceId} with ${data.sourcesCount} sources`);
+      }
+    }
+    
+    if (bestInstance) {
+      console.log(`✅ [BEST HOOK SELECTED]`, {
+        instanceId: bestInstance.instanceId,
+        sourcesCount: bestInstance.sourcesCount,
+        sources: bestInstance.availableTrafficSources
+      });
+    } else {
+      console.log(`❌ [NO BEST HOOK] No suitable instance found`);
+    }
+    
+    return bestInstance;
+  }, [hookRegistry]);
+
+  // ✅ MODIFIED: Still create one hook for fallback, but don't rely on it exclusively
   const bigQueryReady = filters.clients.length > 0;
   const fallbackBigQueryResult = useBigQueryData(
     filters.clients,
@@ -221,91 +258,48 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
     filters.trafficSources
   );
 
-  // ✅ MEMOIZE: Best hook data to prevent unnecessary recalculations
-  const bestHookData = useMemo(() => {
-    let bestInstance: HookInstanceData | null = null;
-    let maxSources = 0;
-    
-    console.log(`🔍 [BEST HOOK SEARCH] Searching through ${hookRegistry.size} registered instances`);
-    
-    for (const [instanceId, data] of hookRegistry.entries()) {
-      console.log(`🔍 [CHECKING INSTANCE] ${instanceId}:`, {
-        sourcesCount: data.sourcesCount,
-        hasData: !!data.data,
-        loading: data.loading,
-        error: !!data.error,
-        sources: data.availableTrafficSources
+  // ✅ NEW: Use Best Hook Data Instead of Single Hook
+  const bestHookData = getBestHookData();
+  const selectedResult = bestHookData || fallbackBigQueryResult;
+
+  // ✅ NEW: Get Available Traffic Sources from Best Hook
+  const bestAvailableTrafficSources = useMemo(() => {
+    if (bestHookData?.availableTrafficSources && bestHookData.availableTrafficSources.length > 0) {
+      console.log('✅ [USING BEST HOOK SOURCES]', {
+        instanceId: bestHookData.instanceId,
+        sourcesCount: bestHookData.sourcesCount,
+        sources: bestHookData.availableTrafficSources
       });
-      
-      // Only consider instances with data and no errors
-      if (data.sourcesCount > maxSources && !data.error && !data.loading && data.data) {
-        maxSources = data.sourcesCount;
-        bestInstance = data;
-        console.log(`🎯 [NEW BEST FOUND] Instance ${instanceId} with ${data.sourcesCount} sources`);
-      }
+      return bestHookData.availableTrafficSources;
     }
     
-    if (bestInstance) {
-      console.log(`✅ [BEST HOOK SELECTED]`, {
-        instanceId: bestInstance.instanceId,
-        sourcesCount: bestInstance.sourcesCount,
-        sources: bestInstance.availableTrafficSources
-      });
-    } else {
-      console.log(`❌ [NO BEST HOOK] No suitable instance found`);
-    }
+    // Fallback to fallback hook
+    const fallbackSources = fallbackBigQueryResult.meta?.availableTrafficSources || [];
+    console.log('⏳ [USING FALLBACK SOURCES]', {
+      sourcesCount: fallbackSources.length,
+      sources: fallbackSources
+    });
+    return fallbackSources;
     
-    return bestInstance;
-  }, [hookRegistry]);
+  }, [bestHookData, fallbackBigQueryResult.meta?.availableTrafficSources]);
 
-  // ✅ MEMOIZE: Selected result to prevent object reference changes
-  const selectedResult = useMemo(() => {
-    return bestHookData || fallbackBigQueryResult;
-  }, [bestHookData, fallbackBigQueryResult.data, fallbackBigQueryResult.loading, fallbackBigQueryResult.error]);
-
-  // ✅ NUCLEAR OPTION: Stop all state updates that cause re-renders
-  const stableStatusRef = useRef<{ status: DataSourceStatus; source: DataSource }>({
-    status: 'loading',
-    source: 'bigquery'
-  });
-
-  // ✅ NUCLEAR: Use refs instead of state to prevent re-renders entirely
-  const statusUpdaterRef = useRef<() => void>();
-  statusUpdaterRef.current = () => {
-    let newStatus: DataSourceStatus;
-    let newSource: DataSource;
-
-    if (selectedResult.loading) {
-      newStatus = 'loading';
-      newSource = 'bigquery';
-    } else if (selectedResult.error) {
-      newStatus = 'fallback';
-      newSource = 'mock';
-    } else if (selectedResult.data) {
-      newStatus = 'available';
-      newSource = 'bigquery';
-    } else {
-      newStatus = 'fallback';
-      newSource = 'mock';
-    }
-
-    // Only update if genuinely different
-    if (stableStatusRef.current.status !== newStatus || stableStatusRef.current.source !== newSource) {
-      console.log('🔄 [STATUS CHANGE] Updating:', { from: stableStatusRef.current, to: { status: newStatus, source: newSource } });
-      stableStatusRef.current = { status: newStatus, source: newSource };
-      
-      // Batch state updates to prevent multiple re-renders
-      React.startTransition(() => {
-        setDataSourceStatus(newStatus);
-        setCurrentDataSource(newSource);
-      });
-    }
-  };
-
-  // ✅ NUCLEAR: Only update status when actual data state changes - use minimal dependencies
+  // Determine data source status
   useEffect(() => {
-    statusUpdaterRef.current?.();
-  }, [!!selectedResult.loading, !!selectedResult.error, !!selectedResult.data]); // Only booleans, no object references
+    if (selectedResult.loading) {
+      setDataSourceStatus('loading');
+      setCurrentDataSource('bigquery');
+    } else if (selectedResult.error) {
+      console.warn('BigQuery failed, using mock data:', selectedResult.error.message);
+      setDataSourceStatus('fallback');
+      setCurrentDataSource('mock');
+    } else if (selectedResult.data) {
+      setDataSourceStatus('available');
+      setCurrentDataSource('bigquery');
+    } else {
+      setDataSourceStatus('fallback'); 
+      setCurrentDataSource('mock');
+    }
+  }, [selectedResult.loading, selectedResult.error, selectedResult.data]);
 
   const contextValue: AsoDataContextType = {
     data: selectedResult.data,
