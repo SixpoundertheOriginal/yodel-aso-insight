@@ -2,12 +2,13 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { DateRange, AsoData, TimeSeriesPoint, MetricSummary, TrafficSource } from './useMockAsoData';
 import { useBigQueryAppSelection } from '@/context/BigQueryAppContext';
+import { useAsoData } from '@/context/AsoDataContext'; // ✅ NEW: Import context
 
 interface BigQueryDataPoint {
   date: string;
   organization_id: string;
   traffic_source: string;
-  traffic_source_raw?: string; // Original BigQuery name for debugging
+  traffic_source_raw?: string;
   impressions: number;
   downloads: number;
   product_page_views: number;
@@ -26,14 +27,13 @@ interface BigQueryMeta {
     client: string;
     dateRange: { from: string; to: string } | null;
     selectedApps?: string[];
-    trafficSources?: string[]; // Add traffic source filtering
+    trafficSources?: string[];
     limit: number;
   };
-  availableTrafficSources?: string[]; // Available traffic sources from BigQuery
+  availableTrafficSources?: string[];
   filteredByTrafficSource?: boolean;
   projectId: string;
   timestamp: string;
-  // **PHASE 1: Enhanced metadata structure**
   dataArchitecture?: {
     phase: string;
     discoveryQuery: {
@@ -49,7 +49,7 @@ interface BigQueryMeta {
   };
   debug?: {
     queryPreview: string;
-    discoveryQueryPreview?: string; // Phase 1 addition
+    discoveryQueryPreview?: string;
     parameterCount: number;
     jobComplete: boolean;
     trafficSourceMapping?: Record<string, string>;
@@ -70,14 +70,6 @@ interface BigQueryDataResult {
   meta?: BigQueryMeta;
 }
 
-/**
- * Fetch BigQuery ASO data for the given clients and date range.
- *
- * @param clientList - List of BigQuery client identifiers
- * @param dateRange - Date range to query
- * @param trafficSources - Optional traffic source filters
- * @param ready - When false the hook will not fetch until true
- */
 export const useBigQueryData = (
   clientList: string[],
   dateRange: DateRange,
@@ -92,7 +84,17 @@ export const useBigQueryData = (
   // Get selected apps from BigQuery app selector
   const { selectedApps } = useBigQueryAppSelection();
 
-  // **HOOK INSTANCE DEBUG: Track hook calls and instances**
+  // ✅ NEW: Get registration function from context (with fallback for non-context usage)
+  let registerHookInstance: ((instanceId: string, data: any) => void) | undefined;
+  try {
+    const context = useAsoData();
+    registerHookInstance = context.registerHookInstance;
+  } catch (e) {
+    // Hook used outside context - that's fine, just won't register
+    console.log('🔍 [HOOK] Used outside AsoDataContext - no registration needed');
+  }
+
+  // Hook instance tracking
   const instanceId = Math.random().toString(36).substr(2, 9);
   console.log('🚨 [HOOK INSTANCE] useBigQueryData called with:', {
     instanceId,
@@ -103,8 +105,36 @@ export const useBigQueryData = (
       to: dateRange.to.toISOString().split('T')[0]
     },
     ready,
+    hasRegistration: !!registerHookInstance, // ✅ NEW: Log if registration available
     timestamp: new Date().toISOString()
   });
+
+  // ✅ NEW: Register this hook instance with context whenever data changes
+  useEffect(() => {
+    if (!registerHookInstance) return; // No context available
+
+    const hookData = {
+      instanceId,
+      availableTrafficSources: meta?.availableTrafficSources || [],
+      sourcesCount: meta?.availableTrafficSources?.length || 0,
+      data,
+      metadata: meta,
+      loading,
+      error,
+      lastUpdated: Date.now()
+    };
+
+    console.log(`🔄 [HOOK REGISTRATION] Instance ${instanceId} registering:`, {
+      sourcesCount: hookData.sourcesCount,
+      hasData: !!data,
+      loading,
+      error: !!error,
+      sources: hookData.availableTrafficSources
+    });
+
+    registerHookInstance(instanceId, hookData);
+
+  }, [registerHookInstance, instanceId, data, meta, loading, error, meta?.availableTrafficSources]);
 
   useEffect(() => {
     if (!clientList.length || !ready) return;
@@ -125,7 +155,6 @@ export const useBigQueryData = (
           trafficSources
         });
 
-        // Use the first client as identifier for now
         const client = clientList[0] || 'yodel_pimsleur';
 
         const requestBody = {
@@ -163,7 +192,6 @@ export const useBigQueryData = (
         console.log('✅ [BigQuery Hook] Raw data received:', bigQueryResponse.data?.length, 'records');
         console.log('📊 [BigQuery Hook] Query metadata:', bigQueryResponse.meta);
         
-        // **PHASE 1: Enhanced logging for traffic source architecture**
         if (bigQueryResponse.meta.dataArchitecture) {
           console.log('🏗️ [Phase 1 Architecture] Data fetching summary:', {
             phase: bigQueryResponse.meta.dataArchitecture.phase,
@@ -179,7 +207,6 @@ export const useBigQueryData = (
 
         console.log('📊 [BigQuery Hook] Available traffic sources:', bigQueryResponse.meta.availableTrafficSources);
         
-        // **CRITICAL: Log what hook is about to pass to context**
         console.log('🚨 [HOOK→CONTEXT] Hook instance', instanceId, 'is setting meta with:', {
           availableTrafficSources: bigQueryResponse.meta.availableTrafficSources,
           sourcesCount: bigQueryResponse.meta.availableTrafficSources?.length || 0,
@@ -190,10 +217,8 @@ export const useBigQueryData = (
           trafficSources
         });
 
-        // Store metadata for debugging and empty state handling
         setMeta(bigQueryResponse.meta);
 
-        // Transform BigQuery data to AsoData format
         const transformedData = transformBigQueryToAsoData(
           bigQueryResponse.data || [],
           trafficSources,
@@ -206,7 +231,6 @@ export const useBigQueryData = (
       } catch (err) {
         console.error('❌ [BigQuery Hook] Error fetching data:', err);
         
-        // Enhanced error logging for BigQuery issues
         if (err instanceof Error) {
           if (err.message.includes('403') || err.message.includes('permission')) {
             console.error('🔐 [BigQuery Hook] Permission denied - check BigQuery credentials and table access');
@@ -226,14 +250,13 @@ export const useBigQueryData = (
     fetchBigQueryData();
   }, [
     clientList, 
-    dateRange.from.toISOString().split('T')[0], // Only trigger on date changes
+    dateRange.from.toISOString().split('T')[0],
     dateRange.to.toISOString().split('T')[0], 
     trafficSources,
     selectedApps,
     ready
   ]);
 
-  // **HOOK RETURN DEBUG: Log what hook is returning to context**
   console.log('🚨 [HOOK RETURN] useBigQueryData instance', instanceId, 'returning:', {
     hasData: !!data,
     hasMeta: !!meta,
@@ -241,6 +264,7 @@ export const useBigQueryData = (
     sourcesCount: meta?.availableTrafficSources?.length || 0,
     loading,
     error: error?.message,
+    willRegister: !!registerHookInstance, // ✅ NEW: Show if this will register
     dateRange: {
       from: dateRange.from.toISOString().split('T')[0],
       to: dateRange.to.toISOString().split('T')[0]
@@ -255,7 +279,6 @@ function transformBigQueryToAsoData(
   trafficSources: string[],
   meta: BigQueryMeta
 ): AsoData {
-  // Group data by date for timeseries
   const dateGroups = bigQueryData.reduce((acc, item) => {
     const date = item.date;
     if (!acc[date]) {
@@ -265,14 +288,12 @@ function transformBigQueryToAsoData(
     return acc;
   }, {} as Record<string, BigQueryDataPoint[]>);
 
-  // Create timeseries data with proper NULL handling
   const timeseriesData: TimeSeriesPoint[] = Object.entries(dateGroups)
     .map(([date, items]) => {
       const dayTotals = items.reduce(
         (sum, item) => ({
           impressions: sum.impressions + item.impressions,
           downloads: sum.downloads + item.downloads,
-          // **FIX: Skip NULL values completely instead of converting to 0**
           product_page_views: item.product_page_views !== null ? 
             sum.product_page_views + item.product_page_views : 
             sum.product_page_views
@@ -289,12 +310,10 @@ function transformBigQueryToAsoData(
     })
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-  // **FIX: Calculate summary metrics with proper NULL handling**
   const totals = bigQueryData.reduce(
     (sum, item) => ({
       impressions: sum.impressions + item.impressions,
       downloads: sum.downloads + item.downloads,
-      // **CRITICAL FIX: Skip NULL values completely instead of converting to 0**
       product_page_views: item.product_page_views !== null ? 
         sum.product_page_views + item.product_page_views : 
         sum.product_page_views
@@ -302,7 +321,6 @@ function transformBigQueryToAsoData(
     { impressions: 0, downloads: 0, product_page_views: 0 }
   );
 
-  // Generate mock deltas for now (in a real implementation, compare with previous period)
   const generateMockDelta = (): number => (Math.random() * 40) - 20;
 
   const summary = {
@@ -310,7 +328,6 @@ function transformBigQueryToAsoData(
     downloads: { value: totals.downloads, delta: generateMockDelta() },
     product_page_views: { value: totals.product_page_views, delta: generateMockDelta() },
     cvr: { 
-      // **FIX: Use product_page_views for CVR calculation, fallback to impressions**
       value: totals.product_page_views > 0 ? 
         (totals.downloads / totals.product_page_views) * 100 : 
         (totals.impressions > 0 ? (totals.downloads / totals.impressions) * 100 : 0), 
@@ -318,7 +335,6 @@ function transformBigQueryToAsoData(
     }
   };
 
-  // Group by traffic source (using the display names from BigQuery)
   const trafficSourceGroups = bigQueryData.reduce((acc, item) => {
     const source = item.traffic_source || 'Unknown';
     if (!acc[source]) {
@@ -328,12 +344,10 @@ function transformBigQueryToAsoData(
     return acc;
   }, {} as Record<string, { value: number; delta: number }>);
 
-  // Add deltas for traffic sources
   Object.keys(trafficSourceGroups).forEach(source => {
     trafficSourceGroups[source].delta = generateMockDelta();
   });
 
-  // **PHASE 1 CRITICAL: Use available traffic sources from metadata (from discovery query)**
   const availableTrafficSources = meta.availableTrafficSources || [];
   console.log('🔍 [Transform Phase 1] Using traffic sources from metadata:', {
     fromMetadata: availableTrafficSources,
@@ -342,7 +356,6 @@ function transformBigQueryToAsoData(
     dataArchitecture: meta.dataArchitecture?.phase || 'unknown'
   });
   
-  // Use metadata sources (from discovery query) if available, otherwise fallback to request params
   const sourcesToShow = availableTrafficSources.length > 0 ? availableTrafficSources : trafficSources;
   
   const trafficSourceData: TrafficSource[] = sourcesToShow.map(source => ({
@@ -351,7 +364,6 @@ function transformBigQueryToAsoData(
     delta: trafficSourceGroups[source]?.delta || 0
   }));
 
-  // **ENHANCED: Debug logging to verify NULL handling fix**
   console.log('📊 [Transform] Aggregation debug with NULL handling fix:', {
     totalItems: bigQueryData.length,
     nonNullPageViewItems: bigQueryData.filter(d => d.product_page_views !== null).length,
@@ -360,7 +372,6 @@ function transformBigQueryToAsoData(
     maxPageViews: bigQueryData.filter(d => d.product_page_views !== null).length > 0 ? 
       Math.max(...bigQueryData.filter(d => d.product_page_views !== null).map(d => d.product_page_views)) : 0,
     aggregationWorking: totals.product_page_views > 0 ? 'YES - NULL handling fixed!' : 'Still showing 0',
-    // **PHASE 1: Enhanced traffic source debugging**
     trafficSourceArchitecture: {
       phase: meta.dataArchitecture?.phase || 'unknown',
       sourcesFromMetadata: availableTrafficSources,
