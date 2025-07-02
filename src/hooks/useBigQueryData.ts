@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { DateRange, AsoData, TimeSeriesPoint, MetricSummary, TrafficSource } from './useMockAsoData';
+import { DateRange, AsoData, TimeSeriesPoint, TrafficSource } from './useMockAsoData';
 import { useBigQueryAppSelection } from '@/context/BigQueryAppContext';
-import { useAsoData } from '@/context/AsoDataContext'; // ✅ NEW: Import context
 
 interface BigQueryDataPoint {
   date: string;
@@ -74,7 +73,8 @@ export const useBigQueryData = (
   clientList: string[],
   dateRange: DateRange,
   trafficSources: string[],
-  ready: boolean = true
+  ready: boolean = true,
+  discoveredTrafficSources: string[] = [] // ✅ Passed from singleton provider
 ): BigQueryDataResult => {
   const [data, setData] = useState<AsoData | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -84,18 +84,14 @@ export const useBigQueryData = (
   // Get selected apps from BigQuery app selector
   const { selectedApps } = useBigQueryAppSelection();
 
-  // ✅ NEW: Get registration function from context (with fallback for non-context usage)
-  let registerHookInstance: ((instanceId: string, data: any) => void) | undefined;
-  try {
-    const context = useAsoData();
-    registerHookInstance = context.registerHookInstance;
-  } catch (e) {
-    // Hook used outside context - that's fine, just won't register
-    console.log('🔍 [HOOK] Used outside AsoDataContext - no registration needed');
-  }
-
-  // Hook instance tracking
+  // Hook instance tracking for debugging
   const instanceId = Math.random().toString(36).substr(2, 9);
+  
+  // ✅ GATE: Only fetch data when discovery is complete
+  const shouldFetchData = ready && 
+                         discoveredTrafficSources.length > 0 && 
+                         clientList.length > 0;
+
   console.log('🚨 [HOOK INSTANCE] useBigQueryData called with:', {
     instanceId,
     clientList,
@@ -105,39 +101,21 @@ export const useBigQueryData = (
       to: dateRange.to.toISOString().split('T')[0]
     },
     ready,
-    hasRegistration: !!registerHookInstance, // ✅ NEW: Log if registration available
+    discoveredSources: discoveredTrafficSources.length,
+    shouldFetchData,
     timestamp: new Date().toISOString()
   });
 
-  // ✅ NEW: Register this hook instance with context whenever data changes
   useEffect(() => {
-    if (!registerHookInstance) return; // No context available
-
-    const hookData = {
-      instanceId,
-      availableTrafficSources: meta?.availableTrafficSources || [],
-      sourcesCount: meta?.availableTrafficSources?.length || 0,
-      data,
-      metadata: meta,
-      loading,
-      error,
-      lastUpdated: Date.now()
-    };
-
-    console.log(`🔄 [HOOK REGISTRATION] Instance ${instanceId} registering:`, {
-      sourcesCount: hookData.sourcesCount,
-      hasData: !!data,
-      loading,
-      error: !!error,
-      sources: hookData.availableTrafficSources
-    });
-
-    registerHookInstance(instanceId, hookData);
-
-  }, [instanceId, data, meta, loading, error]); // ✅ FIXED: Removed registerHookInstance from deps
-
-  useEffect(() => {
-    if (!clientList.length || !ready) return;
+    // ✅ GATE: Don't fetch until discovery is complete
+    if (!shouldFetchData) {
+      console.log('🔒 [BigQuery Hook] Waiting for discovery to complete:', {
+        ready,
+        discoveredSources: discoveredTrafficSources.length,
+        clientList: clientList.length
+      });
+      return;
+    }
 
     const fetchBigQueryData = async () => {
       try {
@@ -145,14 +123,16 @@ export const useBigQueryData = (
         setError(null);
         setMeta(undefined);
 
-        console.log('🔍 [BigQuery Hook] Fetching data with params:', {
+        console.log('🔍 [BigQuery Hook] Fetching ALL traffic source data:', {
           clientList,
           selectedApps,
           dateRange: {
             from: dateRange.from.toISOString().split('T')[0],
             to: dateRange.to.toISOString().split('T')[0]
           },
-          trafficSources
+          userSelectedSources: trafficSources,
+          discoveredSources: discoveredTrafficSources,
+          strategy: 'fetch_all_filter_client_side'
         });
 
         const client = clientList[0] || 'yodel_pimsleur';
@@ -164,11 +144,12 @@ export const useBigQueryData = (
             to: dateRange.to.toISOString().split('T')[0]
           },
           selectedApps: selectedApps.length > 0 ? selectedApps : undefined,
-          trafficSources: trafficSources.length > 0 ? trafficSources : undefined,
-          limit: 100
+          // ✅ FETCH ALL: Don't filter by traffic sources - get complete dataset
+          trafficSources: undefined, // Fetch all traffic sources
+          limit: 1000 // Increase limit for comprehensive data
         };
 
-        console.log('📤 [BigQuery Hook] Making request to edge function...');
+        console.log('📤 [BigQuery Hook] Making request for ALL traffic sources...');
 
         const { data: response, error: functionError } = await supabase.functions.invoke(
           'bigquery-aso-data',
@@ -192,37 +173,19 @@ export const useBigQueryData = (
         console.log('✅ [BigQuery Hook] Raw data received:', bigQueryResponse.data?.length, 'records');
         console.log('📊 [BigQuery Hook] Query metadata:', bigQueryResponse.meta);
         
-        if (bigQueryResponse.meta.dataArchitecture) {
-          console.log('🏗️ [Phase 1 Architecture] Data fetching summary:', {
-            phase: bigQueryResponse.meta.dataArchitecture.phase,
-            discoveryExecuted: bigQueryResponse.meta.dataArchitecture.discoveryQuery.executed,
-            allAvailableSources: bigQueryResponse.meta.dataArchitecture.discoveryQuery.sources,
-            totalSourcesFound: bigQueryResponse.meta.dataArchitecture.discoveryQuery.sourcesFound,
-            mainQueryFiltered: bigQueryResponse.meta.dataArchitecture.mainQuery.filtered,
-            dataRowsReturned: bigQueryResponse.meta.dataArchitecture.mainQuery.rowsReturned,
-            requestedSources: trafficSources,
-            metadataAvailableSources: bigQueryResponse.meta.availableTrafficSources
-          });
-        }
+        // ✅ IMPORTANT: Use discovered sources from singleton provider
+        const enhancedMeta = {
+          ...bigQueryResponse.meta,
+          availableTrafficSources: discoveredTrafficSources
+        };
 
-        console.log('📊 [BigQuery Hook] Available traffic sources:', bigQueryResponse.meta.availableTrafficSources);
-        
-        console.log('🚨 [HOOK→CONTEXT] Hook instance', instanceId, 'is setting meta with:', {
-          availableTrafficSources: bigQueryResponse.meta.availableTrafficSources,
-          sourcesCount: bigQueryResponse.meta.availableTrafficSources?.length || 0,
-          dateRange: {
-            from: dateRange.from.toISOString().split('T')[0],
-            to: dateRange.to.toISOString().split('T')[0]
-          },
-          trafficSources
-        });
-
-        setMeta(bigQueryResponse.meta);
+        setMeta(enhancedMeta);
 
         const transformedData = transformBigQueryToAsoData(
           bigQueryResponse.data || [],
-          trafficSources,
-          bigQueryResponse.meta
+          trafficSources, // User's selected filters for client-side filtering
+          enhancedMeta,
+          discoveredTrafficSources // All available sources from singleton
         );
 
         setData(transformedData);
@@ -230,17 +193,6 @@ export const useBigQueryData = (
 
       } catch (err) {
         console.error('❌ [BigQuery Hook] Error fetching data:', err);
-        
-        if (err instanceof Error) {
-          if (err.message.includes('403') || err.message.includes('permission')) {
-            console.error('🔐 [BigQuery Hook] Permission denied - check BigQuery credentials and table access');
-          } else if (err.message.includes('404')) {
-            console.error('🔍 [BigQuery Hook] Table not found - verify table name and project ID');
-          } else if (err.message.includes('non-2xx status')) {
-            console.error('🚫 [BigQuery Hook] Edge function failed - check edge function logs');
-          }
-        }
-        
         setError(err instanceof Error ? err : new Error('Unknown BigQuery error'));
       } finally {
         setLoading(false);
@@ -254,32 +206,52 @@ export const useBigQueryData = (
     dateRange.to.toISOString().split('T')[0], 
     trafficSources,
     selectedApps,
-    ready
+    shouldFetchData,
+    discoveredTrafficSources.length // ✅ Re-fetch when discovery completes
   ]);
 
   console.log('🚨 [HOOK RETURN] useBigQueryData instance', instanceId, 'returning:', {
     hasData: !!data,
     hasMeta: !!meta,
-    availableTrafficSources: meta?.availableTrafficSources,
-    sourcesCount: meta?.availableTrafficSources?.length || 0,
+    availableTrafficSources: discoveredTrafficSources,
+    sourcesCount: discoveredTrafficSources.length,
     loading,
     error: error?.message,
-    willRegister: !!registerHookInstance, // ✅ NEW: Show if this will register
+    shouldFetchData,
     dateRange: {
       from: dateRange.from.toISOString().split('T')[0],
       to: dateRange.to.toISOString().split('T')[0]
     }
   });
 
-  return { data, loading, error, meta };
+  return { 
+    data, 
+    loading, 
+    error, 
+    meta 
+  };
 };
 
 function transformBigQueryToAsoData(
   bigQueryData: BigQueryDataPoint[],
-  trafficSources: string[],
-  meta: BigQueryMeta
+  userSelectedSources: string[], // User's filter selection
+  meta: BigQueryMeta,
+  allAvailableSources: string[] = [] // All discovered sources
 ): AsoData {
-  const dateGroups = bigQueryData.reduce((acc, item) => {
+  // ✅ CLIENT-SIDE FILTERING: Apply user's traffic source filter
+  const filteredData = userSelectedSources.length > 0 
+    ? bigQueryData.filter(item => userSelectedSources.includes(item.traffic_source))
+    : bigQueryData; // Show all data if no specific sources selected
+
+  console.log('🔍 [Transform] Client-side filtering applied:', {
+    totalRawData: bigQueryData.length,
+    userSelectedSources,
+    filteredDataCount: filteredData.length,
+    availableSourcesInData: [...new Set(bigQueryData.map(d => d.traffic_source))],
+    strategy: 'fetch_all_filter_client_side'
+  });
+
+  const dateGroups = filteredData.reduce((acc, item) => {
     const date = item.date;
     if (!acc[date]) {
       acc[date] = [];
@@ -310,7 +282,7 @@ function transformBigQueryToAsoData(
     })
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-  const totals = bigQueryData.reduce(
+  const totals = filteredData.reduce(
     (sum, item) => ({
       impressions: sum.impressions + item.impressions,
       downloads: sum.downloads + item.downloads,
@@ -335,7 +307,7 @@ function transformBigQueryToAsoData(
     }
   };
 
-  const trafficSourceGroups = bigQueryData.reduce((acc, item) => {
+  const trafficSourceGroups = filteredData.reduce((acc, item) => {
     const source = item.traffic_source || 'Unknown';
     if (!acc[source]) {
       acc[source] = { value: 0, delta: 0 };
@@ -348,36 +320,33 @@ function transformBigQueryToAsoData(
     trafficSourceGroups[source].delta = generateMockDelta();
   });
 
-  const availableTrafficSources = meta.availableTrafficSources || [];
-  console.log('🔍 [Transform Phase 1] Using traffic sources from metadata:', {
-    fromMetadata: availableTrafficSources,
-    fromRequestParams: trafficSources,
-    usingMetadata: availableTrafficSources.length > 0,
-    dataArchitecture: meta.dataArchitecture?.phase || 'unknown'
+  // ✅ IMPORTANT: Show ALL available sources, but with filtered data
+  const availableTrafficSources = allAvailableSources.length > 0 ? allAvailableSources : meta.availableTrafficSources || [];
+  
+  console.log('🔍 [Transform] Building traffic source display:', {
+    allAvailableSources,
+    userSelectedSources,
+    sourcesInFilteredData: Object.keys(trafficSourceGroups),
+    strategy: 'show_all_sources_with_filtered_data'
   });
   
-  const sourcesToShow = availableTrafficSources.length > 0 ? availableTrafficSources : trafficSources;
-  
-  const trafficSourceData: TrafficSource[] = sourcesToShow.map(source => ({
+  // ✅ SHOW ALL SOURCES: Display all available sources, with 0 values for unselected ones
+  const trafficSourceData: TrafficSource[] = availableTrafficSources.map(source => ({
     name: source,
     value: trafficSourceGroups[source]?.value || 0,
     delta: trafficSourceGroups[source]?.delta || 0
   }));
 
-  console.log('📊 [Transform] Aggregation debug with NULL handling fix:', {
-    totalItems: bigQueryData.length,
-    nonNullPageViewItems: bigQueryData.filter(d => d.product_page_views !== null).length,
-    nullPageViewItems: bigQueryData.filter(d => d.product_page_views === null).length,
-    totalProductPageViews: totals.product_page_views,
-    maxPageViews: bigQueryData.filter(d => d.product_page_views !== null).length > 0 ? 
-      Math.max(...bigQueryData.filter(d => d.product_page_views !== null).map(d => d.product_page_views)) : 0,
-    aggregationWorking: totals.product_page_views > 0 ? 'YES - NULL handling fixed!' : 'Still showing 0',
-    trafficSourceArchitecture: {
-      phase: meta.dataArchitecture?.phase || 'unknown',
-      sourcesFromMetadata: availableTrafficSources,
-      sourcesFromParams: trafficSources,
-      finalTrafficSourceData: trafficSourceData.map(ts => ({ name: ts.name, value: ts.value }))
-    }
+  console.log('📊 [Transform] Final traffic source data:', {
+    totalRawItems: bigQueryData.length,
+    filteredItems: filteredData.length,
+    userFilter: userSelectedSources,
+    finalTrafficSourceData: trafficSourceData.map(ts => ({ 
+      name: ts.name, 
+      value: ts.value,
+      hasData: ts.value > 0,
+      isSelected: userSelectedSources.length === 0 || userSelectedSources.includes(ts.name)
+    }))
   });
 
   return {
