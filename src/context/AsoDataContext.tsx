@@ -89,6 +89,9 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
   
   const savedFilters = loadSavedFilters();
 
+  // **PERMANENT DISCOVERY STATE: Never gets overwritten**
+  const [discoveredTrafficSources, setDiscoveredTrafficSources] = useState<string[]>([]);
+
   // Track if the user has manually modified filters in the UI
   const [userTouchedFilters, setUserTouchedFilters] = useState(false);
 
@@ -148,44 +151,32 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
     ? bigQueryResult 
     : mockResult;
 
-  // **SYNCHRONIZED PRESERVATION: Get all available traffic sources immediately**
-  const bestAvailableTrafficSources = useMemo(() => {
-    const currentSources = bigQueryResult.meta?.availableTrafficSources || [];
-    
-    // When we have an unfiltered query (empty filters) and BigQuery sources
-    if (filters.trafficSources.length === 0 && currentSources.length > 0) {
-      console.log('🔍 [SYNC FIX] Preserving discovery metadata:', currentSources);
-      return [...currentSources];
-    }
-    
-    // When we have filtered query, check if we have cached sources in localStorage
-    if (filters.trafficSources.length > 0) {
-      const stored = localStorage.getItem('aso-traffic-sources-cache');
-      if (stored) {
-        try {
-          const cachedSources = JSON.parse(stored);
-          if (Array.isArray(cachedSources) && cachedSources.length > 0) {
-            console.log('🔍 [SYNC FIX] Using cached traffic sources:', cachedSources);
-            return [...cachedSources];
-          }
-        } catch (e) {
-          console.warn('Failed to parse cached traffic sources');
-        }
-      }
-    }
-    
-    // Fallback to current sources
-    return [...currentSources];
-  }, [bigQueryResult.meta?.availableTrafficSources, filters.trafficSources.length]);
-
-  // Cache traffic sources when we have them from unfiltered query
+  // **DISCOVERY ACCUMULATION: Update discovered sources when we get more**
   useEffect(() => {
     const currentSources = bigQueryResult.meta?.availableTrafficSources || [];
-    if (filters.trafficSources.length === 0 && currentSources.length > 0) {
-      localStorage.setItem('aso-traffic-sources-cache', JSON.stringify(currentSources));
-      console.log('🔍 [SYNC FIX] Cached traffic sources for future use:', currentSources);
+    
+    if (currentSources.length > discoveredTrafficSources.length) {
+      console.log('🔍 [DISCOVERY] Found more traffic sources:', {
+        current: discoveredTrafficSources.length,
+        new: currentSources.length,
+        sources: currentSources
+      });
+      setDiscoveredTrafficSources([...currentSources]);
     }
-  }, [bigQueryResult.meta?.availableTrafficSources, filters.trafficSources.length]);
+  }, [bigQueryResult.meta?.availableTrafficSources, discoveredTrafficSources.length]);
+
+  // **ALWAYS RETURN DISCOVERED SOURCES: Never gets filtered or reduced**
+  const bestAvailableTrafficSources = useMemo(() => {
+    if (discoveredTrafficSources.length > 0) {
+      console.log('✅ [STABLE] Using discovered traffic sources:', discoveredTrafficSources);
+      return [...discoveredTrafficSources];
+    }
+    
+    // Fallback to current sources while discovery is happening
+    const currentSources = bigQueryResult.meta?.availableTrafficSources || [];
+    console.log('⏳ [FALLBACK] Using current sources while discovering:', currentSources);
+    return [...currentSources];
+  }, [discoveredTrafficSources, bigQueryResult.meta?.availableTrafficSources]);
 
   const contextValue: AsoDataContextType = {
     data: selectedResult.data,
@@ -202,11 +193,13 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
     setUserTouchedFilters,
   };
 
-  // **VALIDATION: Check final result**
-  console.log('✅ [VALIDATION] Final traffic sources:', {
-    count: bestAvailableTrafficSources.length,
-    sources: bestAvailableTrafficSources,
-    hasAllExpected: bestAvailableTrafficSources.length >= 7, // Expect at least 7 sources
+  // **DEBUG: Monitor traffic source state**
+  console.log('🔍 [DEBUG] Traffic source state:', {
+    discoveredCount: discoveredTrafficSources.length,
+    discoveredSources: discoveredTrafficSources,
+    currentFromBQ: bigQueryResult.meta?.availableTrafficSources || [],
+    finalCount: bestAvailableTrafficSources.length,
+    finalSources: bestAvailableTrafficSources,
     filterState: filters.trafficSources.length === 0 ? 'UNFILTERED' : 'FILTERED'
   });
 
