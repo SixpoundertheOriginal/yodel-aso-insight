@@ -210,14 +210,15 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
     return bestHookData || fallbackBigQueryResult;
   }, [bestHookData, fallbackBigQueryResult.data, fallbackBigQueryResult.loading, fallbackBigQueryResult.error]);
 
-  // ✅ STABLE REFS: Track previous state to prevent unnecessary updates
-  const previousStatusRef = useRef<{ status: DataSourceStatus; source: DataSource }>({
+  // ✅ NUCLEAR OPTION: Stop all state updates that cause re-renders
+  const stableStatusRef = useRef<{ status: DataSourceStatus; source: DataSource }>({
     status: 'loading',
     source: 'bigquery'
   });
 
-  // ✅ STABLE: Determine data source status with change detection
-  useEffect(() => {
+  // ✅ NUCLEAR: Use refs instead of state to prevent re-renders entirely
+  const statusUpdaterRef = useRef<() => void>();
+  statusUpdaterRef.current = () => {
     let newStatus: DataSourceStatus;
     let newSource: DataSource;
 
@@ -225,7 +226,6 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
       newStatus = 'loading';
       newSource = 'bigquery';
     } else if (selectedResult.error) {
-      console.warn('BigQuery failed, using mock data:', selectedResult.error.message);
       newStatus = 'fallback';
       newSource = 'mock';
     } else if (selectedResult.data) {
@@ -236,17 +236,23 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
       newSource = 'mock';
     }
 
-    // ✅ LOOP PREVENTION: Only update state if actually changed
-    const previous = previousStatusRef.current;
-    if (previous.status !== newStatus || previous.source !== newSource) {
-      console.log('🔄 [STATUS UPDATE] Changing status:', { from: previous, to: { status: newStatus, source: newSource } });
-      previousStatusRef.current = { status: newStatus, source: newSource };
-      setDataSourceStatus(newStatus);
-      setCurrentDataSource(newSource);
-    } else {
-      console.log('🚫 [STATUS SKIP] Status unchanged, skipping state update');
+    // Only update if genuinely different
+    if (stableStatusRef.current.status !== newStatus || stableStatusRef.current.source !== newSource) {
+      console.log('🔄 [STATUS CHANGE] Updating:', { from: stableStatusRef.current, to: { status: newStatus, source: newSource } });
+      stableStatusRef.current = { status: newStatus, source: newSource };
+      
+      // Batch state updates to prevent multiple re-renders
+      React.startTransition(() => {
+        setDataSourceStatus(newStatus);
+        setCurrentDataSource(newSource);
+      });
     }
-  }, [selectedResult.loading, selectedResult.error, !!selectedResult.data]); // ✅ STABLE: Use boolean for data instead of object reference
+  };
+
+  // ✅ NUCLEAR: Only update status when actual data state changes - use minimal dependencies
+  useEffect(() => {
+    statusUpdaterRef.current?.();
+  }, [!!selectedResult.loading, !!selectedResult.error, !!selectedResult.data]); // Only booleans, no object references
 
   const contextValue: AsoDataContextType = {
     data: selectedResult.data,
