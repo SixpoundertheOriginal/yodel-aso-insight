@@ -154,19 +154,44 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
     ? bigQueryResult 
     : mockResult;
 
+  // **SMART HOOK SELECTION: Track best metadata from any hook instance**
+  const [bestMetadata, setBestMetadata] = useState<any>(null);
+  const [bestSourceCount, setBestSourceCount] = useState(0);
+
   // **CRITICAL DEBUG: Track what Context receives from Hook**
   useEffect(() => {
+    const currentSources = bigQueryResult.meta?.availableTrafficSources || [];
+    const currentCount = currentSources.length;
+    
     console.log('🚨 [CONTEXT→HOOK DEBUG] What Context sees from BigQuery Hook:', {
       loading: bigQueryResult.loading,
       error: bigQueryResult.error?.message,
       hasData: !!bigQueryResult.data,
       hasMeta: !!bigQueryResult.meta,
       metaKeys: bigQueryResult.meta ? Object.keys(bigQueryResult.meta) : [],
-      availableTrafficSources: bigQueryResult.meta?.availableTrafficSources,
-      sourcesCount: bigQueryResult.meta?.availableTrafficSources?.length || 0,
+      availableTrafficSources: currentSources,
+      sourcesCount: currentCount,
       dataSource: currentDataSource,
-      filterState: filters.trafficSources.length === 0 ? 'UNFILTERED' : 'FILTERED'
+      filterState: filters.trafficSources.length === 0 ? 'UNFILTERED' : 'FILTERED',
+      bestSourceCountSoFar: bestSourceCount
     });
+
+    // **SMART SELECTION: Use hook instance with most sources**
+    if (currentCount > bestSourceCount) {
+      console.log('🎯 [SMART SELECTION] Found better hook instance with more sources:', {
+        previousBest: bestSourceCount,
+        newBest: currentCount,
+        sources: currentSources
+      });
+      setBestMetadata(bigQueryResult.meta);
+      setBestSourceCount(currentCount);
+    } else if (currentCount < bestSourceCount) {
+      console.log('🚫 [SMART SELECTION] Ignoring hook instance with fewer sources:', {
+        currentCount,
+        bestCount: bestSourceCount,
+        reason: 'FEWER_SOURCES_THAN_BEST'
+      });
+    }
   }, [
     bigQueryResult.loading, 
     bigQueryResult.error, 
@@ -174,29 +199,30 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
     bigQueryResult.meta,
     bigQueryResult.meta?.availableTrafficSources,
     currentDataSource,
-    filters.trafficSources.length
+    filters.trafficSources.length,
+    bestSourceCount
   ]);
 
-  // **DISCOVERY ACCUMULATION: Update discovered sources when we get more**
+  // **DISCOVERY ACCUMULATION: Use best metadata to update discovered sources**
   useEffect(() => {
-    const currentSources = bigQueryResult.meta?.availableTrafficSources || [];
+    const bestSources = bestMetadata?.availableTrafficSources || [];
     
-    console.log('🔍 [DISCOVERY] Context received sources update:', {
-      currentSources,
-      currentCount: currentSources.length,
+    console.log('🔍 [DISCOVERY] Using best metadata for sources update:', {
+      bestSources,
+      bestCount: bestSources.length,
       discoveredCount: discoveredTrafficSources.length,
-      shouldUpdate: currentSources.length > discoveredTrafficSources.length
+      shouldUpdate: bestSources.length > discoveredTrafficSources.length
     });
     
-    if (currentSources.length > discoveredTrafficSources.length) {
-      console.log('🔍 [DISCOVERY] Found more traffic sources:', {
+    if (bestSources.length > discoveredTrafficSources.length) {
+      console.log('🔍 [DISCOVERY] Found more traffic sources from best hook:', {
         current: discoveredTrafficSources.length,
-        new: currentSources.length,
-        sources: currentSources
+        new: bestSources.length,
+        sources: bestSources
       });
-      setDiscoveredTrafficSources([...currentSources]);
+      setDiscoveredTrafficSources([...bestSources]);
     }
-  }, [bigQueryResult.meta?.availableTrafficSources, discoveredTrafficSources.length]);
+  }, [bestMetadata?.availableTrafficSources, discoveredTrafficSources.length]);
 
   // **ALWAYS RETURN DISCOVERED SOURCES: Never gets filtered or reduced**
   const bestAvailableTrafficSources = useMemo(() => {
@@ -205,11 +231,11 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
       return [...discoveredTrafficSources];
     }
     
-    // Fallback to current sources while discovery is happening
-    const currentSources = bigQueryResult.meta?.availableTrafficSources || [];
-    console.log('⏳ [FALLBACK] Using current sources while discovering:', currentSources);
-    return [...currentSources];
-  }, [discoveredTrafficSources, bigQueryResult.meta?.availableTrafficSources]);
+    // Fallback to best metadata while discovery is happening
+    const bestSources = bestMetadata?.availableTrafficSources || [];
+    console.log('⏳ [FALLBACK] Using best metadata sources while discovering:', bestSources);
+    return [...bestSources];
+  }, [discoveredTrafficSources, bestMetadata?.availableTrafficSources]);
 
   const contextValue: AsoDataContextType = {
     data: selectedResult.data,
@@ -219,20 +245,21 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
     setFilters,
     currentDataSource,
     dataSourceStatus,
-    meta: currentDataSource === 'bigquery' ? bigQueryResult.meta : undefined,
+    meta: currentDataSource === 'bigquery' ? (bestMetadata || bigQueryResult.meta) : undefined,
     // Spread to avoid accidental external mutation of context state
     availableTrafficSources: [...bestAvailableTrafficSources],
     userTouchedFilters,
     setUserTouchedFilters,
   };
 
-  // **DEBUG: Monitor traffic source state**
-  console.log('🔍 [DEBUG] Traffic source state:', {
+  // **DEBUG: Monitor hook selection and traffic source state**
+  console.log('🔍 [SMART SELECTION DEBUG] Hook selection state:', {
+    currentHookSources: bigQueryResult.meta?.availableTrafficSources?.length || 0,
+    bestHookSources: bestSourceCount,
     discoveredCount: discoveredTrafficSources.length,
-    discoveredSources: discoveredTrafficSources,
-    currentFromBQ: bigQueryResult.meta?.availableTrafficSources || [],
     finalCount: bestAvailableTrafficSources.length,
     finalSources: bestAvailableTrafficSources,
+    usingBestMetadata: !!bestMetadata,
     filterState: filters.trafficSources.length === 0 ? 'UNFILTERED' : 'FILTERED'
   });
 
