@@ -87,13 +87,7 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
   const [currentDataSource, setCurrentDataSource] = useState<DataSource>('bigquery');
   const [dataSourceStatus, setDataSourceStatus] = useState<DataSourceStatus>('loading');
   
-  // **PHASE 1: Preserve discovery metadata across filter changes**
-  const [discoveryMetadata, setDiscoveryMetadata] = useState<string[]>([]);
-  
   const savedFilters = loadSavedFilters();
-
-  // Track completion of the very first BigQuery request
-  const [firstQueryCompleted, setFirstQueryCompleted] = useState(false);
 
   // Track if the user has manually modified filters in the UI
   const [userTouchedFilters, setUserTouchedFilters] = useState(false);
@@ -108,32 +102,7 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
     clients: ['TUI'], // Default client for BigQuery
   });
 
-  // Inform when the unfiltered query kicks off
-  useEffect(() => {
-    if (filters.trafficSources.length === 0 && !firstQueryCompleted) {
-      console.log('🚀 [AsoDataContext] Initial discovery query running with no traffic source filter');
-    }
-  }, [filters.trafficSources, firstQueryCompleted]);
 
-  // Enhanced filter change logging with state validation
-  useEffect(() => {
-    console.log('🎯 [AsoDataContext] Filter state updated:', {
-      dateRange: {
-        from: filters.dateRange.from.toISOString().split('T')[0],
-        to: filters.dateRange.to.toISOString().split('T')[0]
-      },
-      trafficSources: filters.trafficSources,
-      trafficSourcesCount: filters.trafficSources.length,
-      trafficSourcesEmpty: filters.trafficSources.length === 0,
-      clients: filters.clients,
-      filterDecision: filters.trafficSources.length === 0 ? 'NO_FILTER_ALL_SOURCES' : 'APPLY_SPECIFIC_FILTERS'
-    });
-    
-    // Debug log when filters are completely cleared
-    if (filters.trafficSources.length === 0) {
-      console.debug('✅ [AsoDataContext] Filter cleared → trafficSources = [], expecting ALL traffic sources in response');
-    }
-  }, [filters]);
 
   // Save filters to localStorage when they change
   useEffect(() => {
@@ -148,8 +117,6 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
     filters.trafficSources,
     bigQueryReady
   );
-
-  // Mark completion of the discovery phase when metadata is preserved
 
   // Fallback to mock data - pass all required arguments
   const mockResult = useMockAsoData(
@@ -181,66 +148,44 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
     ? bigQueryResult 
     : mockResult;
 
-  // **PRESERVATION: Handle discovery metadata separately**
-  useEffect(() => {
-    const incomingSources = bigQueryResult.meta?.availableTrafficSources;
-
-    if (
-      currentDataSource === 'bigquery' &&
-      filters.trafficSources.length === 0 &&
-      incomingSources &&
-      incomingSources.length >= 8 &&
-      !firstQueryCompleted
-    ) {
-      console.log('🔍 [Debug] Evaluating discovery metadata preservation...', {
-        current: discoveryMetadata,
-        incoming: incomingSources
-      });
-      console.log('🔒 [Context] Preserving discovery metadata:', incomingSources);
-
-      // Spread to ensure a fresh array reference is stored
-      setDiscoveryMetadata([...incomingSources]);
-
-      // Mark completion once metadata is preserved
-      setFirstQueryCompleted(true);
-      console.log('✅ [AsoDataContext] Initial discovery query completed');
-    }
-  }, [
-    currentDataSource,
-    bigQueryResult.meta?.availableTrafficSources,
-    filters.trafficSources.length,
-    firstQueryCompleted,
-    discoveryMetadata
-  ]);
-
-  // Reapply saved filters after discovery metadata is known and first query finished
-  useEffect(() => {
-    if (userTouchedFilters || filters.trafficSources.length > 0) {
-      return;
-    }
-
-    if (
-      firstQueryCompleted &&
-      discoveryMetadata.length > 0 &&
-      savedFilters.trafficSources &&
-      savedFilters.trafficSources.length > 0
-    ) {
-      console.log('🔄 [AsoDataContext] Reapplying saved traffic source filters:', savedFilters.trafficSources);
-      setFilters(prev => ({ ...prev, trafficSources: savedFilters.trafficSources as string[] }));
-    }
-  }, [firstQueryCompleted, discoveryMetadata.length, filters.trafficSources.length, userTouchedFilters]);
-
-  // **COMPUTATION: Determine best available sources**
+  // **SYNCHRONIZED PRESERVATION: Get all available traffic sources immediately**
   const bestAvailableTrafficSources = useMemo(() => {
-    // Return preserved metadata if available
-    if (discoveryMetadata.length > 0) {
-      return [...discoveryMetadata];
+    const currentSources = bigQueryResult.meta?.availableTrafficSources || [];
+    
+    // When we have an unfiltered query (empty filters) and BigQuery sources
+    if (filters.trafficSources.length === 0 && currentSources.length > 0) {
+      console.log('🔍 [SYNC FIX] Preserving discovery metadata:', currentSources);
+      return [...currentSources];
     }
-    // Otherwise return current metadata
-    return currentDataSource === 'bigquery'
-      ? [...(bigQueryResult.meta?.availableTrafficSources || [])]
-      : [];
-  }, [discoveryMetadata, currentDataSource, bigQueryResult.meta?.availableTrafficSources]);
+    
+    // When we have filtered query, check if we have cached sources in localStorage
+    if (filters.trafficSources.length > 0) {
+      const stored = localStorage.getItem('aso-traffic-sources-cache');
+      if (stored) {
+        try {
+          const cachedSources = JSON.parse(stored);
+          if (Array.isArray(cachedSources) && cachedSources.length > 0) {
+            console.log('🔍 [SYNC FIX] Using cached traffic sources:', cachedSources);
+            return [...cachedSources];
+          }
+        } catch (e) {
+          console.warn('Failed to parse cached traffic sources');
+        }
+      }
+    }
+    
+    // Fallback to current sources
+    return [...currentSources];
+  }, [bigQueryResult.meta?.availableTrafficSources, filters.trafficSources.length]);
+
+  // Cache traffic sources when we have them from unfiltered query
+  useEffect(() => {
+    const currentSources = bigQueryResult.meta?.availableTrafficSources || [];
+    if (filters.trafficSources.length === 0 && currentSources.length > 0) {
+      localStorage.setItem('aso-traffic-sources-cache', JSON.stringify(currentSources));
+      console.log('🔍 [SYNC FIX] Cached traffic sources for future use:', currentSources);
+    }
+  }, [bigQueryResult.meta?.availableTrafficSources, filters.trafficSources.length]);
 
   const contextValue: AsoDataContextType = {
     data: selectedResult.data,
@@ -257,15 +202,12 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
     setUserTouchedFilters,
   };
 
-  // **DIAGNOSTIC: Understanding the traffic source issue**
-  console.log('🔍 [DIAGNOSTIC] Context state:', {
-    currentDataSource,
-    bigQueryMeta_sources: bigQueryResult.meta?.availableTrafficSources,
-    discoveryMetadata_length: discoveryMetadata.length,
-    discoveryMetadata_actual: discoveryMetadata,
-    bestAvailableTrafficSources_length: bestAvailableTrafficSources?.length,
-    bestAvailableTrafficSources_actual: bestAvailableTrafficSources,
-    contextValue_sources: contextValue.availableTrafficSources
+  // **VALIDATION: Check final result**
+  console.log('✅ [VALIDATION] Final traffic sources:', {
+    count: bestAvailableTrafficSources.length,
+    sources: bestAvailableTrafficSources,
+    hasAllExpected: bestAvailableTrafficSources.length >= 7, // Expect at least 7 sources
+    filterState: filters.trafficSources.length === 0 ? 'UNFILTERED' : 'FILTERED'
   });
 
   return (
