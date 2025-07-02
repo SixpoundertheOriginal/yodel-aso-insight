@@ -211,7 +211,8 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
       bestSources,
       bestCount: bestSources.length,
       discoveredCount: discoveredTrafficSources.length,
-      shouldUpdate: bestSources.length > discoveredTrafficSources.length
+      shouldUpdate: bestSources.length > discoveredTrafficSources.length,
+      bestMetadataExists: !!bestMetadata
     });
     
     if (bestSources.length > discoveredTrafficSources.length) {
@@ -224,18 +225,45 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
     }
   }, [bestMetadata?.availableTrafficSources, discoveredTrafficSources.length]);
 
-  // **ALWAYS RETURN DISCOVERED SOURCES: Never gets filtered or reduced**
+  // **CRITICAL FIX: Force immediate update when best metadata is available**
+  useEffect(() => {
+    if (bestMetadata?.availableTrafficSources && bestMetadata.availableTrafficSources.length >= 8) {
+      console.log('⚡ [IMMEDIATE UPDATE] Force updating discovered sources with complete data:', {
+        sources: bestMetadata.availableTrafficSources,
+        count: bestMetadata.availableTrafficSources.length
+      });
+      setDiscoveredTrafficSources([...bestMetadata.availableTrafficSources]);
+    }
+  }, [bestMetadata]);
+
+  // **ENHANCED: Always return the best available sources with detailed logging**
   const bestAvailableTrafficSources = useMemo(() => {
+    console.log('🔄 [BEST_SOURCES_CALC] Calculating best available sources:', {
+      discoveredCount: discoveredTrafficSources.length,
+      discoveredSources: discoveredTrafficSources,
+      bestMetadataCount: bestMetadata?.availableTrafficSources?.length || 0,
+      bestMetadataSources: bestMetadata?.availableTrafficSources || [],
+      currentCount: bigQueryResult.meta?.availableTrafficSources?.length || 0,
+      currentSources: bigQueryResult.meta?.availableTrafficSources || []
+    });
+
+    // Priority 1: Use discovered sources if we have them
     if (discoveredTrafficSources.length > 0) {
-      console.log('✅ [STABLE] Using discovered traffic sources:', discoveredTrafficSources);
+      console.log('✅ [PRIORITY_1] Using discovered traffic sources:', discoveredTrafficSources);
       return [...discoveredTrafficSources];
     }
     
-    // Fallback to best metadata while discovery is happening
-    const bestSources = bestMetadata?.availableTrafficSources || [];
-    console.log('⏳ [FALLBACK] Using best metadata sources while discovering:', bestSources);
-    return [...bestSources];
-  }, [discoveredTrafficSources, bestMetadata?.availableTrafficSources]);
+    // Priority 2: Use best metadata if available
+    if (bestMetadata?.availableTrafficSources && bestMetadata.availableTrafficSources.length > 0) {
+      console.log('✅ [PRIORITY_2] Using best metadata sources:', bestMetadata.availableTrafficSources);
+      return [...bestMetadata.availableTrafficSources];
+    }
+    
+    // Priority 3: Fallback to current hook data
+    const currentSources = bigQueryResult.meta?.availableTrafficSources || [];
+    console.log('⏳ [PRIORITY_3] Using current hook sources as fallback:', currentSources);
+    return [...currentSources];
+  }, [discoveredTrafficSources, bestMetadata?.availableTrafficSources, bigQueryResult.meta?.availableTrafficSources]);
 
   const contextValue: AsoDataContextType = {
     data: selectedResult.data,
@@ -246,21 +274,38 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
     currentDataSource,
     dataSourceStatus,
     meta: currentDataSource === 'bigquery' ? (bestMetadata || bigQueryResult.meta) : undefined,
-    // Spread to avoid accidental external mutation of context state
+    // **CRITICAL: Ensure fresh array reference for components**
     availableTrafficSources: [...bestAvailableTrafficSources],
     userTouchedFilters,
     setUserTouchedFilters,
   };
 
+  // **FINAL VALIDATION: Log what context is providing to components**
+  console.log('🚨 [CONTEXT→COMPONENT] Context providing to components:', {
+    availableTrafficSources: contextValue.availableTrafficSources,
+    sourcesCount: contextValue.availableTrafficSources?.length || 0,
+    bestCalculated: bestAvailableTrafficSources,
+    bestCalculatedCount: bestAvailableTrafficSources.length,
+    bestMetadataExists: !!bestMetadata,
+    bestSourceCount: bestSourceCount
+  });
+
   // **DEBUG: Monitor hook selection and traffic source state**
-  console.log('🔍 [SMART SELECTION DEBUG] Hook selection state:', {
+  console.log('🔍 [SMART SELECTION DEBUG] Complete state summary:', {
+    phase: 'FINAL_CHECK',
     currentHookSources: bigQueryResult.meta?.availableTrafficSources?.length || 0,
     bestHookSources: bestSourceCount,
     discoveredCount: discoveredTrafficSources.length,
-    finalCount: bestAvailableTrafficSources.length,
-    finalSources: bestAvailableTrafficSources,
+    bestAvailableCount: bestAvailableTrafficSources.length,
+    contextProvidingCount: contextValue.availableTrafficSources?.length || 0,
+    finalSources: contextValue.availableTrafficSources,
     usingBestMetadata: !!bestMetadata,
-    filterState: filters.trafficSources.length === 0 ? 'UNFILTERED' : 'FILTERED'
+    filterState: filters.trafficSources.length === 0 ? 'UNFILTERED' : 'FILTERED',
+    dataFlowCheck: {
+      'bestMetadata → discovered': bestMetadata?.availableTrafficSources?.length || 0,
+      'discovered → bestAvailable': bestAvailableTrafficSources.length,
+      'bestAvailable → context': contextValue.availableTrafficSources?.length || 0
+    }
   });
 
   return (
