@@ -1,5 +1,4 @@
-
-import React, { createContext, useContext, useState, useEffect, useMemo, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, ReactNode, useCallback } from 'react';
 import { useBigQueryData } from '../hooks/useBigQueryData';
 import { useMockAsoData, type AsoData, type DateRange, type TrafficSource } from '../hooks/useMockAsoData';
 import { subDays } from 'date-fns';
@@ -31,6 +30,18 @@ interface BigQueryMeta {
   };
 }
 
+// Hook Registry Interface
+interface HookInstanceData {
+  instanceId: string;
+  availableTrafficSources: string[];
+  sourcesCount: number;
+  data: any;
+  metadata: any;
+  loading: boolean;
+  error?: Error;
+  lastUpdated: number;
+}
+
 interface AsoDataContextType {
   data: AsoData | null;
   loading: boolean;
@@ -43,6 +54,8 @@ interface AsoDataContextType {
   availableTrafficSources?: string[];
   userTouchedFilters: boolean;
   setUserTouchedFilters: React.Dispatch<React.SetStateAction<boolean>>;
+  // New: Hook registration system
+  registerHookInstance: (instanceId: string, data: HookInstanceData) => void;
 }
 
 const AsoDataContext = createContext<AsoDataContextType | undefined>(undefined);
@@ -60,7 +73,6 @@ const loadSavedFilters = (): Partial<AsoDataFilters> => {
     const saved = localStorage.getItem(FILTER_STORAGE_KEY);
     if (saved) {
       const parsed = JSON.parse(saved);
-      // Only restore traffic sources if they exist and are an array, not date ranges (those should be fresh)
       return {
         trafficSources: Array.isArray(parsed.trafficSources) ? parsed.trafficSources : []
       };
@@ -74,7 +86,6 @@ const loadSavedFilters = (): Partial<AsoDataFilters> => {
 // Save filters to localStorage
 const saveFilters = (filters: AsoDataFilters) => {
   try {
-    // Only save traffic sources for persistence
     localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify({
       trafficSources: filters.trafficSources
     }));
@@ -87,219 +98,164 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
   const [currentDataSource, setCurrentDataSource] = useState<DataSource>('bigquery');
   const [dataSourceStatus, setDataSourceStatus] = useState<DataSourceStatus>('loading');
   
+  // ✅ NEW: Hook Registry to track ALL hook instances
+  const [hookRegistry, setHookRegistry] = useState<Map<string, HookInstanceData>>(new Map());
+  
   const savedFilters = loadSavedFilters();
-
-  // **PERMANENT DISCOVERY STATE: Never gets overwritten**
-  const [discoveredTrafficSources, setDiscoveredTrafficSources] = useState<string[]>([]);
-
-  // Track if the user has manually modified filters in the UI
   const [userTouchedFilters, setUserTouchedFilters] = useState(false);
 
-  // Always start with an empty traffic source filter so discovery query is unfiltered
   const [filters, setFilters] = useState<AsoDataFilters>({
     dateRange: {
-      from: subDays(new Date(), 30), // Default to last 30 days
+      from: subDays(new Date(), 30),
       to: new Date(),
     },
     trafficSources: [],
-    clients: ['TUI'], // Default client for BigQuery
+    clients: ['TUI'],
   });
-
-
 
   // Save filters to localStorage when they change
   useEffect(() => {
     saveFilters(filters);
   }, [filters]);
 
-  // Try BigQuery first - MAIN AUTHORITATIVE SOURCE
+  // ✅ NEW: Hook Registration Function
+  const registerHookInstance = useCallback((instanceId: string, data: HookInstanceData) => {
+    console.log(`🔄 [HOOK REGISTRY] Registering instance ${instanceId}:`, {
+      sourcesCount: data.sourcesCount,
+      hasData: !!data.data,
+      loading: data.loading,
+      error: !!data.error
+    });
+
+    setHookRegistry(prev => {
+      const newRegistry = new Map(prev);
+      newRegistry.set(instanceId, {
+        ...data,
+        lastUpdated: Date.now()
+      });
+      
+      console.log(`📊 [REGISTRY STATUS] Total registered instances: ${newRegistry.size}`);
+      console.log(`📊 [REGISTRY SUMMARY]`, Array.from(newRegistry.entries()).map(([id, data]) => ({
+        id,
+        sources: data.sourcesCount,
+        hasData: !!data.data
+      })));
+      
+      return newRegistry;
+    });
+  }, []);
+
+  // ✅ NEW: Find Best Hook Instance
+  const getBestHookData = useCallback((): HookInstanceData | null => {
+    let bestInstance: HookInstanceData | null = null;
+    let maxSources = 0;
+    
+    console.log(`🔍 [BEST HOOK SEARCH] Searching through ${hookRegistry.size} registered instances`);
+    
+    for (const [instanceId, data] of hookRegistry.entries()) {
+      console.log(`🔍 [CHECKING INSTANCE] ${instanceId}:`, {
+        sourcesCount: data.sourcesCount,
+        hasData: !!data.data,
+        loading: data.loading,
+        error: !!data.error,
+        sources: data.availableTrafficSources
+      });
+      
+      // Only consider instances with data and no errors
+      if (data.sourcesCount > maxSources && !data.error && !data.loading && data.data) {
+        maxSources = data.sourcesCount;
+        bestInstance = data;
+        console.log(`🎯 [NEW BEST FOUND] Instance ${instanceId} with ${data.sourcesCount} sources`);
+      }
+    }
+    
+    if (bestInstance) {
+      console.log(`✅ [BEST HOOK SELECTED]`, {
+        instanceId: bestInstance.instanceId,
+        sourcesCount: bestInstance.sourcesCount,
+        sources: bestInstance.availableTrafficSources
+      });
+    } else {
+      console.log(`❌ [NO BEST HOOK] No suitable instance found`);
+    }
+    
+    return bestInstance;
+  }, [hookRegistry]);
+
+  // ✅ MODIFIED: Still create one hook for fallback, but don't rely on it exclusively
   const bigQueryReady = filters.clients.length > 0;
-  const bigQueryResult = useBigQueryData(
+  const fallbackBigQueryResult = useBigQueryData(
     filters.clients,
     filters.dateRange,
     filters.trafficSources,
     bigQueryReady
   );
-  
-  // **CRITICAL: Ensure this is the MAIN hook instance - tag it for debugging**
-  console.log('🚨 [MAIN CONTEXT HOOK] This is the authoritative BigQuery hook for traffic sources');
 
-  // Fallback to mock data - pass all required arguments
+  // ✅ NEW: Register the fallback hook
+  useEffect(() => {
+    if (fallbackBigQueryResult.meta?.availableTrafficSources) {
+      registerHookInstance('fallback-context-hook', {
+        instanceId: 'fallback-context-hook',
+        availableTrafficSources: fallbackBigQueryResult.meta.availableTrafficSources,
+        sourcesCount: fallbackBigQueryResult.meta.availableTrafficSources.length,
+        data: fallbackBigQueryResult.data,
+        metadata: fallbackBigQueryResult.meta,
+        loading: fallbackBigQueryResult.loading,
+        error: fallbackBigQueryResult.error,
+        lastUpdated: Date.now()
+      });
+    }
+  }, [fallbackBigQueryResult.data, fallbackBigQueryResult.meta, fallbackBigQueryResult.loading, fallbackBigQueryResult.error, registerHookInstance]);
+
+  // Fallback to mock data
   const mockResult = useMockAsoData(
     filters.clients,
     filters.dateRange,
     filters.trafficSources
   );
 
-  // Determine which data source to use and manage status
+  // ✅ NEW: Use Best Hook Data Instead of Single Hook
+  const bestHookData = getBestHookData();
+  const selectedResult = bestHookData || fallbackBigQueryResult;
+
+  // ✅ NEW: Get Available Traffic Sources from Best Hook
+  const bestAvailableTrafficSources = useMemo(() => {
+    if (bestHookData?.availableTrafficSources && bestHookData.availableTrafficSources.length > 0) {
+      console.log('✅ [USING BEST HOOK SOURCES]', {
+        instanceId: bestHookData.instanceId,
+        sourcesCount: bestHookData.sourcesCount,
+        sources: bestHookData.availableTrafficSources
+      });
+      return bestHookData.availableTrafficSources;
+    }
+    
+    // Fallback to fallback hook
+    const fallbackSources = fallbackBigQueryResult.meta?.availableTrafficSources || [];
+    console.log('⏳ [USING FALLBACK SOURCES]', {
+      sourcesCount: fallbackSources.length,
+      sources: fallbackSources
+    });
+    return fallbackSources;
+    
+  }, [bestHookData, fallbackBigQueryResult.meta?.availableTrafficSources]);
+
+  // Determine data source status
   useEffect(() => {
-    if (bigQueryResult.loading) {
+    if (selectedResult.loading) {
       setDataSourceStatus('loading');
       setCurrentDataSource('bigquery');
-    } else if (bigQueryResult.error) {
-      console.warn('BigQuery failed, using mock data:', bigQueryResult.error.message);
+    } else if (selectedResult.error) {
+      console.warn('BigQuery failed, using mock data:', selectedResult.error.message);
       setDataSourceStatus('fallback');
       setCurrentDataSource('mock');
-    } else if (bigQueryResult.data) {
+    } else if (selectedResult.data) {
       setDataSourceStatus('available');
       setCurrentDataSource('bigquery');
     } else {
       setDataSourceStatus('fallback'); 
       setCurrentDataSource('mock');
     }
-  }, [bigQueryResult.loading, bigQueryResult.error, bigQueryResult.data]);
-
-  // Select the appropriate data source
-  const selectedResult = currentDataSource === 'bigquery' && !bigQueryResult.error 
-    ? bigQueryResult 
-    : mockResult;
-
-  // **SMART HOOK SELECTION: Track best metadata from any hook instance**
-  const [bestMetadata, setBestMetadata] = useState<any>(null);
-  const [bestSourceCount, setBestSourceCount] = useState(0);
-
-  // **CRITICAL DEBUG: Track what Context receives from Hook**
-  useEffect(() => {
-    const currentSources = bigQueryResult.meta?.availableTrafficSources || [];
-    const currentCount = currentSources.length;
-    
-    console.log('🚨 [CONTEXT→HOOK DEBUG] What Context sees from BigQuery Hook:', {
-      loading: bigQueryResult.loading,
-      error: bigQueryResult.error?.message,
-      hasData: !!bigQueryResult.data,
-      hasMeta: !!bigQueryResult.meta,
-      metaKeys: bigQueryResult.meta ? Object.keys(bigQueryResult.meta) : [],
-      availableTrafficSources: currentSources,
-      sourcesCount: currentCount,
-      dataSource: currentDataSource,
-      filterState: filters.trafficSources.length === 0 ? 'UNFILTERED' : 'FILTERED',
-      bestSourceCountSoFar: bestSourceCount
-    });
-
-    // **SMART SELECTION: Use hook instance with most sources**
-    if (currentCount > bestSourceCount) {
-      console.log('🎯 [SMART SELECTION] Found better hook instance with more sources:', {
-        previousBest: bestSourceCount,
-        newBest: currentCount,
-        sources: currentSources
-      });
-      setBestMetadata(bigQueryResult.meta);
-      setBestSourceCount(currentCount);
-    } else if (currentCount < bestSourceCount) {
-      console.log('🚫 [SMART SELECTION] Ignoring hook instance with fewer sources:', {
-        currentCount,
-        bestCount: bestSourceCount,
-        reason: 'FEWER_SOURCES_THAN_BEST'
-      });
-    }
-  }, [
-    bigQueryResult.loading, 
-    bigQueryResult.error, 
-    bigQueryResult.data, 
-    bigQueryResult.meta,
-    bigQueryResult.meta?.availableTrafficSources,
-    currentDataSource,
-    filters.trafficSources.length,
-    bestSourceCount
-  ]);
-
-  // **FIXED DISCOVERY ACCUMULATION: Always store the maximum sources found**
-  useEffect(() => {
-    const bestSources = bestMetadata?.availableTrafficSources || [];
-    
-    console.log('🔍 [DISCOVERY FIX] Discovery accumulation check:');
-    console.log('  bestMetadataExists:', !!bestMetadata);
-    console.log('  bestSources FULL ARRAY:', JSON.stringify(bestSources, null, 2));
-    console.log('  bestSourcesCount:', bestSources.length);
-    console.log('  currentDiscovered FULL ARRAY:', JSON.stringify(discoveredTrafficSources, null, 2));
-    console.log('  currentDiscoveredCount:', discoveredTrafficSources.length);
-    console.log('  shouldUpdate:', bestSources.length > 0 && bestSources.length >= discoveredTrafficSources.length);
-    console.log('  willForceUpdate:', bestSources.length >= 8);
-    
-    // **CRITICAL FIX: Update if we have ANY sources from best metadata**
-    if (bestSources.length > 0) {
-      // Always update if we found more sources OR if we have the complete set (8+)
-      if (bestSources.length > discoveredTrafficSources.length || bestSources.length >= 8) {
-        console.log('🔍 [DISCOVERY FIX] Updating discovered sources:');
-        console.log('  reason:', bestSources.length >= 8 ? 'COMPLETE_SET_FOUND' : 'MORE_SOURCES_FOUND');
-        console.log('  from count:', discoveredTrafficSources.length);
-        console.log('  to count:', bestSources.length);
-        console.log('  newSources FULL ARRAY:', JSON.stringify(bestSources, null, 2));
-        console.log('  CALLING setDiscoveredTrafficSources with:', bestSources);
-        setDiscoveredTrafficSources([...bestSources]);
-      }
-    }
-  }, [bestMetadata, bestMetadata?.availableTrafficSources]);
-
-  // **IMMEDIATE OVERRIDE: Force complete update when we find 8+ sources**
-  useEffect(() => {
-    if (bestSourceCount >= 8 && bestMetadata?.availableTrafficSources?.length >= 8) {
-      const completeSources = bestMetadata.availableTrafficSources;
-      console.log('⚡ [IMMEDIATE OVERRIDE] Force setting complete traffic sources:');
-      console.log('  sources FULL ARRAY:', JSON.stringify(completeSources, null, 2));
-      console.log('  count:', completeSources.length);
-      console.log('  previousDiscovered count:', discoveredTrafficSources.length);
-      console.log('  previousDiscovered FULL ARRAY:', JSON.stringify(discoveredTrafficSources, null, 2));
-      console.log('  CALLING setDiscoveredTrafficSources with COMPLETE SET:', completeSources);
-      setDiscoveredTrafficSources([...completeSources]);
-    }
-  }, [bestSourceCount, bestMetadata?.availableTrafficSources]);
-
-  // **ENHANCED: Always return the best available sources with detailed logging**
-  const bestAvailableTrafficSources = useMemo(() => {
-    console.log('🔄 [BEST_SOURCES_CALC] Calculating best available sources:');
-    console.log('  step: CALCULATION_START');
-    console.log('  discoveredCount:', discoveredTrafficSources.length);
-    console.log('  discoveredSources FULL ARRAY:', JSON.stringify(discoveredTrafficSources, null, 2));
-    console.log('  bestMetadataCount:', bestMetadata?.availableTrafficSources?.length || 0);
-    console.log('  bestMetadataSources FULL ARRAY:', JSON.stringify(bestMetadata?.availableTrafficSources || [], null, 2));
-    console.log('  currentCount:', bigQueryResult.meta?.availableTrafficSources?.length || 0);
-    console.log('  currentSources FULL ARRAY:', JSON.stringify(bigQueryResult.meta?.availableTrafficSources || [], null, 2));
-
-    // **PRIORITY 1: Use discovered sources if we have the complete set**
-    if (discoveredTrafficSources.length >= 8) {
-      console.log('✅ [PRIORITY_1] Using complete discovered traffic sources:');
-      console.log('  count:', discoveredTrafficSources.length);
-      console.log('  sources FULL ARRAY:', JSON.stringify(discoveredTrafficSources, null, 2));
-      console.log('  RETURNING:', [...discoveredTrafficSources]);
-      return [...discoveredTrafficSources];
-    }
-    
-    // **PRIORITY 2: Use best metadata if it has complete sources**
-    if (bestMetadata?.availableTrafficSources && bestMetadata.availableTrafficSources.length >= 8) {
-      console.log('✅ [PRIORITY_2] Using complete best metadata sources:');
-      console.log('  count:', bestMetadata.availableTrafficSources.length);
-      console.log('  sources FULL ARRAY:', JSON.stringify(bestMetadata.availableTrafficSources, null, 2));
-      console.log('  RETURNING:', [...bestMetadata.availableTrafficSources]);
-      return [...bestMetadata.availableTrafficSources];
-    }
-
-    // **PRIORITY 3: Use discovered sources even if incomplete**
-    if (discoveredTrafficSources.length > 0) {
-      console.log('✅ [PRIORITY_3] Using incomplete discovered sources:');
-      console.log('  count:', discoveredTrafficSources.length);
-      console.log('  sources FULL ARRAY:', JSON.stringify(discoveredTrafficSources, null, 2));
-      console.log('  RETURNING:', [...discoveredTrafficSources]);
-      return [...discoveredTrafficSources];
-    }
-    
-    // **PRIORITY 4: Use best metadata even if incomplete**
-    if (bestMetadata?.availableTrafficSources && bestMetadata.availableTrafficSources.length > 0) {
-      console.log('✅ [PRIORITY_4] Using incomplete best metadata sources:');
-      console.log('  count:', bestMetadata.availableTrafficSources.length);
-      console.log('  sources FULL ARRAY:', JSON.stringify(bestMetadata.availableTrafficSources, null, 2));
-      console.log('  RETURNING:', [...bestMetadata.availableTrafficSources]);
-      return [...bestMetadata.availableTrafficSources];
-    }
-    
-    // **PRIORITY 5: Fallback to current hook data**
-    const currentSources = bigQueryResult.meta?.availableTrafficSources || [];
-    console.log('⏳ [PRIORITY_5] Using current hook sources as final fallback:');
-    console.log('  count:', currentSources.length);
-    console.log('  sources FULL ARRAY:', JSON.stringify(currentSources, null, 2));
-    console.log('  RETURNING:', [...currentSources]);
-    return [...currentSources];
-  }, [discoveredTrafficSources, bestMetadata?.availableTrafficSources, bigQueryResult.meta?.availableTrafficSources]);
+  }, [selectedResult.loading, selectedResult.error, selectedResult.data]);
 
   const contextValue: AsoDataContextType = {
     data: selectedResult.data,
@@ -309,39 +265,20 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
     setFilters,
     currentDataSource,
     dataSourceStatus,
-    meta: currentDataSource === 'bigquery' ? (bestMetadata || bigQueryResult.meta) : undefined,
-    // **CRITICAL: Ensure fresh array reference for components**
+    meta: currentDataSource === 'bigquery' ? (bestHookData?.metadata || fallbackBigQueryResult.meta) : undefined,
     availableTrafficSources: [...bestAvailableTrafficSources],
     userTouchedFilters,
     setUserTouchedFilters,
+    registerHookInstance, // ✅ NEW: Expose registration function
   };
 
-  // **FINAL VALIDATION: Log what context is providing to components**
+  // ✅ FINAL: Log what context provides to components
   console.log('🚨 [CONTEXT→COMPONENT] Context providing to components:');
-  console.log('  availableTrafficSources FULL ARRAY:', JSON.stringify(contextValue.availableTrafficSources, null, 2));
+  console.log('  availableTrafficSources:', contextValue.availableTrafficSources);
   console.log('  sourcesCount:', contextValue.availableTrafficSources?.length || 0);
-  console.log('  bestCalculated FULL ARRAY:', JSON.stringify(bestAvailableTrafficSources, null, 2));
-  console.log('  bestCalculatedCount:', bestAvailableTrafficSources.length);
-  console.log('  bestMetadataExists:', !!bestMetadata);
-  console.log('  bestSourceCount:', bestSourceCount);
-
-  // **DEBUG: Monitor hook selection and traffic source state**
-  console.log('🔍 [SMART SELECTION DEBUG] Complete state summary:', {
-    phase: 'FINAL_CHECK',
-    currentHookSources: bigQueryResult.meta?.availableTrafficSources?.length || 0,
-    bestHookSources: bestSourceCount,
-    discoveredCount: discoveredTrafficSources.length,
-    bestAvailableCount: bestAvailableTrafficSources.length,
-    contextProvidingCount: contextValue.availableTrafficSources?.length || 0,
-    finalSources: contextValue.availableTrafficSources,
-    usingBestMetadata: !!bestMetadata,
-    filterState: filters.trafficSources.length === 0 ? 'UNFILTERED' : 'FILTERED',
-    dataFlowCheck: {
-      'bestMetadata → discovered': bestMetadata?.availableTrafficSources?.length || 0,
-      'discovered → bestAvailable': bestAvailableTrafficSources.length,
-      'bestAvailable → context': contextValue.availableTrafficSources?.length || 0
-    }
-  });
+  console.log('  usingBestHook:', !!bestHookData);
+  console.log('  bestHookInstance:', bestHookData?.instanceId || 'none');
+  console.log('  registeredInstances:', hookRegistry.size);
 
   return (
     <AsoDataContext.Provider value={contextValue}>
