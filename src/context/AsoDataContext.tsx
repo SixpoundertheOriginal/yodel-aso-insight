@@ -101,6 +101,10 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
   // ✅ NEW: Hook Registry to track ALL hook instances
   const [hookRegistry, setHookRegistry] = useState<Map<string, HookInstanceData>>(new Map());
   
+  // 🚨 EMERGENCY: Loop prevention circuit breaker
+  let registrationCount = 0;
+  const EMERGENCY_LIMIT = 20;
+  
   const savedFilters = loadSavedFilters();
   const [userTouchedFilters, setUserTouchedFilters] = useState(false);
 
@@ -120,6 +124,12 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
 
   // ✅ NEW: Hook Registration Function
   const registerHookInstance = useCallback((instanceId: string, data: HookInstanceData) => {
+    // 🚨 EMERGENCY: Circuit breaker to prevent infinite loops
+    if (registrationCount++ > EMERGENCY_LIMIT) {
+      console.warn('🚨 Emergency loop prevention activated');
+      return;
+    }
+    
     console.log(`🔄 [HOOK REGISTRY] Registering instance ${instanceId}:`, {
       sourcesCount: data.sourcesCount,
       hasData: !!data.data,
@@ -205,7 +215,7 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
         lastUpdated: Date.now()
       });
     }
-  }, [fallbackBigQueryResult.data, fallbackBigQueryResult.meta, fallbackBigQueryResult.loading, fallbackBigQueryResult.error, registerHookInstance]);
+  }, [fallbackBigQueryResult.data, fallbackBigQueryResult.meta, fallbackBigQueryResult.loading, fallbackBigQueryResult.error]);
 
   // Fallback to mock data
   const mockResult = useMockAsoData(
