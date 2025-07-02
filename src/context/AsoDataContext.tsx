@@ -112,7 +112,7 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
     saveFilters(filters);
   }, [filters]);
 
-  // Try BigQuery first
+  // Try BigQuery first - MAIN AUTHORITATIVE SOURCE
   const bigQueryReady = filters.clients.length > 0;
   const bigQueryResult = useBigQueryData(
     filters.clients,
@@ -120,6 +120,9 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
     filters.trafficSources,
     bigQueryReady
   );
+  
+  // **CRITICAL: Ensure this is the MAIN hook instance - tag it for debugging**
+  console.log('🚨 [MAIN CONTEXT HOOK] This is the authoritative BigQuery hook for traffic sources');
 
   // Fallback to mock data - pass all required arguments
   const mockResult = useMockAsoData(
@@ -151,9 +154,39 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
     ? bigQueryResult 
     : mockResult;
 
+  // **CRITICAL DEBUG: Track what Context receives from Hook**
+  useEffect(() => {
+    console.log('🚨 [CONTEXT→HOOK DEBUG] What Context sees from BigQuery Hook:', {
+      loading: bigQueryResult.loading,
+      error: bigQueryResult.error?.message,
+      hasData: !!bigQueryResult.data,
+      hasMeta: !!bigQueryResult.meta,
+      metaKeys: bigQueryResult.meta ? Object.keys(bigQueryResult.meta) : [],
+      availableTrafficSources: bigQueryResult.meta?.availableTrafficSources,
+      sourcesCount: bigQueryResult.meta?.availableTrafficSources?.length || 0,
+      dataSource: currentDataSource,
+      filterState: filters.trafficSources.length === 0 ? 'UNFILTERED' : 'FILTERED'
+    });
+  }, [
+    bigQueryResult.loading, 
+    bigQueryResult.error, 
+    bigQueryResult.data, 
+    bigQueryResult.meta,
+    bigQueryResult.meta?.availableTrafficSources,
+    currentDataSource,
+    filters.trafficSources.length
+  ]);
+
   // **DISCOVERY ACCUMULATION: Update discovered sources when we get more**
   useEffect(() => {
     const currentSources = bigQueryResult.meta?.availableTrafficSources || [];
+    
+    console.log('🔍 [DISCOVERY] Context received sources update:', {
+      currentSources,
+      currentCount: currentSources.length,
+      discoveredCount: discoveredTrafficSources.length,
+      shouldUpdate: currentSources.length > discoveredTrafficSources.length
+    });
     
     if (currentSources.length > discoveredTrafficSources.length) {
       console.log('🔍 [DISCOVERY] Found more traffic sources:', {

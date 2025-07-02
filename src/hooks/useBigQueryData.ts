@@ -92,6 +92,20 @@ export const useBigQueryData = (
   // Get selected apps from BigQuery app selector
   const { selectedApps } = useBigQueryAppSelection();
 
+  // **HOOK INSTANCE DEBUG: Track hook calls and instances**
+  const instanceId = Math.random().toString(36).substr(2, 9);
+  console.log('🚨 [HOOK INSTANCE] useBigQueryData called with:', {
+    instanceId,
+    clientList,
+    trafficSources,
+    dateRange: {
+      from: dateRange.from.toISOString().split('T')[0],
+      to: dateRange.to.toISOString().split('T')[0]
+    },
+    ready,
+    timestamp: new Date().toISOString()
+  });
+
   useEffect(() => {
     if (!clientList.length || !ready) return;
 
@@ -164,6 +178,17 @@ export const useBigQueryData = (
         }
 
         console.log('📊 [BigQuery Hook] Available traffic sources:', bigQueryResponse.meta.availableTrafficSources);
+        
+        // **CRITICAL: Log what hook is about to pass to context**
+        console.log('🚨 [HOOK→CONTEXT] Hook instance', instanceId, 'is setting meta with:', {
+          availableTrafficSources: bigQueryResponse.meta.availableTrafficSources,
+          sourcesCount: bigQueryResponse.meta.availableTrafficSources?.length || 0,
+          dateRange: {
+            from: dateRange.from.toISOString().split('T')[0],
+            to: dateRange.to.toISOString().split('T')[0]
+          },
+          trafficSources
+        });
 
         // Store metadata for debugging and empty state handling
         setMeta(bigQueryResponse.meta);
@@ -207,6 +232,20 @@ export const useBigQueryData = (
     selectedApps,
     ready
   ]);
+
+  // **HOOK RETURN DEBUG: Log what hook is returning to context**
+  console.log('🚨 [HOOK RETURN] useBigQueryData instance', instanceId, 'returning:', {
+    hasData: !!data,
+    hasMeta: !!meta,
+    availableTrafficSources: meta?.availableTrafficSources,
+    sourcesCount: meta?.availableTrafficSources?.length || 0,
+    loading,
+    error: error?.message,
+    dateRange: {
+      from: dateRange.from.toISOString().split('T')[0],
+      to: dateRange.to.toISOString().split('T')[0]
+    }
+  });
 
   return { data, loading, error, meta };
 };
