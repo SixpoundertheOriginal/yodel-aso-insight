@@ -168,8 +168,8 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
     });
   }, []); // ✅ LOOP FIX: Empty dependency array - stable reference
 
-  // ✅ NEW: Find Best Hook Instance
-  const getBestHookData = useCallback((): HookInstanceData | null => {
+  // ✅ MEMOIZE: Best hook data to prevent unnecessary recalculations
+  const bestHookData = useMemo(() => {
     let bestInstance: HookInstanceData | null = null;
     let maxSources = 0;
     
@@ -205,101 +205,48 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
     return bestInstance;
   }, [hookRegistry]);
 
-  // ✅ MODIFIED: Still create one hook for fallback, but don't rely on it exclusively
-  const bigQueryReady = filters.clients.length > 0;
-  const fallbackBigQueryResult = useBigQueryData(
-    filters.clients,
-    filters.dateRange,
-    filters.trafficSources,
-    bigQueryReady
-  );
+  // ✅ MEMOIZE: Selected result to prevent object reference changes
+  const selectedResult = useMemo(() => {
+    return bestHookData || fallbackBigQueryResult;
+  }, [bestHookData, fallbackBigQueryResult.data, fallbackBigQueryResult.loading, fallbackBigQueryResult.error]);
 
-  // ✅ DEEPER LOOP FIX: Use a ref to store registration function - prevents re-renders from affecting useBigQueryData
-  const registerHookInstanceRef = useRef(registerHookInstance);
-  registerHookInstanceRef.current = registerHookInstance;
+  // ✅ STABLE REFS: Track previous state to prevent unnecessary updates
+  const previousStatusRef = useRef<{ status: DataSourceStatus; source: DataSource }>({
+    status: 'loading',
+    source: 'bigquery'
+  });
 
-  // ✅ DEEPER LOOP FIX: Only register fallback hook when meta actually has NEW data
-  const lastFallbackMetaRef = useRef<string>('');
+  // ✅ STABLE: Determine data source status with change detection
   useEffect(() => {
-    if (fallbackBigQueryResult.meta?.availableTrafficSources) {
-      // Create a stable hash of the meta data
-      const metaHash = JSON.stringify({
-        sources: fallbackBigQueryResult.meta.availableTrafficSources,
-        loading: fallbackBigQueryResult.loading,
-        hasData: !!fallbackBigQueryResult.data,
-        hasError: !!fallbackBigQueryResult.error
-      });
+    let newStatus: DataSourceStatus;
+    let newSource: DataSource;
 
-      // Only register if meta actually changed
-      if (metaHash !== lastFallbackMetaRef.current) {
-        console.log('🔄 [FALLBACK REGISTRATION] Meta data changed, registering fallback hook');
-        lastFallbackMetaRef.current = metaHash;
-        
-        registerHookInstanceRef.current('fallback-context-hook', {
-          instanceId: 'fallback-context-hook',
-          availableTrafficSources: fallbackBigQueryResult.meta.availableTrafficSources,
-          sourcesCount: fallbackBigQueryResult.meta.availableTrafficSources.length,
-          data: fallbackBigQueryResult.data,
-          metadata: fallbackBigQueryResult.meta,
-          loading: fallbackBigQueryResult.loading,
-          error: fallbackBigQueryResult.error,
-          lastUpdated: Date.now()
-        });
-      } else {
-        console.log('🚫 [FALLBACK SKIP] Meta data unchanged, skipping fallback registration');
-      }
-    }
-  }, [fallbackBigQueryResult.data, fallbackBigQueryResult.meta, fallbackBigQueryResult.loading, fallbackBigQueryResult.error]);
-
-  // Fallback to mock data
-  const mockResult = useMockAsoData(
-    filters.clients,
-    filters.dateRange,
-    filters.trafficSources
-  );
-
-  // ✅ NEW: Use Best Hook Data Instead of Single Hook
-  const bestHookData = getBestHookData();
-  const selectedResult = bestHookData || fallbackBigQueryResult;
-
-  // ✅ NEW: Get Available Traffic Sources from Best Hook
-  const bestAvailableTrafficSources = useMemo(() => {
-    if (bestHookData?.availableTrafficSources && bestHookData.availableTrafficSources.length > 0) {
-      console.log('✅ [USING BEST HOOK SOURCES]', {
-        instanceId: bestHookData.instanceId,
-        sourcesCount: bestHookData.sourcesCount,
-        sources: bestHookData.availableTrafficSources
-      });
-      return bestHookData.availableTrafficSources;
-    }
-    
-    // Fallback to fallback hook
-    const fallbackSources = fallbackBigQueryResult.meta?.availableTrafficSources || [];
-    console.log('⏳ [USING FALLBACK SOURCES]', {
-      sourcesCount: fallbackSources.length,
-      sources: fallbackSources
-    });
-    return fallbackSources;
-    
-  }, [bestHookData, fallbackBigQueryResult.meta?.availableTrafficSources]);
-
-  // Determine data source status
-  useEffect(() => {
     if (selectedResult.loading) {
-      setDataSourceStatus('loading');
-      setCurrentDataSource('bigquery');
+      newStatus = 'loading';
+      newSource = 'bigquery';
     } else if (selectedResult.error) {
       console.warn('BigQuery failed, using mock data:', selectedResult.error.message);
-      setDataSourceStatus('fallback');
-      setCurrentDataSource('mock');
+      newStatus = 'fallback';
+      newSource = 'mock';
     } else if (selectedResult.data) {
-      setDataSourceStatus('available');
-      setCurrentDataSource('bigquery');
+      newStatus = 'available';
+      newSource = 'bigquery';
     } else {
-      setDataSourceStatus('fallback'); 
-      setCurrentDataSource('mock');
+      newStatus = 'fallback';
+      newSource = 'mock';
     }
-  }, [selectedResult.loading, selectedResult.error, selectedResult.data]);
+
+    // ✅ LOOP PREVENTION: Only update state if actually changed
+    const previous = previousStatusRef.current;
+    if (previous.status !== newStatus || previous.source !== newSource) {
+      console.log('🔄 [STATUS UPDATE] Changing status:', { from: previous, to: { status: newStatus, source: newSource } });
+      previousStatusRef.current = { status: newStatus, source: newSource };
+      setDataSourceStatus(newStatus);
+      setCurrentDataSource(newSource);
+    } else {
+      console.log('🚫 [STATUS SKIP] Status unchanged, skipping state update');
+    }
+  }, [selectedResult.loading, selectedResult.error, !!selectedResult.data]); // ✅ STABLE: Use boolean for data instead of object reference
 
   const contextValue: AsoDataContextType = {
     data: selectedResult.data,
