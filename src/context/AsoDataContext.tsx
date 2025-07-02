@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useMemo, ReactNode, useCallback, useRef } from 'react';
+\import React, { createContext, useContext, useState, useEffect, useMemo, ReactNode, useCallback, useRef } from 'react';
 import { useBigQueryData } from '../hooks/useBigQueryData';
 import { useMockAsoData, type AsoData, type DateRange, type TrafficSource } from '../hooks/useMockAsoData';
 import { subDays } from 'date-fns';
@@ -167,6 +167,59 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
       return newRegistry;
     });
   }, []); // ✅ LOOP FIX: Empty dependency array - stable reference
+
+  // ✅ MODIFIED: Create fallback hook FIRST - before any memoized calculations
+  const bigQueryReady = filters.clients.length > 0;
+  const fallbackBigQueryResult = useBigQueryData(
+    filters.clients,
+    filters.dateRange,
+    filters.trafficSources,
+    bigQueryReady
+  );
+
+  // ✅ DEEPER LOOP FIX: Use a ref to store registration function - prevents re-renders from affecting useBigQueryData
+  const registerHookInstanceRef = useRef(registerHookInstance);
+  registerHookInstanceRef.current = registerHookInstance;
+
+  // ✅ DEEPER LOOP FIX: Only register fallback hook when meta actually has NEW data
+  const lastFallbackMetaRef = useRef<string>('');
+  useEffect(() => {
+    if (fallbackBigQueryResult.meta?.availableTrafficSources) {
+      // Create a stable hash of the meta data
+      const metaHash = JSON.stringify({
+        sources: fallbackBigQueryResult.meta.availableTrafficSources,
+        loading: fallbackBigQueryResult.loading,
+        hasData: !!fallbackBigQueryResult.data,
+        hasError: !!fallbackBigQueryResult.error
+      });
+
+      // Only register if meta actually changed
+      if (metaHash !== lastFallbackMetaRef.current) {
+        console.log('🔄 [FALLBACK REGISTRATION] Meta data changed, registering fallback hook');
+        lastFallbackMetaRef.current = metaHash;
+        
+        registerHookInstanceRef.current('fallback-context-hook', {
+          instanceId: 'fallback-context-hook',
+          availableTrafficSources: fallbackBigQueryResult.meta.availableTrafficSources,
+          sourcesCount: fallbackBigQueryResult.meta.availableTrafficSources.length,
+          data: fallbackBigQueryResult.data,
+          metadata: fallbackBigQueryResult.meta,
+          loading: fallbackBigQueryResult.loading,
+          error: fallbackBigQueryResult.error,
+          lastUpdated: Date.now()
+        });
+      } else {
+        console.log('🚫 [FALLBACK SKIP] Meta data unchanged, skipping fallback registration');
+      }
+    }
+  }, [fallbackBigQueryResult.data, fallbackBigQueryResult.meta, fallbackBigQueryResult.loading, fallbackBigQueryResult.error]);
+
+  // Fallback to mock data
+  const mockResult = useMockAsoData(
+    filters.clients,
+    filters.dateRange,
+    filters.trafficSources
+  );
 
   // ✅ MEMOIZE: Best hook data to prevent unnecessary recalculations
   const bestHookData = useMemo(() => {
