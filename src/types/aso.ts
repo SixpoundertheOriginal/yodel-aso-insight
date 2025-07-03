@@ -142,3 +142,4 @@ export interface SearchContext {
 
 // Re-export CPP types for convenience
 export type { ScreenshotAnalysis, CppTheme, CompetitorScreenshot, CppStrategyData, CppConfig } from './cpp';
+
