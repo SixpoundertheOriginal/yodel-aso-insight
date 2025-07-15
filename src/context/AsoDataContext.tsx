@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useMemo, ReactNode, useCallback, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, ReactNode, useCallback } from 'react';
 import { useBigQueryData } from '../hooks/useBigQueryData';
 import { useMockAsoData, type AsoData, type DateRange, type TrafficSource } from '../hooks/useMockAsoData';
 import { subDays } from 'date-fns';
@@ -101,8 +101,9 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
   // ✅ NEW: Hook Registry to track ALL hook instances
   const [hookRegistry, setHookRegistry] = useState<Map<string, HookInstanceData>>(new Map());
   
-  // ✅ LOOP FIX: Track last registered data to prevent duplicate registrations
-  const lastRegisteredDataRef = useRef<Map<string, string>>(new Map());
+  // 🚨 EMERGENCY: Loop prevention circuit breaker
+  let registrationCount = 0;
+  const EMERGENCY_LIMIT = 20;
   
   const savedFilters = loadSavedFilters();
   const [userTouchedFilters, setUserTouchedFilters] = useState(false);
@@ -121,33 +122,19 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
     saveFilters(filters);
   }, [filters]);
 
-  // ✅ LOOP FIX: Stable registration function that prevents duplicate registrations
+  // ✅ NEW: Hook Registration Function
   const registerHookInstance = useCallback((instanceId: string, data: HookInstanceData) => {
-    // Create a hash of the important data to detect if it actually changed
-    const dataHash = JSON.stringify({
-      sourcesCount: data.sourcesCount,
-      availableTrafficSources: data.availableTrafficSources,
-      loading: data.loading,
-      hasData: !!data.data,
-      hasError: !!data.error
-    });
-
-    // Check if this is the same data as last registration
-    const lastDataHash = lastRegisteredDataRef.current.get(instanceId);
-    if (lastDataHash === dataHash) {
-      console.log(`🚫 [LOOP PREVENTION] Instance ${instanceId} - skipping duplicate registration`);
-      return; // Skip registration - same data
+    // 🚨 EMERGENCY: Circuit breaker to prevent infinite loops
+    if (registrationCount++ > EMERGENCY_LIMIT) {
+      console.warn('🚨 Emergency loop prevention activated');
+      return;
     }
-
-    // Update the hash tracker
-    lastRegisteredDataRef.current.set(instanceId, dataHash);
-
+    
     console.log(`🔄 [HOOK REGISTRY] Registering instance ${instanceId}:`, {
       sourcesCount: data.sourcesCount,
       hasData: !!data.data,
       loading: data.loading,
-      error: !!data.error,
-      dataHash: dataHash.slice(0, 50) + '...' // Log partial hash for debugging
+      error: !!data.error
     });
 
     setHookRegistry(prev => {
@@ -166,7 +153,7 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
       
       return newRegistry;
     });
-  }, []); // ✅ LOOP FIX: Empty dependency array - stable reference
+  }, []);
 
   // ✅ NEW: Find Best Hook Instance
   const getBestHookData = useCallback((): HookInstanceData | null => {
@@ -214,40 +201,19 @@ export const AsoDataProvider: React.FC<AsoDataProviderProps> = ({ children }) =>
     bigQueryReady
   );
 
-  // ✅ DEEPER LOOP FIX: Use a ref to store registration function - prevents re-renders from affecting useBigQueryData
-  const registerHookInstanceRef = useRef(registerHookInstance);
-  registerHookInstanceRef.current = registerHookInstance;
-
-  // ✅ DEEPER LOOP FIX: Only register fallback hook when meta actually has NEW data
-  const lastFallbackMetaRef = useRef<string>('');
+  // ✅ NEW: Register the fallback hook
   useEffect(() => {
     if (fallbackBigQueryResult.meta?.availableTrafficSources) {
-      // Create a stable hash of the meta data
-      const metaHash = JSON.stringify({
-        sources: fallbackBigQueryResult.meta.availableTrafficSources,
+      registerHookInstance('fallback-context-hook', {
+        instanceId: 'fallback-context-hook',
+        availableTrafficSources: fallbackBigQueryResult.meta.availableTrafficSources,
+        sourcesCount: fallbackBigQueryResult.meta.availableTrafficSources.length,
+        data: fallbackBigQueryResult.data,
+        metadata: fallbackBigQueryResult.meta,
         loading: fallbackBigQueryResult.loading,
-        hasData: !!fallbackBigQueryResult.data,
-        hasError: !!fallbackBigQueryResult.error
+        error: fallbackBigQueryResult.error,
+        lastUpdated: Date.now()
       });
-
-      // Only register if meta actually changed
-      if (metaHash !== lastFallbackMetaRef.current) {
-        console.log('🔄 [FALLBACK REGISTRATION] Meta data changed, registering fallback hook');
-        lastFallbackMetaRef.current = metaHash;
-        
-        registerHookInstanceRef.current('fallback-context-hook', {
-          instanceId: 'fallback-context-hook',
-          availableTrafficSources: fallbackBigQueryResult.meta.availableTrafficSources,
-          sourcesCount: fallbackBigQueryResult.meta.availableTrafficSources.length,
-          data: fallbackBigQueryResult.data,
-          metadata: fallbackBigQueryResult.meta,
-          loading: fallbackBigQueryResult.loading,
-          error: fallbackBigQueryResult.error,
-          lastUpdated: Date.now()
-        });
-      } else {
-        console.log('🚫 [FALLBACK SKIP] Meta data unchanged, skipping fallback registration');
-      }
     }
   }, [fallbackBigQueryResult.data, fallbackBigQueryResult.meta, fallbackBigQueryResult.loading, fallbackBigQueryResult.error]);
 
